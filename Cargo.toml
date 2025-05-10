@@ -1,0 +1,17 @@
+[package]
+name = "qlit"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "qlit"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+num-complex = "0.4.6"
+num-traits = "0.2.19"
+pollster = "0.4.0"
+pyo3 = { version = "0.23.5", features = ["auto-initialize", "num-complex"] }
+qasm = "1.0.0"
+rand = { version = "0.9.0", features = ["small_rng"] }
+wgpu = "24.0.1"
