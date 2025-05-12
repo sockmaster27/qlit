@@ -20,7 +20,7 @@ enum Pauli {
 }
 
 #[pyclass]
-pub struct Generator {
+pub struct GeneratorCol {
     n: usize,
     /// The augmented stabilizer tableau,
     /// ```text
@@ -40,7 +40,7 @@ pub struct Generator {
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     tableau: Vec<BitBlock>,
 }
-impl Generator {
+impl GeneratorCol {
     /// Initialize a new generator with `n` qubits in the initial zero state.
     pub fn zero(n: usize) -> Self {
         let mut tableau = vec![0; tableau_block_length(n)];
@@ -48,7 +48,7 @@ impl Generator {
             let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
         }
-        Generator { tableau, n }
+        GeneratorCol { tableau, n }
     }
 
     /// Apply a Clifford gate to the generator.
@@ -358,7 +358,7 @@ impl Generator {
         }
     }
 
-    /// Get the value of the x bit corresponding to the `q`th tensor element in the `p`th row.
+    /// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
     fn x_bit(&self, row: usize, q: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -451,7 +451,7 @@ pub fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
     }
 }
 
-impl Debug for Generator {
+impl Debug for GeneratorCol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
         write!(f, "Generator {{ n: {n:?}\n")?;
