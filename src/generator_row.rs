@@ -573,4 +573,102 @@ mod tests {
             assert_eq!(result, expected, "{i:008b}");
         }
     }
+
+    #[test]
+    fn bitflip_ratio() {
+        let circuit = CliffordCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        );
+
+        let w = bits_to_bools(0b1000_0000);
+        let mut g = GeneratorRow::zero(8);
+        for &gate in circuit.gates() {
+            g.apply_gate(gate);
+        }
+
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::one());
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::one());
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::zero());
+    }
+
+    #[test]
+    fn repeated_reading() {
+        let circuit = CliffordCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        );
+
+        let mut g = GeneratorRow::zero(8);
+        for &gate in circuit.gates() {
+            g.apply_gate(gate);
+        }
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if [
+                0b0000_0000,
+                0b0100_0000,
+                0b1100_0000,
+                0b0011_0000,
+                0b0111_0000,
+                0b1011_0000,
+            ]
+            .contains(&i)
+            {
+                -Complex::one()
+            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
+                Complex::one()
+            } else {
+                Complex::zero()
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
 }

@@ -102,14 +102,17 @@ impl GeneratorCol {
         let aux_row = n;
         let aux_block_index = n / BLOCK_SIZE;
         let aux_bit_index = n % BLOCK_SIZE;
+        let aux_bitmask = bitmask(aux_bit_index);
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
         // Reset the auxiliary row.
         for q in 0..n {
-            self.tableau[x_column_block_index(n, aux_block_index, q)] &= !bitmask(aux_bit_index);
+            self.tableau[x_column_block_index(n, aux_block_index, q)] &= !aux_bitmask;
+            self.tableau[z_column_block_index(n, aux_block_index, q)] &= !aux_bitmask;
         }
+        self.tableau[r_column_block_index(n, aux_block_index)] &= !aux_bitmask;
         // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
         let mut row = 0;
         for j in 0..n {
@@ -692,6 +695,104 @@ mod tests {
             for &gate in circuit.gates() {
                 g.apply_gate(gate);
             }
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if [
+                0b0000_0000,
+                0b0100_0000,
+                0b1100_0000,
+                0b0011_0000,
+                0b0111_0000,
+                0b1011_0000,
+            ]
+            .contains(&i)
+            {
+                -Complex::one()
+            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
+                Complex::one()
+            } else {
+                Complex::zero()
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn bitflip_ratio() {
+        let circuit = CliffordCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        );
+
+        let w = bits_to_bools(0b1000_0000);
+        let mut g = GeneratorCol::zero(8);
+        for &gate in circuit.gates() {
+            g.apply_gate(gate);
+        }
+
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::one());
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::one());
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::zero());
+    }
+
+    #[test]
+    fn repeated_reading() {
+        let circuit = CliffordCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        );
+
+        let mut g = GeneratorCol::zero(8);
+        for &gate in circuit.gates() {
+            g.apply_gate(gate);
+        }
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [
