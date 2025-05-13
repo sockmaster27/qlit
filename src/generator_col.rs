@@ -94,7 +94,7 @@ impl GeneratorCol {
     /// ```text
     /// coefficient_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
-    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<i8> {
+    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
         assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
@@ -126,7 +126,7 @@ impl GeneratorCol {
     }
 
     /// Same as [`coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
-    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<i8> {
+    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
         let n = self.n;
         assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
 
@@ -179,7 +179,7 @@ impl GeneratorCol {
     }
 
     /// Compute the entry of the `row`th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
-    fn stabilizer_matrix_entry<W1, W2>(&self, row: usize, w1: W1, w2: W2) -> Complex<i8>
+    fn stabilizer_matrix_entry<W1, W2>(&self, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
         W2: IntoIterator<Item: Borrow<bool>>,
