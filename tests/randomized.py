@@ -8,9 +8,9 @@ from qiskit.quantum_info import Statevector
 
 class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
-        iterations = 10000
+        iterations = 1000
         for i in range(iterations):
-            n = 2
+            n = 10
             m = n * n
             seed = 1234 + i
             circuit = CliffordCircuit.random(n, m, seed)
