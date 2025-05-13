@@ -10,6 +10,7 @@ mod generator_col;
 mod generator_row;
 mod gpu_generator;
 mod simulate;
+mod utils;
 
 pub use simulate::clifford_phase;
 
