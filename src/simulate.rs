@@ -4,7 +4,7 @@ use num_complex::Complex;
 use num_traits::One;
 
 use crate::{
-    clifford_circuit::{CliffordCircuit, CliffordGate},
+    clifford_circuit::{CliffordCircuit, CliffordGate, CliffordTCircuit},
     generator_col::GeneratorCol,
 };
 
@@ -44,4 +44,8 @@ pub fn clifford_phase(w: &[bool], circuit: &CliffordCircuit) -> Complex<f64> {
     }
 
     k * g.coeff_ratio(&x, w)
+}
+
+pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+    todo!()
 }
