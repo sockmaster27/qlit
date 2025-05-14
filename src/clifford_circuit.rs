@@ -1,5 +1,5 @@
 use pyo3::{conversion::FromPyObjectBound, prelude::*};
-use rand::{rngs::SmallRng, RngCore, SeedableRng};
+use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
 
 #[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,14 +92,14 @@ impl CliffordCircuit {
             qubits,
             gates: (0..gates)
                 .map(|_| {
-                    let a = rng.next_u64() as usize % qubits;
+                    let a = rng.random_range(0..qubits);
                     match rng.next_u32() % 3 {
                         0 => CliffordGate::H(a),
                         1 => CliffordGate::S(a),
                         2 => {
                             let mut b = a;
                             while b == a {
-                                b = rng.next_u64() as usize % qubits;
+                                b = rng.random_range(0..qubits);
                             }
                             CliffordGate::Cnot(a, b)
                         }
@@ -176,29 +176,53 @@ impl CliffordTCircuit {
         Ok(CliffordTCircuit::new(qubits, gates?))
     }
 
-    /// Create a random circuit with the given number of `qubits` and `gates`.
+    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[staticmethod]
-    pub fn random(qubits: usize, gates: usize, seed: u64) -> Self {
+    pub fn random(qubits: usize, gates: usize, t_gates: usize, seed: u64) -> Self {
+        assert!(
+            t_gates <= gates,
+            "t_gates must be less than or equal to gates"
+        );
+
         let mut rng = SmallRng::seed_from_u64(seed);
-        CliffordTCircuit::new(
-            qubits,
-            (0..gates).map(|_| {
-                let a = rng.next_u64() as usize % qubits;
-                match rng.next_u32() % 4 {
-                    0 => CliffordTGate::H(a),
-                    1 => CliffordTGate::S(a),
-                    2 => {
-                        let mut b = a;
-                        while b == a {
-                            b = rng.next_u64() as usize % qubits;
-                        }
-                        CliffordTGate::Cnot(a, b)
-                    }
-                    3 => CliffordTGate::T(a),
-                    _ => unreachable!(),
+
+        let mut t_gate_positions = Vec::new();
+        for _ in 0..t_gates {
+            let mut pos;
+            loop {
+                pos = rng.random_range(0..gates);
+                if !t_gate_positions.contains(&pos) {
+                    t_gate_positions.push(pos);
+                    break;
                 }
-            }),
-        )
+            }
+        }
+
+        CliffordTCircuit {
+            qubits,
+            t_gates,
+            gates: (0..gates)
+                .map(|i| {
+                    let a = rng.random_range(0..qubits);
+                    if t_gate_positions.contains(&i) {
+                        CliffordTGate::T(a)
+                    } else {
+                        match rng.random_range(0..=2) {
+                            0 => CliffordTGate::H(a),
+                            1 => CliffordTGate::S(a),
+                            2 => {
+                                let mut b = a;
+                                while b == a {
+                                    b = rng.random_range(0..qubits);
+                                }
+                                CliffordTGate::Cnot(a, b)
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                })
+                .collect(),
+        }
     }
 
     /// The number of qubits in the circuit.

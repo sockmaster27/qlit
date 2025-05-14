@@ -10,15 +10,16 @@ class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
         iterations = 1000
         for i in range(iterations):
-            n = 10
-            m = 10
+            qubits = 10
+            t_gates = 10
+            gates = qubits ** 2
             seed = 1234 + i
-            circuit = CliffordTCircuit.random(n, m, seed)
+            circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
             random.seed(seed)
-            w = format(random.getrandbits(n), f"00{n}b")
+            w = format(random.getrandbits(qubits), f"00{qubits}b")
 
             # qiskit
-            qiskit_circuit = QuantumCircuit(n)
+            qiskit_circuit = QuantumCircuit(qubits)
             for gate in circuit.gates:
                 match gate:
                     case CliffordTGate.H(a):
