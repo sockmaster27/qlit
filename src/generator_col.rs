@@ -51,6 +51,49 @@ impl GeneratorCol {
         GeneratorCol { tableau, n }
     }
 
+    pub fn apply_s_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let x = x_column_block_index(n, i, a);
+            let z = z_column_block_index(n, i, a);
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+            self.tableau[z] ^= self.tableau[x];
+        }
+    }
+    pub fn apply_h_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let x = x_column_block_index(n, i, a);
+            let z = z_column_block_index(n, i, a);
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+            self.tableau.swap(z, x);
+        }
+    }
+    pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let xa = x_column_block_index(n, i, a);
+            let za = z_column_block_index(n, i, a);
+            let xb = x_column_block_index(n, i, b);
+            let zb = z_column_block_index(n, i, b);
+            self.tableau[r] ^=
+                self.tableau[xa] & self.tableau[zb] & !(self.tableau[xb] ^ self.tableau[za]);
+            self.tableau[za] ^= self.tableau[zb];
+            self.tableau[xb] ^= self.tableau[xa];
+        }
+    }
+    pub fn apply_z_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let x = x_column_block_index(n, i, a);
+            self.tableau[r] ^= self.tableau[x];
+        }
+    }
+
     /// Apply a Clifford gate to the generator.
     pub fn apply_gate(&mut self, gate: CliffordGate) {
         let n = self.n;

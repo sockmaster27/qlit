@@ -1,4 +1,4 @@
-use clifford_circuit::{CliffordCircuit, CliffordGate};
+use clifford_circuit::{CliffordCircuit, CliffordGate, CliffordTCircuit, CliffordTGate};
 use generator_col::GeneratorCol;
 use generator_row::GeneratorRow;
 use gpu_generator::{initialize_gpu, GpuGenerator};
@@ -12,7 +12,7 @@ mod gpu_generator;
 mod simulate;
 mod utils;
 
-pub use simulate::clifford_phase;
+pub use simulate::{clifford_phase, simulate_circuit};
 
 /// Represents the 3 categories of probabilities for a basis state.
 #[pyclass(eq, eq_int)]
@@ -111,16 +111,25 @@ fn py_clifford_phase(w: &Bound<PyString>, circuit: &CliffordCircuit) -> PyResult
     Ok(clifford_phase(&parse_basis_state(w)?, circuit))
 }
 
+#[pyfunction]
+#[pyo3(name = "simulate_circuit")]
+fn py_simulate_circuit(w: &Bound<PyString>, circuit: &CliffordTCircuit) -> PyResult<Complex<f64>> {
+    Ok(simulate_circuit(&parse_basis_state(w)?, circuit))
+}
+
 #[pymodule]
 #[pyo3(name = "qlit")]
 pub fn python_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     initialize_gpu();
     m.add_class::<CliffordGate>()?;
+    m.add_class::<CliffordTGate>()?;
     m.add_class::<CliffordCircuit>()?;
+    m.add_class::<CliffordTCircuit>()?;
     m.add_class::<BasisStateProbability>()?;
     m.add_function(wrap_pyfunction!(py_simulate_clifford_circuit_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(py_coeff_ratio, m)?)?;
     m.add_function(wrap_pyfunction!(py_coeff_ratio_row, m)?)?;
     m.add_function(wrap_pyfunction!(py_clifford_phase, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
     Ok(())
 }
