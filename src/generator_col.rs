@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn zero() {
-        let circuit = CliffordTCircuit::new(8, []);
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
 
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -610,7 +610,7 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -631,7 +631,7 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         let w1 = bits_to_bools(0b1100_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -676,7 +676,8 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -732,7 +733,8 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let w = bits_to_bools(0b1000_0000);
         let mut g = GeneratorCol::zero(8);
@@ -769,7 +771,8 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let mut g = GeneratorCol::zero(8);
         apply_clifford_circuit(&mut g, &circuit);

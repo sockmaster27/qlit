@@ -1,3 +1,5 @@
+use std::{error::Error, fmt::Display};
+
 use pyo3::{conversion::FromPyObjectBound, prelude::*};
 use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
 
@@ -87,7 +89,7 @@ impl CliffordCircuit {
 }
 
 #[pyclass]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliffordTCircuit {
     /// The number of qubits in the circuit.
     qubits: usize,
@@ -97,18 +99,45 @@ pub struct CliffordTCircuit {
     gates: Vec<CliffordTGate>,
 }
 impl CliffordTCircuit {
-    pub fn new(qubits: usize, gates: impl IntoIterator<Item = CliffordTGate>) -> Self {
-        // TODO: Validate gate indices less than n
+    pub fn new(
+        qubits: usize,
+        gates: impl IntoIterator<Item = CliffordTGate>,
+    ) -> Result<Self, CircuitCreationError> {
         let gates: Vec<CliffordTGate> = gates.into_iter().collect();
-        let t_gates = gates
-            .iter()
-            .filter(|g| matches!(g, CliffordTGate::T(_)))
-            .count();
-        CliffordTCircuit {
+        let mut t_gates = 0;
+        for &gate in &gates {
+            match gate {
+                CliffordTGate::S(a) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                }
+                CliffordTGate::H(a) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                }
+                CliffordTGate::Cnot(a, b) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                    if b >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: b, qubits });
+                    }
+                }
+                CliffordTGate::T(a) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                    t_gates += 1;
+                }
+            }
+        }
+        Ok(CliffordTCircuit {
             qubits,
             t_gates,
             gates,
-        }
+        })
     }
 
     /// The number of qubits in the circuit.
@@ -134,7 +163,7 @@ impl CliffordTCircuit {
             .try_iter()?
             .flat_map(|r| r.map(|obj| CliffordTGate::from_py_object_bound((&obj).into())))
             .collect();
-        Ok(CliffordTCircuit::new(qubits, gates?))
+        Ok(CliffordTCircuit::new(qubits, gates?)?)
     }
 
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
@@ -205,5 +234,28 @@ impl CliffordTCircuit {
     #[pyo3(name = "gates")]
     fn py_gates(&self) -> Vec<CliffordTGate> {
         self.gates.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CircuitCreationError {
+    InvalidQubitIndex { index: usize, qubits: usize },
+}
+impl Display for CircuitCreationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CircuitCreationError::InvalidQubitIndex { index, qubits } => {
+                write!(
+                    f,
+                    "Invalid qubit index {index} for circuit of {qubits} qubits"
+                )
+            }
+        }
+    }
+}
+impl Error for CircuitCreationError {}
+impl From<CircuitCreationError> for PyErr {
+    fn from(value: CircuitCreationError) -> Self {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(value.to_string())
     }
 }

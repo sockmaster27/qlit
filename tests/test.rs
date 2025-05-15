@@ -1,13 +1,59 @@
 use num_complex::Complex;
 use pyo3::{ffi::c_str, Python};
 use qlit::{
-    clifford_circuit::{CliffordTCircuit, CliffordTGate::*},
+    clifford_circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*},
     python_module, simulate_circuit,
 };
 
 #[test]
+fn invalid_qubit_index() {
+    assert_eq!(
+        CliffordTCircuit::new(8, [H(165)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 165,
+            qubits: 8
+        })
+    );
+    assert_eq!(
+        CliffordTCircuit::new(8, [H(8)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 8,
+            qubits: 8
+        })
+    );
+    assert_eq!(
+        CliffordTCircuit::new(8, [S(8)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 8,
+            qubits: 8
+        })
+    );
+    assert_eq!(
+        CliffordTCircuit::new(8, [T(8)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 8,
+            qubits: 8
+        })
+    );
+    assert_eq!(
+        CliffordTCircuit::new(8, [Cnot(8, 4)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 8,
+            qubits: 8
+        })
+    );
+    assert_eq!(
+        CliffordTCircuit::new(8, [Cnot(4, 8)]),
+        Err(CircuitCreationError::InvalidQubitIndex {
+            index: 8,
+            qubits: 8
+        })
+    );
+}
+
+#[test]
 fn zero() {
-    let circuit = CliffordTCircuit::new(8, []);
+    let circuit = CliffordTCircuit::new(8, []).unwrap();
 
     for i in 0b0000_0000..=0b1111_1111 {
         let w = bits_to_bools(i);
@@ -25,7 +71,7 @@ fn zero() {
 
 #[test]
 fn imaginary() {
-    let circuit = CliffordTCircuit::new(8, [H(0), S(0)]);
+    let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
     for i in 0b0000_0000..=0b1111_1111 {
         let w = bits_to_bools(i);
@@ -45,7 +91,7 @@ fn imaginary() {
 
 #[test]
 fn flipped() {
-    let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]);
+    let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
     for i in 0b0000_0000..=0b1111_1111 {
         let w = bits_to_bools(i);
@@ -63,7 +109,7 @@ fn flipped() {
 
 #[test]
 fn bell_state() {
-    let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]);
+    let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
     for i in 0b0000_0000..=0b1111_1111 {
         let w = bits_to_bools(i);
@@ -105,7 +151,8 @@ fn larger_clifford_circuit() {
             H(1),
             Cnot(3, 1),
         ],
-    );
+    )
+    .unwrap();
 
     for i in 0b0000_0000..=0b1111_1111 {
         let w = bits_to_bools(i);
