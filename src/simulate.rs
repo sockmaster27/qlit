@@ -16,6 +16,11 @@ const C_Z: Complex<f64> = Complex {
     im: -1.0 / (2.0 * SQRT_2),
 };
 
+/// Compute the coefficient of the given basis state, `w`,
+/// after `circuit` has been applied to the zero state.
+///
+/// # Panics
+/// If `w` has a length different from `circuit.qubits()`.
 pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -31,14 +36,14 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 
     while !done {
         let mut x = vec![false; n];
-        let mut k = Complex::ONE;
+        let mut x_coeff = Complex::ONE;
         let mut g = GeneratorCol::zero(n);
-        let mut r = 0;
+        let mut seen_t_gates = 0;
         for &gate in circuit.gates() {
             match gate {
                 CliffordTGate::S(a) => {
                     if x[a] == true {
-                        k *= Complex::I;
+                        x_coeff *= Complex::I;
                     }
                     g.apply_s_gate(a);
                 }
@@ -49,34 +54,34 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                 CliffordTGate::H(a) => {
                     let r = g.coeff_ratio_flipped_bit(&x, a);
                     if r != -Complex::ONE {
-                        k *= (r + 1.0) / SQRT_2;
+                        x_coeff *= (r + 1.0) / SQRT_2;
                         x[a] = false;
                     } else {
                         if x[a] == false {
-                            k *= 2.0 / SQRT_2;
+                            x_coeff *= 2.0 / SQRT_2;
                         } else {
-                            k *= -2.0 / SQRT_2;
+                            x_coeff *= -2.0 / SQRT_2;
                         }
                         x[a] = true;
                     }
                     g.apply_h_gate(a);
                 }
                 CliffordTGate::T(a) => {
-                    if path[r] == false {
-                        k *= C_I;
+                    if path[seen_t_gates] == false {
+                        x_coeff *= C_I;
                     } else {
                         if x[a] == true {
-                            k *= -1.0;
+                            x_coeff *= -1.0;
                         }
                         g.apply_z_gate(a);
-                        k *= C_Z;
+                        x_coeff *= C_Z;
                     }
-                    r += 1;
+                    seen_t_gates += 1;
                 }
             }
         }
 
-        coeff += k * g.coeff_ratio(&x, w);
+        coeff += x_coeff * g.coeff_ratio(&x, w);
 
         done = next_path(&mut path);
     }

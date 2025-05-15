@@ -97,8 +97,8 @@ impl GeneratorCol {
     /// ```
     pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
-        assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
-        assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
+        debug_assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
+        debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
 
         let aux_row = n;
         let aux_block_index = n / BLOCK_SIZE;
@@ -132,7 +132,7 @@ impl GeneratorCol {
     /// Same as [`coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
     pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
         let n = self.n;
-        assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
+        debug_assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
