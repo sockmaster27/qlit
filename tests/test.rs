@@ -68,10 +68,9 @@ fn zero() {
 
         let result = simulate_circuit(&w, &circuit);
 
-        let expected = if i == 0b0000_0000 {
-            Complex::ONE
-        } else {
-            Complex::ZERO
+        let expected = match i {
+            0b0000_0000 => Complex::ONE,
+            _ => Complex::ZERO,
         };
         assert_almost_eq(result, expected, i);
     }
@@ -86,12 +85,10 @@ fn imaginary() {
 
         let result = simulate_circuit(&w, &circuit);
 
-        let expected = if i == 0b0000_0000 {
-            Complex::ONE / 2_f64.sqrt()
-        } else if i == 0b1000_0000 {
-            Complex::I / 2_f64.sqrt()
-        } else {
-            Complex::ZERO
+        let expected = match i {
+            0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
+            0b1000_0000 => Complex::I / 2_f64.sqrt(),
+            _ => Complex::ZERO,
         };
         assert_almost_eq(result, expected, i);
     }
@@ -106,10 +103,9 @@ fn flipped() {
 
         let result = simulate_circuit(&w, &circuit);
 
-        let expected = if i == 0b1000_0000 {
-            Complex::ONE
-        } else {
-            Complex::ZERO
+        let expected = match i {
+            0b1000_0000 => Complex::ONE,
+            _ => Complex::ZERO,
         };
         assert_almost_eq(result, expected, i);
     }
@@ -124,10 +120,9 @@ fn bell_state() {
 
         let result = simulate_circuit(&w, &circuit);
 
-        let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
-            Complex::ONE / 2_f64.sqrt()
-        } else {
-            Complex::ZERO
+        let expected = match i {
+            0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+            _ => Complex::ZERO,
         };
         assert_almost_eq(result, expected, i);
     }
@@ -167,21 +162,12 @@ fn larger_clifford_circuit() {
 
         let result = simulate_circuit(&w, &circuit);
 
-        let expected = if [
-            0b0000_0000,
-            0b0100_0000,
-            0b1100_0000,
-            0b0011_0000,
-            0b0111_0000,
-            0b1011_0000,
-        ]
-        .contains(&i)
-        {
-            Complex::I / 8_f64.sqrt()
-        } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-            -Complex::I / 8_f64.sqrt()
-        } else {
-            Complex::ZERO
+        let expected = match i {
+            0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000 | 0b1011_0000 => {
+                Complex::I / 8_f64.sqrt()
+            }
+            0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+            _ => Complex::ZERO,
         };
         assert_almost_eq(result, expected, i);
     }
