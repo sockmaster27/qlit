@@ -5,8 +5,6 @@ use std::mem;
 use num_complex::Complex;
 use pyo3::prelude::*;
 
-use crate::clifford_circuit::CliffordGate;
-
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
@@ -50,68 +48,75 @@ impl GeneratorRow {
         GeneratorRow { tableau, n }
     }
 
-    /// Apply a Clifford gate to the generator.
-    pub fn apply_gate(&mut self, gate: CliffordGate) {
+    pub fn apply_s_gate(&mut self, a: usize) {
         let n = self.n;
-        match gate {
-            CliffordGate::S(a) => {
-                for i in 0..n {
-                    let r_block = r_row_block_index(n, i);
-                    let x_block = x_row_block_index(n, i, a / BLOCK_SIZE);
-                    let z_block = z_row_block_index(n, i, a / BLOCK_SIZE);
-                    let a_bit = a % BLOCK_SIZE;
-                    let a_bitmask = bitmask(a_bit);
+        for i in 0..n {
+            let r_block = r_row_block_index(n, i);
+            let x_block = x_row_block_index(n, i, a / BLOCK_SIZE);
+            let z_block = z_row_block_index(n, i, a / BLOCK_SIZE);
+            let a_bit = a % BLOCK_SIZE;
+            let a_bitmask = bitmask(a_bit);
 
-                    self.tableau[r_block] ^= align_bit_to(
-                        self.tableau[x_block] & self.tableau[z_block] & a_bitmask,
-                        a_bit,
-                        0,
-                    );
-                    self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
-                }
-            }
-            CliffordGate::H(a) => {
-                for i in 0..n {
-                    let r_block = r_row_block_index(n, i);
-                    let x_block = x_row_block_index(n, i, a / BLOCK_SIZE);
-                    let z_block = z_row_block_index(n, i, a / BLOCK_SIZE);
-                    let a_bit = a % BLOCK_SIZE;
-                    let a_bitmask = bitmask(a_bit);
+            self.tableau[r_block] ^= align_bit_to(
+                self.tableau[x_block] & self.tableau[z_block] & a_bitmask,
+                a_bit,
+                0,
+            );
+            self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
+        }
+    }
+    pub fn apply_h_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..n {
+            let r_block = r_row_block_index(n, i);
+            let x_block = x_row_block_index(n, i, a / BLOCK_SIZE);
+            let z_block = z_row_block_index(n, i, a / BLOCK_SIZE);
+            let a_bit = a % BLOCK_SIZE;
+            let a_bitmask = bitmask(a_bit);
 
-                    self.tableau[r_block] ^= align_bit_to(
-                        self.tableau[x_block] & self.tableau[z_block] & a_bitmask,
-                        a_bit,
-                        0,
-                    );
-                    // Swap x and z.
-                    self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
-                    self.tableau[x_block] ^= self.tableau[z_block] & a_bitmask;
-                    self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
-                }
-            }
-            CliffordGate::Cnot(a, b) => {
-                for i in 0..n {
-                    let r_block = r_row_block_index(n, i);
-                    let xa_block = x_row_block_index(n, i, a / BLOCK_SIZE);
-                    let za_block = z_row_block_index(n, i, a / BLOCK_SIZE);
-                    let xb_block = x_row_block_index(n, i, b / BLOCK_SIZE);
-                    let zb_block = z_row_block_index(n, i, b / BLOCK_SIZE);
-                    let a_bit = a % BLOCK_SIZE;
-                    let b_bit = b % BLOCK_SIZE;
-                    let a_bitmask = bitmask(a_bit);
-                    let b_bitmask = bitmask(b_bit);
+            self.tableau[r_block] ^= align_bit_to(
+                self.tableau[x_block] & self.tableau[z_block] & a_bitmask,
+                a_bit,
+                0,
+            );
+            // Swap x and z.
+            self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
+            self.tableau[x_block] ^= self.tableau[z_block] & a_bitmask;
+            self.tableau[z_block] ^= self.tableau[x_block] & a_bitmask;
+        }
+    }
+    pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
+        let n = self.n;
+        for i in 0..n {
+            let r_block = r_row_block_index(n, i);
+            let xa_block = x_row_block_index(n, i, a / BLOCK_SIZE);
+            let za_block = z_row_block_index(n, i, a / BLOCK_SIZE);
+            let xb_block = x_row_block_index(n, i, b / BLOCK_SIZE);
+            let zb_block = z_row_block_index(n, i, b / BLOCK_SIZE);
+            let a_bit = a % BLOCK_SIZE;
+            let b_bit = b % BLOCK_SIZE;
+            let a_bitmask = bitmask(a_bit);
+            let b_bitmask = bitmask(b_bit);
 
-                    self.tableau[r_block] ^=
-                        align_bit_to(self.tableau[xa_block] & a_bitmask, a_bit, 0)
-                            & align_bit_to(self.tableau[zb_block] & b_bitmask, b_bit, 0)
-                            & !(align_bit_to(self.tableau[xb_block] & b_bitmask, b_bit, 0)
-                                ^ align_bit_to(self.tableau[za_block] & a_bitmask, a_bit, 0));
-                    self.tableau[za_block] ^=
-                        align_bit_to(self.tableau[zb_block] & b_bitmask, b_bit, a_bit);
-                    self.tableau[xb_block] ^=
-                        align_bit_to(self.tableau[xa_block] & a_bitmask, a_bit, b_bit);
-                }
-            }
+            self.tableau[r_block] ^= align_bit_to(self.tableau[xa_block] & a_bitmask, a_bit, 0)
+                & align_bit_to(self.tableau[zb_block] & b_bitmask, b_bit, 0)
+                & !(align_bit_to(self.tableau[xb_block] & b_bitmask, b_bit, 0)
+                    ^ align_bit_to(self.tableau[za_block] & a_bitmask, a_bit, 0));
+            self.tableau[za_block] ^=
+                align_bit_to(self.tableau[zb_block] & b_bitmask, b_bit, a_bit);
+            self.tableau[xb_block] ^=
+                align_bit_to(self.tableau[xa_block] & a_bitmask, a_bit, b_bit);
+        }
+    }
+    pub fn apply_z_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..n {
+            let r_block = r_row_block_index(n, i);
+            let x_block = x_row_block_index(n, i, a / BLOCK_SIZE);
+            let a_bit = a % BLOCK_SIZE;
+            let a_bitmask = bitmask(a_bit);
+
+            self.tableau[r_block] ^= align_bit_to(self.tableau[x_block] & a_bitmask, a_bit, 0);
         }
     }
 
@@ -119,7 +124,7 @@ impl GeneratorRow {
     /// ```text
     /// coefficient_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
-    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<i8> {
+    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
         assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
@@ -149,7 +154,7 @@ impl GeneratorRow {
     }
 
     /// Same as [`coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
-    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<i8> {
+    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
         let n = self.n;
         assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
 
@@ -202,7 +207,7 @@ impl GeneratorRow {
     }
 
     /// Compute the entry of the `row`th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
-    fn stabilizer_matrix_entry<W1, W2>(&self, row: usize, w1: W1, w2: W2) -> Complex<i8>
+    fn stabilizer_matrix_entry<W1, W2>(&self, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
         W2: IntoIterator<Item: Borrow<bool>>,
@@ -391,23 +396,21 @@ pub fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::clifford_circuit::CliffordGate::*;
-    use crate::{clifford_circuit::CliffordCircuit, utils::bits_to_bools};
+    use crate::clifford_circuit::{CliffordTCircuit, CliffordTGate::*};
+    use crate::utils::bits_to_bools;
 
     use super::*;
 
     #[test]
     fn zero() {
-        let circuit = CliffordCircuit::new(8, []);
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
 
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -421,16 +424,14 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordCircuit::new(8, [H(0), S(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -446,16 +447,14 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let circuit = CliffordCircuit::new(8, [H(0), S(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -471,16 +470,14 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordCircuit::new(8, [H(0), S(0), S(0), H(0)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b1000_0000 {
@@ -494,16 +491,14 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordCircuit::new(8, [H(0), Cnot(0, 1)]);
+        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         let w1 = bits_to_bools(0b1100_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
@@ -517,7 +512,7 @@ mod tests {
 
     #[test]
     fn larger_circuit() {
-        let circuit = CliffordCircuit::new(
+        let circuit = CliffordTCircuit::new(
             8,
             [
                 H(0),
@@ -541,16 +536,15 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = GeneratorRow::zero(8);
-            for &gate in circuit.gates() {
-                g.apply_gate(gate);
-            }
+            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [
@@ -575,7 +569,7 @@ mod tests {
 
     #[test]
     fn bitflip_ratio() {
-        let circuit = CliffordCircuit::new(
+        let circuit = CliffordTCircuit::new(
             8,
             [
                 H(0),
@@ -599,13 +593,12 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let w = bits_to_bools(0b1000_0000);
         let mut g = GeneratorRow::zero(8);
-        for &gate in circuit.gates() {
-            g.apply_gate(gate);
-        }
+        apply_clifford_circuit(&mut g, &circuit);
 
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::ONE);
@@ -614,7 +607,7 @@ mod tests {
 
     #[test]
     fn repeated_reading() {
-        let circuit = CliffordCircuit::new(
+        let circuit = CliffordTCircuit::new(
             8,
             [
                 H(0),
@@ -638,12 +631,11 @@ mod tests {
                 H(1),
                 Cnot(3, 1),
             ],
-        );
+        )
+        .unwrap();
 
         let mut g = GeneratorRow::zero(8);
-        for &gate in circuit.gates() {
-            g.apply_gate(gate);
-        }
+        apply_clifford_circuit(&mut g, &circuit);
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -668,6 +660,17 @@ mod tests {
                 Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    fn apply_clifford_circuit(g: &mut GeneratorRow, circuit: &CliffordTCircuit) {
+        for &gate in circuit.gates() {
+            match gate {
+                S(a) => g.apply_s_gate(a),
+                H(a) => g.apply_h_gate(a),
+                Cnot(a, b) => g.apply_cnot_gate(a, b),
+                T(_) => unreachable!(),
+            }
         }
     }
 }
