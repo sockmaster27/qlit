@@ -9,7 +9,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 num-complex = "0.4.6"
-num-traits = "0.2.19"
 pollster = "0.4.0"
 pyo3 = { version = "0.23.5", features = ["num-complex"] }
 qasm = "1.0.0"

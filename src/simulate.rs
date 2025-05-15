@@ -1,7 +1,6 @@
 use std::{f64::consts::SQRT_2, vec};
 
 use num_complex::Complex;
-use num_traits::{One, Zero};
 
 use crate::{
     clifford_circuit::{CliffordTCircuit, CliffordTGate},
@@ -27,19 +26,19 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     );
 
     let mut path = vec![false; t];
-    let mut coeff = Complex::zero();
+    let mut coeff = Complex::ZERO;
     let mut done = false;
 
     while !done {
         let mut x = vec![false; n];
-        let mut k = Complex::one();
+        let mut k = Complex::ONE;
         let mut g = GeneratorCol::zero(n);
         let mut r = 0;
         for &gate in circuit.gates() {
             match gate {
                 CliffordTGate::S(a) => {
                     if x[a] == true {
-                        k *= Complex::i();
+                        k *= Complex::I;
                     }
                     g.apply_s_gate(a);
                 }
@@ -49,7 +48,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                 }
                 CliffordTGate::H(a) => {
                     let r = g.coeff_ratio_flipped_bit(&x, a);
-                    if r != -Complex::one() {
+                    if r != -Complex::ONE {
                         k *= (r + 1.0) / SQRT_2;
                         x[a] = false;
                     } else {

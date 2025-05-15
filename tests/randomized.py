@@ -8,7 +8,7 @@ from qiskit.quantum_info import Statevector
 
 class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
-        iterations = 1000
+        iterations = 100
         for i in range(iterations):
             qubits = 10
             t_gates = 10

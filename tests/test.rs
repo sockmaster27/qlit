@@ -1,5 +1,4 @@
 use num_complex::Complex;
-use num_traits::{One, Zero};
 use pyo3::{ffi::c_str, Python};
 use qlit::{
     clifford_circuit::{CliffordTCircuit, CliffordTGate::*},
@@ -16,9 +15,9 @@ fn zero() {
         let result = simulate_circuit(&w, &circuit);
 
         let expected = if i == 0b0000_0000 {
-            Complex::one()
+            Complex::ONE
         } else {
-            Complex::zero()
+            Complex::ZERO
         };
         assert_almost_eq(result, expected, i);
     }
@@ -34,11 +33,11 @@ fn imaginary() {
         let result = simulate_circuit(&w, &circuit);
 
         let expected = if i == 0b0000_0000 {
-            Complex::one() / 2_f64.sqrt()
+            Complex::ONE / 2_f64.sqrt()
         } else if i == 0b1000_0000 {
-            Complex::i() / 2_f64.sqrt()
+            Complex::I / 2_f64.sqrt()
         } else {
-            Complex::zero()
+            Complex::ZERO
         };
         assert_almost_eq(result, expected, i);
     }
@@ -54,9 +53,9 @@ fn flipped() {
         let result = simulate_circuit(&w, &circuit);
 
         let expected = if i == 0b1000_0000 {
-            Complex::one()
+            Complex::ONE
         } else {
-            Complex::zero()
+            Complex::ZERO
         };
         assert_almost_eq(result, expected, i);
     }
@@ -72,9 +71,9 @@ fn bell_state() {
         let result = simulate_circuit(&w, &circuit);
 
         let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
-            Complex::one() / 2_f64.sqrt()
+            Complex::ONE / 2_f64.sqrt()
         } else {
-            Complex::zero()
+            Complex::ZERO
         };
         assert_almost_eq(result, expected, i);
     }
@@ -123,11 +122,11 @@ fn larger_clifford_circuit() {
         ]
         .contains(&i)
         {
-            Complex::i() / 8_f64.sqrt()
+            Complex::I / 8_f64.sqrt()
         } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-            -Complex::i() / 8_f64.sqrt()
+            -Complex::I / 8_f64.sqrt()
         } else {
-            Complex::zero()
+            Complex::ZERO
         };
         assert_almost_eq(result, expected, i);
     }

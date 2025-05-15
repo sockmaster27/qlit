@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::mem;
 
 use num_complex::Complex;
-use num_traits::{One, Zero};
 use pyo3::prelude::*;
 
 use crate::clifford_circuit::CliffordGate;
@@ -213,9 +212,9 @@ impl GeneratorRow {
         let mut w2 = w2.into_iter();
 
         let mut res = if self.row_negative(row) {
-            -Complex::one()
+            -Complex::ONE
         } else {
-            Complex::one()
+            Complex::ONE
         };
         for q in 0..n {
             // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
@@ -224,19 +223,19 @@ impl GeneratorRow {
                 w1.next().unwrap().borrow(),
                 w2.next().unwrap().borrow(),
             ) {
-                (Pauli::I, false, false) => Complex::one(),
-                (Pauli::I, true, true) => Complex::one(),
+                (Pauli::I, false, false) => Complex::ONE,
+                (Pauli::I, true, true) => Complex::ONE,
 
-                (Pauli::X, false, true) => Complex::one(),
-                (Pauli::X, true, false) => Complex::one(),
+                (Pauli::X, false, true) => Complex::ONE,
+                (Pauli::X, true, false) => Complex::ONE,
 
-                (Pauli::Y, false, true) => Complex::i(),
-                (Pauli::Y, true, false) => -Complex::i(),
+                (Pauli::Y, false, true) => Complex::I,
+                (Pauli::Y, true, false) => -Complex::I,
 
-                (Pauli::Z, false, false) => Complex::one(),
-                (Pauli::Z, true, true) => -Complex::one(),
+                (Pauli::Z, false, false) => Complex::ONE,
+                (Pauli::Z, true, true) => -Complex::ONE,
 
-                _ => return Complex::zero(),
+                _ => return Complex::ZERO,
             };
         }
         res
@@ -412,9 +411,9 @@ mod tests {
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -435,11 +434,11 @@ mod tests {
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
-                Complex::one()
+                Complex::ONE
             } else if i == 0b1000_0000 {
-                Complex::i()
+                Complex::I
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -460,11 +459,11 @@ mod tests {
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
-                -Complex::i()
+                -Complex::I
             } else if i == 0b1000_0000 {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -485,9 +484,9 @@ mod tests {
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b1000_0000 {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -508,9 +507,9 @@ mod tests {
             let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -564,11 +563,11 @@ mod tests {
             ]
             .contains(&i)
             {
-                -Complex::one()
+                -Complex::ONE
             } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
@@ -608,9 +607,9 @@ mod tests {
             g.apply_gate(gate);
         }
 
-        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::one());
-        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::one());
-        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::zero());
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::ZERO);
     }
 
     #[test]
@@ -662,11 +661,11 @@ mod tests {
             ]
             .contains(&i)
             {
-                -Complex::one()
+                -Complex::ONE
             } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-                Complex::one()
+                Complex::ONE
             } else {
-                Complex::zero()
+                Complex::ZERO
             };
             assert_eq!(result, expected, "{i:008b}");
         }
