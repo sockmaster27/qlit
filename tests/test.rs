@@ -52,6 +52,14 @@ fn invalid_qubit_index() {
 }
 
 #[test]
+#[should_panic]
+fn mismatched_qubit_number() {
+    let circuit = CliffordTCircuit::new(8, []).unwrap();
+    let w = [false; 9];
+    simulate_circuit(&w, &circuit);
+}
+
+#[test]
 fn zero() {
     let circuit = CliffordTCircuit::new(8, []).unwrap();
 
