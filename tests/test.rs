@@ -187,6 +187,65 @@ fn larger_clifford_circuit() {
     }
 }
 
+#[test]
+fn larger_circuit() {
+    let circuit = CliffordTCircuit::new(
+        8,
+        [
+            T(0),
+            H(1),
+            S(1),
+            H(3),
+            H(0),
+            S(0),
+            S(1),
+            S(2),
+            T(1),
+            H(0),
+            Cnot(1, 0),
+            T(0),
+            S(3),
+        ],
+    )
+    .unwrap();
+
+    for i in 0b0000_0000..=0b1111_1111 {
+        let w = bits_to_bools(i);
+
+        let result = simulate_circuit(&w, &circuit);
+
+        let expected = match i {
+            0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
+            0b1000_0000 => Complex {
+                re: 0.125_f64.sqrt(),
+                im: 0.0,
+            },
+            0b0100_0000 => Complex {
+                re: -0.125_f64.sqrt(),
+                im: 0.0,
+            },
+            0b1100_0000 => Complex {
+                re: 0.25,
+                im: -0.25,
+            },
+            0b0001_0000 => Complex {
+                re: -0.25,
+                im: 0.25,
+            },
+            0b1001_0000 => Complex {
+                re: 0.0,
+                im: 0.125_f64.sqrt(),
+            },
+            0b0101_0000 => Complex {
+                re: 0.0,
+                im: -0.125_f64.sqrt(),
+            },
+            _ => Complex::ZERO,
+        };
+        assert_almost_eq(result, expected, i);
+    }
+}
+
 fn assert_almost_eq(result: Complex<f64>, expected: Complex<f64>, i: u8) {
     assert!(
         (result - expected).norm() < 1e-10,
