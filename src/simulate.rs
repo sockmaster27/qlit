@@ -22,12 +22,12 @@ const C_Z: Complex<f64> = Complex {
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+    let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
     assert_eq!(
-        w.len(),
-        n,
-        "Basis state with length {n} does not match circuit with {n} qubits"
+        w_len, n,
+        "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
     let mut path = vec![false; t];
