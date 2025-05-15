@@ -4,7 +4,7 @@ use num_complex::Complex;
 use num_traits::{One, Zero};
 
 use crate::{
-    clifford_circuit::{CliffordCircuit, CliffordGate, CliffordTCircuit, CliffordTGate},
+    clifford_circuit::{CliffordTCircuit, CliffordTGate},
     generator_col::GeneratorCol,
 };
 
@@ -16,48 +16,6 @@ const C_Z: Complex<f64> = Complex {
     re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
     im: -1.0 / (2.0 * SQRT_2),
 };
-
-pub fn clifford_phase(w: &[bool], circuit: &CliffordCircuit) -> Complex<f64> {
-    let n = circuit.qubits();
-    assert_eq!(
-        w.len(),
-        n,
-        "Basis state with length {n} does not match circuit with {n} qubits"
-    );
-
-    let mut x = vec![false; n];
-    let mut k = Complex::one();
-    let mut g = GeneratorCol::zero(n);
-    for &gate in circuit.gates() {
-        match gate {
-            CliffordGate::S(a) => {
-                if x[a] == true {
-                    k *= Complex::i();
-                }
-            }
-            CliffordGate::Cnot(a, b) => {
-                x[b] ^= x[a];
-            }
-            CliffordGate::H(a) => {
-                let r = g.coeff_ratio_flipped_bit(&x, a);
-                if r != -Complex::one() {
-                    k *= (r + 1.0) / SQRT_2;
-                    x[a] = false;
-                } else {
-                    if x[a] == false {
-                        k *= 2.0 / SQRT_2;
-                    } else {
-                        k *= -2.0 / SQRT_2;
-                    }
-                    x[a] = true;
-                }
-            }
-        }
-        g.apply_gate(gate);
-    }
-
-    k * g.coeff_ratio(&x, w)
-}
 
 pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
     let n = circuit.qubits();

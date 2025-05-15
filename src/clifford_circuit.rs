@@ -1,22 +1,11 @@
 use pyo3::{conversion::FromPyObjectBound, prelude::*};
 use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordGate {
     S(usize),
     H(usize),
     Cnot(usize, usize),
-}
-#[pymethods]
-impl CliffordGate {
-    fn __repr__(&self) -> String {
-        match self {
-            CliffordGate::S(a) => format!("CliffordGate.S({a})"),
-            CliffordGate::H(a) => format!("CliffordGate.H({a})"),
-            CliffordGate::Cnot(a, b) => format!("CliffordGate.Cnot({a}, {b})"),
-        }
-    }
 }
 
 #[pyclass]
@@ -48,8 +37,6 @@ impl From<CliffordGate> for CliffordTGate {
     }
 }
 
-#[pyclass]
-#[derive(Debug, Clone)]
 pub struct CliffordCircuit {
     /// The number of qubits in the circuit.
     qubits: usize,
@@ -72,20 +59,8 @@ impl CliffordCircuit {
     pub fn gates(&self) -> &[CliffordGate] {
         &self.gates
     }
-}
-#[pymethods]
-impl CliffordCircuit {
-    #[new]
-    fn py_new(qubits: usize, gates: Bound<'_, PyAny>) -> PyResult<Self> {
-        let gates: PyResult<Vec<CliffordGate>> = gates
-            .try_iter()?
-            .flat_map(|r| r.map(|obj| CliffordGate::from_py_object_bound((&obj).into())))
-            .collect();
-        Ok(CliffordCircuit::new(qubits, gates?))
-    }
 
     /// Create a random circuit with the given number of `qubits` and `gates`.
-    #[staticmethod]
     pub fn random(qubits: usize, gates: usize, seed: u64) -> Self {
         let mut rng = SmallRng::seed_from_u64(seed);
         CliffordCircuit {
@@ -108,20 +83,6 @@ impl CliffordCircuit {
                 })
                 .collect(),
         }
-    }
-
-    /// The number of qubits in the circuit.
-    #[getter]
-    #[pyo3(name = "qubits")]
-    fn py_qubits(&self) -> usize {
-        self.qubits
-    }
-
-    /// The gates in the circuit, in the order that they are applied.
-    #[getter]
-    #[pyo3(name = "gates")]
-    fn py_gates(&self) -> Vec<CliffordGate> {
-        self.gates.clone()
     }
 }
 

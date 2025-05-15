@@ -2,11 +2,20 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use crate::{clifford_circuit::CliffordGate, BasisStateProbability};
+use crate::clifford_circuit::CliffordGate;
 
 const BLOCK_SIZE: u32 = 32;
 const WORKGROUP_SIZE: u32 = 64;
 const U32_SIZE: u64 = size_of::<u32>() as u64;
+
+pub enum BasisStateProbability {
+    /// This basis state is the only one that is possible to sample.
+    One,
+    /// This basis state is one of several possible states that can be sampled.
+    InBetween,
+    /// This basis state is not possible to sample.
+    Zero,
+}
 
 /// Initialize the global GPU context.
 ///
