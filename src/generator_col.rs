@@ -161,13 +161,19 @@ impl GeneratorCol {
         let n = self.n;
         let mut a = 0;
         for col in 0..n {
+            // Find pivot row.
             let mut pivot = None;
-            for row in (a..n).rev() {
-                if self.x_bit(row, col) == true {
-                    pivot = Some(row);
-                    break;
+            let a_block_index = a / BLOCK_SIZE;
+            for i in (a_block_index..column_block_length(n)).rev() {
+                let block = self.tableau[x_column_block_index(n, i, col)];
+                if block != 0 {
+                    let row = lsb_index(block);
+                    if row > a {
+                        pivot = Some(row);
+                    }
                 }
             }
+
             if let Some(pivot) = pivot {
                 for row in 0..pivot {
                     if self.x_bit(row, col) == true {
@@ -370,8 +376,25 @@ impl GeneratorCol {
     }
 }
 
-/// Get the bitmask for the i'th bit, e.g.
+/// Get the index of the least significant (right-most) bit in the given block, e.g.
+/// ```text
+/// lsb_index(10000000)
+///           ^0
+/// lsb_index(01000000)
+///            ^1
+/// lsb_index(11010000)
+///              ^3
+/// ```
 ///
+/// # Panics
+/// If `block` is zero in debug mode.
+fn lsb_index(block: BitBlock) -> usize {
+    debug_assert!(block != 0);
+    let trailing_zeros: usize = block.trailing_zeros().try_into().unwrap();
+    BLOCK_SIZE - 1 - trailing_zeros
+}
+
+/// Get the bitmask for the i'th bit, e.g.
 /// ```text
 /// bitmask(0) -> 10000000
 /// bitmask(1) -> 01000000
