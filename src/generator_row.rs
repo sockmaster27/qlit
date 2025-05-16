@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::mem;
 
 use num_complex::Complex;
-use pyo3::prelude::*;
 
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -16,7 +15,6 @@ enum Pauli {
     Z,
 }
 
-#[pyclass]
 pub struct GeneratorRow {
     n: usize,
     /// The augmented stabilizer tableau,
