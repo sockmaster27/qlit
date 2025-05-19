@@ -159,27 +159,69 @@ impl GeneratorCol {
     /// This should take O(n^2) time, plus an additional O(n^2) time for each gate that has been applied since the last call to this function.
     fn bring_into_rref(&mut self) {
         let n = self.n;
+        let aux_row = n;
+
         let mut a = 0;
         for col in 0..n {
             // Find pivot row.
             let mut pivot = None;
             let a_block_index = a / BLOCK_SIZE;
             for i in (a_block_index..column_block_length(n)).rev() {
-                let block = self.tableau[x_column_block_index(n, i, col)];
+                // Mask that is set to all-ones except for the bit corresponding to the auxiliary row.
+                let aux_mask = if aux_row / BLOCK_SIZE == i {
+                    !bitmask(aux_row % BLOCK_SIZE)
+                } else {
+                    !0
+                };
+                let block = self.tableau[x_column_block_index(n, i, col)] & aux_mask;
                 if block != 0 {
-                    let row = lsb_index(block);
-                    if row > a {
+                    let row = BLOCK_SIZE * i + lsb_index(block);
+                    if row >= a {
                         pivot = Some(row);
                     }
                 }
             }
 
             if let Some(pivot) = pivot {
+                // Determine phase shift.
                 for row in 0..pivot {
                     if self.x_bit(row, col) == true {
-                        self.multiply_rows_into(pivot, row);
+                        self.multiply_phase_shift(pivot, row);
                     }
                 }
+
+                // XOR
+                for row_i in 0..column_block_length(n) {
+                    if self.tableau[x_column_block_index(n, row_i, col)] == 0 {
+                        continue;
+                    }
+
+                    // Mask that is set to all-ones except for the bit corresponding to the pivot row.
+                    let pivot_mask = if pivot / BLOCK_SIZE == row_i {
+                        !bitmask(pivot % BLOCK_SIZE)
+                    } else {
+                        !0
+                    };
+
+                    if self.r_bit(pivot) == true {
+                        self.tableau[r_column_block_index(n, row_i)] ^=
+                            self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                    }
+                    for col2 in (0..n).rev() {
+                        if self.z_bit(pivot, col2) == true {
+                            self.tableau[z_column_block_index(n, row_i, col2)] ^=
+                                self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                        }
+                    }
+                    for col2 in (0..n).rev() {
+                        if self.x_bit(pivot, col2) == true {
+                            self.tableau[x_column_block_index(n, row_i, col2)] ^=
+                                self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                        }
+                    }
+                }
+
+                // Swap rows.
                 self.swap_rows(a, pivot);
                 a += 1;
             }
@@ -294,49 +336,53 @@ impl GeneratorCol {
         }
     }
 
+    fn multiply_phase_shift(&mut self, source: usize, target: usize) {
+        let n = self.n;
+
+        let target_block_index = target / BLOCK_SIZE;
+        let target_bit_index = target % BLOCK_SIZE;
+        let target_bitmask = bitmask(target_bit_index);
+
+        // Compute the sign bit.
+        let mut phase: i8 = 0;
+        for q in 0..n {
+            match (
+                self.tensor_element(source, q),
+                self.tensor_element(target, q),
+            ) {
+                (Pauli::X, Pauli::Y) => phase += 1,
+                (Pauli::X, Pauli::Z) => phase -= 1,
+
+                (Pauli::Y, Pauli::Z) => phase += 1,
+                (Pauli::Y, Pauli::X) => phase -= 1,
+
+                (Pauli::Z, Pauli::X) => phase += 1,
+                (Pauli::Z, Pauli::Y) => phase -= 1,
+
+                _ => {}
+            }
+            phase = phase.rem_euclid(4);
+        }
+        match phase {
+            0 => {
+                // Do nothing.
+            }
+            2 => {
+                // Negate the sign bit.
+                self.tableau[r_column_block_index(n, target_block_index)] ^= target_bitmask;
+            }
+            _ => unreachable!("No valid stabilizer can have imaginary phase: {phase}"),
+        };
+    }
+
     fn swap_rows(&mut self, row1: usize, row2: usize) {
         if row1 == row2 {
             return;
         }
 
-        let n = self.n;
-
-        let row1_block_index = row1 / BLOCK_SIZE;
-        let row2_block_index = row2 / BLOCK_SIZE;
-        let row1_bit_index = row1 % BLOCK_SIZE;
-        let row2_bit_index = row2 % BLOCK_SIZE;
-        let row1_bitmask = bitmask(row1_bit_index);
-        let row2_bitmask = bitmask(row2_bit_index);
-
-        // Swap the bits of the given row blocks.
-        let mut swap_bits = |row1_block: usize, row2_block: usize| {
-            let b1_val = self.tableau[row1_block] & row1_bitmask != 0;
-            let b2_val = self.tableau[row2_block] & row2_bitmask != 0;
-            if b1_val == true && b2_val == false {
-                unset_bit(&mut self.tableau[row1_block], row1_bit_index);
-                set_bit(&mut self.tableau[row2_block], row2_bit_index);
-            } else if b1_val == false && b2_val == true {
-                set_bit(&mut self.tableau[row1_block], row1_bit_index);
-                unset_bit(&mut self.tableau[row2_block], row2_bit_index);
-            }
-        };
-
-        for q in 0..n {
-            swap_bits(
-                x_column_block_index(n, row1_block_index, q),
-                x_column_block_index(n, row2_block_index, q),
-            );
-        }
-        for q in 0..n {
-            swap_bits(
-                z_column_block_index(n, row1_block_index, q),
-                z_column_block_index(n, row2_block_index, q),
-            );
-        }
-        swap_bits(
-            r_column_block_index(n, row1_block_index),
-            r_column_block_index(n, row2_block_index),
-        );
+        self.multiply_rows_into(row1, row2);
+        self.multiply_rows_into(row2, row1);
+        self.multiply_rows_into(row1, row2);
     }
 
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
@@ -373,6 +419,22 @@ impl GeneratorCol {
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
         self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask != 0
+    }
+    /// Get the value of the z bit corresponding to the `q`th tensor element in the `row`th row.
+    fn z_bit(&self, row: usize, q: usize) -> bool {
+        let n = self.n;
+        let row_block_index = row / BLOCK_SIZE;
+        let row_bit_index = row % BLOCK_SIZE;
+        let row_bitmask = bitmask(row_bit_index);
+        self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask != 0
+    }
+    /// Get the value of the r bit of the `row`th row.
+    fn r_bit(&self, row: usize) -> bool {
+        let n = self.n;
+        let row_block_index = row / BLOCK_SIZE;
+        let row_bit_index = row % BLOCK_SIZE;
+        let row_bitmask = bitmask(row_bit_index);
+        self.tableau[r_column_block_index(n, row_block_index)] & row_bitmask != 0
     }
 }
 
