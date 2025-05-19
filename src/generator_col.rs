@@ -99,8 +99,8 @@ impl GeneratorCol {
         debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
 
         let aux_row = n;
-        let aux_block_index = n / BLOCK_SIZE;
-        let aux_bit_index = n % BLOCK_SIZE;
+        let aux_block_index = aux_row / BLOCK_SIZE;
+        let aux_bit_index = aux_row % BLOCK_SIZE;
         let aux_bitmask = bitmask(aux_bit_index);
 
         // Bring tableau's x part into reduced row echelon form.
@@ -159,7 +159,10 @@ impl GeneratorCol {
     /// This should take O(n^2) time, plus an additional O(n^2) time for each gate that has been applied since the last call to this function.
     fn bring_into_rref(&mut self) {
         let n = self.n;
+
         let aux_row = n;
+        let aux_block_index = aux_row / BLOCK_SIZE;
+        let aux_bit_index = aux_row % BLOCK_SIZE;
 
         let mut a = 0;
         for col in 0..n {
@@ -168,8 +171,8 @@ impl GeneratorCol {
             let a_block_index = a / BLOCK_SIZE;
             for i in (a_block_index..column_block_length(n)).rev() {
                 // Mask that is set to all-ones except for the bit corresponding to the auxiliary row.
-                let aux_mask = if aux_row / BLOCK_SIZE == i {
-                    !bitmask(aux_row % BLOCK_SIZE)
+                let aux_mask = if i == aux_block_index {
+                    !bitmask(aux_bit_index)
                 } else {
                     !0
                 };
@@ -178,6 +181,7 @@ impl GeneratorCol {
                     let row = BLOCK_SIZE * i + lsb_index(block);
                     if row >= a {
                         pivot = Some(row);
+                        break;
                     }
                 }
             }
@@ -191,32 +195,34 @@ impl GeneratorCol {
                 }
 
                 // XOR
-                for row_i in 0..column_block_length(n) {
-                    if self.tableau[x_column_block_index(n, row_i, col)] == 0 {
+                let pivot_block_index = pivot / BLOCK_SIZE;
+                let pivot_bit_index = pivot % BLOCK_SIZE;
+                for i in 0..=pivot_block_index {
+                    if self.tableau[x_column_block_index(n, i, col)] == 0 {
                         continue;
                     }
 
                     // Mask that is set to all-ones except for the bit corresponding to the pivot row.
-                    let pivot_mask = if pivot / BLOCK_SIZE == row_i {
-                        !bitmask(pivot % BLOCK_SIZE)
+                    let pivot_mask = if i == pivot_block_index {
+                        !bitmask(pivot_bit_index)
                     } else {
                         !0
                     };
 
                     if self.r_bit(pivot) == true {
-                        self.tableau[r_column_block_index(n, row_i)] ^=
-                            self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                        self.tableau[r_column_block_index(n, i)] ^=
+                            self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
                     }
                     for col2 in (0..n).rev() {
                         if self.z_bit(pivot, col2) == true {
-                            self.tableau[z_column_block_index(n, row_i, col2)] ^=
-                                self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                            self.tableau[z_column_block_index(n, i, col2)] ^=
+                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
                         }
                     }
                     for col2 in (0..n).rev() {
                         if self.x_bit(pivot, col2) == true {
-                            self.tableau[x_column_block_index(n, row_i, col2)] ^=
-                                self.tableau[x_column_block_index(n, row_i, col)] & pivot_mask;
+                            self.tableau[x_column_block_index(n, i, col2)] ^=
+                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
                         }
                     }
                 }
