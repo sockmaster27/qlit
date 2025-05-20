@@ -386,9 +386,44 @@ impl GeneratorCol {
             return;
         }
 
-        self.multiply_rows_into(row1, row2);
-        self.multiply_rows_into(row2, row1);
-        self.multiply_rows_into(row1, row2);
+        let n = self.n;
+
+        let row1_block_index = row1 / BLOCK_SIZE;
+        let row2_block_index = row2 / BLOCK_SIZE;
+        let row1_bit_index = row1 % BLOCK_SIZE;
+        let row2_bit_index = row2 % BLOCK_SIZE;
+        let row1_bitmask = bitmask(row1_bit_index);
+        let row2_bitmask = bitmask(row2_bit_index);
+
+        // Swap the bits of the given row blocks.
+        let mut swap_bits = |row1_block: usize, row2_block: usize| {
+            let b1_val = self.tableau[row1_block] & row1_bitmask != 0;
+            let b2_val = self.tableau[row2_block] & row2_bitmask != 0;
+            if b1_val == true && b2_val == false {
+                unset_bit(&mut self.tableau[row1_block], row1_bit_index);
+                set_bit(&mut self.tableau[row2_block], row2_bit_index);
+            } else if b1_val == false && b2_val == true {
+                set_bit(&mut self.tableau[row1_block], row1_bit_index);
+                unset_bit(&mut self.tableau[row2_block], row2_bit_index);
+            }
+        };
+
+        for q in 0..n {
+            swap_bits(
+                x_column_block_index(n, row1_block_index, q),
+                x_column_block_index(n, row2_block_index, q),
+            );
+        }
+        for q in 0..n {
+            swap_bits(
+                z_column_block_index(n, row1_block_index, q),
+                z_column_block_index(n, row2_block_index, q),
+            );
+        }
+        swap_bits(
+            r_column_block_index(n, row1_block_index),
+            r_column_block_index(n, row2_block_index),
+        );
     }
 
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
