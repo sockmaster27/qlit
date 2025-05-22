@@ -107,11 +107,9 @@ impl Generator {
         self.bring_into_rref();
 
         // Reset the auxiliary row.
-        for q in 0..n {
-            self.tableau[x_column_block_index(n, aux_block_index, q)] &= !aux_bitmask;
-            self.tableau[z_column_block_index(n, aux_block_index, q)] &= !aux_bitmask;
+        for j in 0..(n + n + 1) {
+            self.tableau[column_block_index(n, aux_block_index, j)] &= !aux_bitmask;
         }
-        self.tableau[r_column_block_index(n, aux_block_index)] &= !aux_bitmask;
         // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
         let mut row = 0;
         for j in 0..n {
@@ -252,16 +250,10 @@ impl Generator {
                     self.tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
 
                     // XOR
-                    for col2 in 0..n {
-                        if self.x_bit(pivot, col2) == true {
-                            self.tableau[x_column_block_index(n, i, col2)] ^= mask;
+                    for j in 0..(n + n + 1) {
+                        if self.bit(pivot, j) == true {
+                            self.tableau[column_block_index(n, i, j)] ^= mask;
                         }
-                        if self.z_bit(pivot, col2) == true {
-                            self.tableau[z_column_block_index(n, i, col2)] ^= mask;
-                        }
-                    }
-                    if self.r_bit(pivot) == true {
-                        self.tableau[r_column_block_index(n, i)] ^= mask;
                     }
                 }
 
@@ -325,7 +317,7 @@ impl Generator {
         let source_bitmask = bitmask(source_bit_index);
         let target_bitmask = bitmask(target_bit_index);
 
-        // Compute the sign bit.
+        // Determine phase shift.
         let mut phase: i8 = 0;
         for q in 0..n {
             match (
@@ -355,25 +347,13 @@ impl Generator {
             }
             _ => unreachable!("No valid stabilizer can have imaginary phase: {phase}"),
         };
-        self.tableau[r_column_block_index(n, target_block_index)] ^= align_bit_to(
-            self.tableau[r_column_block_index(n, source_block_index)] & source_bitmask,
-            source_bit_index,
-            target_bit_index,
-        );
 
-        // XOR the x and z components.
-        for q in 0..n {
-            let x_source = x_column_block_index(n, source_block_index, q);
-            let x_target = x_column_block_index(n, target_block_index, q);
-            let z_source = z_column_block_index(n, source_block_index, q);
-            let z_target = z_column_block_index(n, target_block_index, q);
-            self.tableau[x_target] ^= align_bit_to(
-                self.tableau[x_source] & source_bitmask,
-                source_bit_index,
-                target_bit_index,
-            );
-            self.tableau[z_target] ^= align_bit_to(
-                self.tableau[z_source] & source_bitmask,
+        // XOR
+        for j in 0..(n + n + 1) {
+            let source_block = column_block_index(n, source_block_index, j);
+            let target_block = column_block_index(n, target_block_index, j);
+            self.tableau[target_block] ^= align_bit_to(
+                self.tableau[source_block] & source_bitmask,
                 source_bit_index,
                 target_bit_index,
             );
@@ -393,34 +373,23 @@ impl Generator {
         let row2_bit_index = row2 % BLOCK_SIZE;
         let row1_bitmask = bitmask(row1_bit_index);
         let row2_bitmask = bitmask(row2_bit_index);
-
-        // Swap the bits of the given row blocks.
-        let mut swap_bits_of = |row1_block: usize, row2_block: usize| {
-            let b1_val = self.tableau[row1_block] & row1_bitmask != 0;
-            let b2_val = self.tableau[row2_block] & row2_bitmask != 0;
-            if b1_val == true && b2_val == false {
-                unset_bit(&mut self.tableau[row1_block], row1_bit_index);
-                set_bit(&mut self.tableau[row2_block], row2_bit_index);
-            } else if b1_val == false && b2_val == true {
-                set_bit(&mut self.tableau[row1_block], row1_bit_index);
-                unset_bit(&mut self.tableau[row2_block], row2_bit_index);
+        for j in 0..(n + n + 1) {
+            let block1 = column_block_index(n, row1_block_index, j);
+            let block2 = column_block_index(n, row2_block_index, j);
+            let bit1 = self.tableau[block1] & row1_bitmask != 0;
+            let bit2 = self.tableau[block2] & row2_bitmask != 0;
+            match (bit1, bit2) {
+                (true, false) => {
+                    unset_bit(&mut self.tableau[block1], row1_bit_index);
+                    set_bit(&mut self.tableau[block2], row2_bit_index);
+                }
+                (false, true) => {
+                    set_bit(&mut self.tableau[block1], row1_bit_index);
+                    unset_bit(&mut self.tableau[block2], row2_bit_index);
+                }
+                _ => {}
             }
-        };
-
-        for q in 0..n {
-            swap_bits_of(
-                x_column_block_index(n, row1_block_index, q),
-                x_column_block_index(n, row2_block_index, q),
-            );
-            swap_bits_of(
-                z_column_block_index(n, row1_block_index, q),
-                z_column_block_index(n, row2_block_index, q),
-            );
         }
-        swap_bits_of(
-            r_column_block_index(n, row1_block_index),
-            r_column_block_index(n, row2_block_index),
-        );
     }
 
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
@@ -450,29 +419,21 @@ impl Generator {
         }
     }
 
-    /// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
-    fn x_bit(&self, row: usize, q: usize) -> bool {
+    /// Get the value of the bit corresponding to the `j`th column in the `row`th row.
+    fn bit(&self, row: usize, j: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
-        self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask != 0
+        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+    }
+    /// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
+    fn x_bit(&self, row: usize, q: usize) -> bool {
+        self.bit(row, 2 * q)
     }
     /// Get the value of the z bit corresponding to the `q`th tensor element in the `row`th row.
     fn z_bit(&self, row: usize, q: usize) -> bool {
-        let n = self.n;
-        let row_block_index = row / BLOCK_SIZE;
-        let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask = bitmask(row_bit_index);
-        self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask != 0
-    }
-    /// Get the value of the r bit of the `row`th row.
-    fn r_bit(&self, row: usize) -> bool {
-        let n = self.n;
-        let row_block_index = row / BLOCK_SIZE;
-        let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask = bitmask(row_bit_index);
-        self.tableau[r_column_block_index(n, row_block_index)] & row_bitmask != 0
+        self.bit(row, 2 * q + 1)
     }
 }
 
@@ -521,7 +482,6 @@ fn set_bit(block: &mut BitBlock, i: usize) {
     debug_assert!(i < BLOCK_SIZE);
     *block |= bitmask(i);
 }
-
 /// Unset the i'th bit of the given block, i.e. set the bit to 0.
 /// ```text
 /// set_bit(11111111, 0) -> 01111111
@@ -536,25 +496,25 @@ fn unset_bit(block: &mut BitBlock, i: usize) {
     *block &= !bitmask(i);
 }
 
-/// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
-/// The first half of the blocks will contain the stabilizer parts and the second half the destabilizer parts.
-fn x_column_block_index(n: usize, i: usize, q: usize) -> usize {
+/// Get the index of the i'th block of the `j`th column.
+fn column_block_index(n: usize, i: usize, j: usize) -> usize {
     debug_assert!(i < column_block_length(n));
+    debug_assert!(j < n + n + 1);
+    j * column_block_length(n) + i
+}
+/// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
+fn x_column_block_index(n: usize, i: usize, q: usize) -> usize {
     debug_assert!(q < n);
-    2 * q * column_block_length(n) + i
+    column_block_index(n, i, 2 * q)
 }
 /// Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
-/// The first half of the blocks will contain the stabilizer parts and the second half the destabilizer parts.
 fn z_column_block_index(n: usize, i: usize, q: usize) -> usize {
-    debug_assert!(i < column_block_length(n));
     debug_assert!(q < n);
-    (2 * q + 1) * column_block_length(n) + i
+    column_block_index(n, i, 2 * q + 1)
 }
 /// Get the index of the i'th block of the r column.
-/// The first half of the blocks will contain the stabilizer parts and the second half the destabilizer parts.
 fn r_column_block_index(n: usize, i: usize) -> usize {
-    debug_assert!(i < column_block_length(n));
-    2 * n * column_block_length(n) + i
+    column_block_index(n, i, 2 * n)
 }
 
 /// Get the block-length of the columns in the tableau.
