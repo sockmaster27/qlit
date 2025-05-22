@@ -4,7 +4,7 @@ use std::mem;
 
 use num_complex::Complex;
 
-type BitBlock = u64;
+type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
 #[derive(Debug)]
@@ -169,6 +169,7 @@ impl Generator {
             // Find pivot row.
             let mut pivot = None;
             let a_block_index = a / BLOCK_SIZE;
+            let a_bit_index = a % BLOCK_SIZE;
             for i in (a_block_index..column_block_length(n)).rev() {
                 // Mask that is set to all-ones except for the bit corresponding to the auxiliary row.
                 let aux_mask = if i == aux_block_index {
@@ -197,38 +198,113 @@ impl Generator {
                 // XOR
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
-                for i in 0..=pivot_block_index {
-                    if self.tableau[x_column_block_index(n, i, col)] == 0 {
-                        continue;
-                    }
-
-                    // Mask that is set to all-ones except for the bit corresponding to the pivot row.
-                    let pivot_mask = if i == pivot_block_index {
-                        !bitmask(pivot_bit_index)
-                    } else {
-                        !0
-                    };
-
+                {
+                    let pivot_bit = self.r_bit(pivot);
                     if self.r_bit(pivot) == true {
-                        self.tableau[r_column_block_index(n, i)] ^=
-                            self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
-                    }
-                    for col2 in (0..n).rev() {
-                        if self.z_bit(pivot, col2) == true {
-                            self.tableau[z_column_block_index(n, i, col2)] ^=
-                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
+                        for i in 0..=pivot_block_index {
+                            self.tableau[r_column_block_index(n, i)] ^=
+                                self.tableau[x_column_block_index(n, i, col)];
                         }
                     }
-                    for col2 in (0..n).rev() {
-                        if self.x_bit(pivot, col2) == true {
-                            self.tableau[x_column_block_index(n, i, col2)] ^=
-                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
-                        }
+                    let a_bit = if a == pivot { pivot_bit } else { self.r_bit(a) };
+                    if pivot_bit == true {
+                        set_bit(
+                            &mut self.tableau[r_column_block_index(n, a_block_index)],
+                            a_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[r_column_block_index(n, a_block_index)],
+                            a_bit_index,
+                        );
+                    }
+                    if a_bit == true {
+                        set_bit(
+                            &mut self.tableau[r_column_block_index(n, pivot_block_index)],
+                            pivot_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[r_column_block_index(n, pivot_block_index)],
+                            pivot_bit_index,
+                        );
                     }
                 }
 
-                // Swap rows.
-                self.swap_rows(a, pivot);
+                for col2 in (0..n).rev() {
+                    let pivot_bit = self.z_bit(pivot, col2);
+                    if self.z_bit(pivot, col2) == true {
+                        for i in 0..=pivot_block_index {
+                            self.tableau[z_column_block_index(n, i, col2)] ^=
+                                self.tableau[x_column_block_index(n, i, col)];
+                        }
+                    }
+                    let a_bit = if a == pivot {
+                        pivot_bit
+                    } else {
+                        self.z_bit(a, col2)
+                    };
+                    if pivot_bit == true {
+                        set_bit(
+                            &mut self.tableau[z_column_block_index(n, a_block_index, col2)],
+                            a_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[z_column_block_index(n, a_block_index, col2)],
+                            a_bit_index,
+                        );
+                    }
+                    if a_bit == true {
+                        set_bit(
+                            &mut self.tableau[z_column_block_index(n, pivot_block_index, col2)],
+                            pivot_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[z_column_block_index(n, pivot_block_index, col2)],
+                            pivot_bit_index,
+                        );
+                    }
+                }
+
+                for col2 in (0..n).rev() {
+                    let pivot_bit = self.x_bit(pivot, col2);
+                    if self.x_bit(pivot, col2) == true {
+                        for i in 0..=pivot_block_index {
+                            self.tableau[x_column_block_index(n, i, col2)] ^=
+                                self.tableau[x_column_block_index(n, i, col)];
+                        }
+                    }
+                    let a_bit = if a == pivot {
+                        pivot_bit
+                    } else {
+                        self.x_bit(a, col2)
+                    };
+                    if pivot_bit == true {
+                        set_bit(
+                            &mut self.tableau[x_column_block_index(n, a_block_index, col2)],
+                            a_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[x_column_block_index(n, a_block_index, col2)],
+                            a_bit_index,
+                        );
+                    }
+                    if a_bit == true {
+                        set_bit(
+                            &mut self.tableau[x_column_block_index(n, pivot_block_index, col2)],
+                            pivot_bit_index,
+                        );
+                    } else {
+                        unset_bit(
+                            &mut self.tableau[x_column_block_index(n, pivot_block_index, col2)],
+                            pivot_bit_index,
+                        );
+                    }
+                }
+
                 a += 1;
             }
         }
@@ -340,6 +416,45 @@ impl Generator {
                 target_bit_index,
             );
         }
+    }
+
+    fn multiply_phase_shift(&mut self, source: usize, target: usize) {
+        let n = self.n;
+
+        let target_block_index = target / BLOCK_SIZE;
+        let target_bit_index = target % BLOCK_SIZE;
+        let target_bitmask = bitmask(target_bit_index);
+
+        // Compute the sign bit.
+        let mut phase: i8 = 0;
+        for q in 0..n {
+            match (
+                self.tensor_element(source, q),
+                self.tensor_element(target, q),
+            ) {
+                (Pauli::X, Pauli::Y) => phase += 1,
+                (Pauli::X, Pauli::Z) => phase -= 1,
+
+                (Pauli::Y, Pauli::Z) => phase += 1,
+                (Pauli::Y, Pauli::X) => phase -= 1,
+
+                (Pauli::Z, Pauli::X) => phase += 1,
+                (Pauli::Z, Pauli::Y) => phase -= 1,
+
+                _ => {}
+            }
+            phase = phase.rem_euclid(4);
+        }
+        match phase {
+            0 => {
+                // Do nothing.
+            }
+            2 => {
+                // Negate the sign bit.
+                self.tableau[r_column_block_index(n, target_block_index)] ^= target_bitmask;
+            }
+            _ => unreachable!("No valid stabilizer can have imaginary phase: {phase}"),
+        };
     }
 
     fn swap_rows(&mut self, row1: usize, row2: usize) {

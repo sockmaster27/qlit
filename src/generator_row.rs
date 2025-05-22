@@ -15,7 +15,7 @@ enum Pauli {
     Z,
 }
 
-pub struct GeneratorRow {
+pub struct Generator {
     n: usize,
     /// The augmented stabilizer tableau,
     /// ```text
@@ -35,7 +35,7 @@ pub struct GeneratorRow {
     /// Note that the x, z and r parts of each row is right-padded with zeros, to take up a whole number of blocks.
     tableau: Vec<BitBlock>,
 }
-impl GeneratorRow {
+impl Generator {
     /// Initialize a new generator with `n` qubits in the initial zero state.
     pub fn zero(n: usize) -> Self {
         let mut tableau = vec![0; tableau_block_length(n)];
@@ -43,7 +43,7 @@ impl GeneratorRow {
             let block_index = z_row_block_index(n, i, i / BLOCK_SIZE);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
         }
-        GeneratorRow { tableau, n }
+        Generator { tableau, n }
     }
 
     pub fn apply_s_gate(&mut self, a: usize) {
@@ -407,7 +407,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -428,7 +428,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -451,7 +451,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -474,7 +474,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -495,7 +495,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -541,7 +541,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = GeneratorRow::zero(8);
+            let mut g = Generator::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -595,7 +595,7 @@ mod tests {
         .unwrap();
 
         let w = bits_to_bools(0b1000_0000);
-        let mut g = GeneratorRow::zero(8);
+        let mut g = Generator::zero(8);
         apply_clifford_circuit(&mut g, &circuit);
 
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
@@ -632,7 +632,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut g = GeneratorRow::zero(8);
+        let mut g = Generator::zero(8);
         apply_clifford_circuit(&mut g, &circuit);
 
         let w1 = bits_to_bools(0b1000_0000);
@@ -661,7 +661,7 @@ mod tests {
         }
     }
 
-    fn apply_clifford_circuit(g: &mut GeneratorRow, circuit: &CliffordTCircuit) {
+    fn apply_clifford_circuit(g: &mut Generator, circuit: &CliffordTCircuit) {
         for &gate in circuit.gates() {
             match gate {
                 S(a) => g.apply_s_gate(a),
