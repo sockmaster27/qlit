@@ -154,7 +154,7 @@ impl Generator {
         )
     }
 
-    /// Bring tableau's x part into reduced row echelon form.
+    /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
     ///
     /// This should take O(n^2) time, plus an additional O(n^2) time for each gate that has been applied since the last call to this function.
     fn bring_into_rref(&mut self) {
@@ -170,7 +170,7 @@ impl Generator {
             let mut pivot = None;
             let a_block_index = a / BLOCK_SIZE;
             for i in (a_block_index..column_block_length(n)).rev() {
-                // Mask that is set to all-ones except for the bit corresponding to the auxiliary row.
+                // Bitmask blocking out the auxiliary row.
                 let aux_mask = if i == aux_block_index {
                     !bitmask(aux_bit_index)
                 } else {
@@ -190,20 +190,24 @@ impl Generator {
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
                 for i in 0..=pivot_block_index {
-                    // Mask that is set to all-ones except for the bit corresponding to the pivot row.
+                    // Bitmask blocking out the pivot row.
                     let pivot_mask = if i == pivot_block_index {
                         !bitmask(pivot_bit_index)
                     } else {
                         !0
                     };
+                    // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
                     let mask = self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
                     if mask == 0 {
                         continue;
                     }
 
-                    // Determine phase shift.
-                    let mut bit1: BitBlock = 0;
-                    let mut bit2: BitBlock = 0;
+                    // Determine phase change caused by multiplication of the individual Pauli matrices.
+                    // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
+                    // but in a bit block so we can operate on all rows in the block at once.
+                    // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+                    let mut phase_bit1: BitBlock = 0;
+                    let mut phase_bit2: BitBlock = 0;
                     for col2 in 0..n {
                         fn x(x: BitBlock, z: BitBlock) -> BitBlock {
                             x & !z
@@ -215,25 +219,37 @@ impl Generator {
                             x & z
                         }
 
-                        let x1 = if self.x_bit(pivot, col2) { !0 } else { 0 };
-                        let z1 = if self.z_bit(pivot, col2) { !0 } else { 0 };
-                        let x2 = self.tableau[x_column_block_index(n, i, col2)];
-                        let z2 = self.tableau[z_column_block_index(n, i, col2)];
+                        let x1 = self.tableau[x_column_block_index(n, i, col2)];
+                        let z1 = self.tableau[z_column_block_index(n, i, col2)];
+                        // Fill these blocks with the bits in the pivot row.
+                        let x2 = if self.x_bit(pivot, col2) { !0 } else { 0 };
+                        let z2 = if self.z_bit(pivot, col2) { !0 } else { 0 };
 
+                        // XY = +iZ
+                        // YZ = +iX
+                        // ZX = +iY
                         let add = (x(x1, z1) & y(x2, z2))
                             | (y(x1, z1) & z(x2, z2))
                             | (z(x1, z1) & x(x2, z2));
-                        bit2 ^= add & bit1;
-                        bit1 ^= add;
+                        phase_bit2 ^= add & phase_bit1;
+                        phase_bit1 ^= add;
 
+                        // YX = -iZ
+                        // ZY = -iX
+                        // XZ = -iY
                         let sub = (y(x1, z1) & x(x2, z2))
                             | (z(x1, z1) & y(x2, z2))
                             | (x(x1, z1) & z(x2, z2));
-                        bit2 ^= sub & !bit1;
-                        bit1 ^= sub;
+                        phase_bit2 ^= sub & !phase_bit1;
+                        phase_bit1 ^= sub;
                     }
-                    debug_assert!(bit1 == 0, "Imaginary phase");
-                    self.tableau[r_column_block_index(n, i)] ^= bit2 & mask;
+                    // A valid stabilizer row can only ever have a prefix of +1 or -1.
+                    // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
+                    // This should never be able to happen, and we cannot represent it.
+                    debug_assert!(phase_bit1 == 0, "Imaginary sign");
+                    // phase_bit2 = 1  =>  phase = i^2 = -1    flip the sign bit.
+                    // phase_bit2 = 0  =>  phase = i^0 = +1    do nothing.
+                    self.tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
 
                     // XOR
                     for col2 in 0..n {
@@ -379,7 +395,7 @@ impl Generator {
         let row2_bitmask = bitmask(row2_bit_index);
 
         // Swap the bits of the given row blocks.
-        let mut swap_bits = |row1_block: usize, row2_block: usize| {
+        let mut swap_bits_of = |row1_block: usize, row2_block: usize| {
             let b1_val = self.tableau[row1_block] & row1_bitmask != 0;
             let b2_val = self.tableau[row2_block] & row2_bitmask != 0;
             if b1_val == true && b2_val == false {
@@ -392,18 +408,16 @@ impl Generator {
         };
 
         for q in 0..n {
-            swap_bits(
+            swap_bits_of(
                 x_column_block_index(n, row1_block_index, q),
                 x_column_block_index(n, row2_block_index, q),
             );
-        }
-        for q in 0..n {
-            swap_bits(
+            swap_bits_of(
                 z_column_block_index(n, row1_block_index, q),
                 z_column_block_index(n, row2_block_index, q),
             );
         }
-        swap_bits(
+        swap_bits_of(
             r_column_block_index(n, row1_block_index),
             r_column_block_index(n, row2_block_index),
         );
