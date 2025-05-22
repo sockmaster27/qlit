@@ -187,43 +187,65 @@ impl Generator {
             }
 
             if let Some(pivot) = pivot {
-                // Determine phase shift.
-                for row in 0..pivot {
-                    if self.x_bit(row, col) == true {
-                        self.multiply_phase_shift(pivot, row);
-                    }
-                }
-
-                // XOR
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
                 for i in 0..=pivot_block_index {
-                    if self.tableau[x_column_block_index(n, i, col)] == 0 {
-                        continue;
-                    }
-
                     // Mask that is set to all-ones except for the bit corresponding to the pivot row.
                     let pivot_mask = if i == pivot_block_index {
                         !bitmask(pivot_bit_index)
                     } else {
                         !0
                     };
+                    let mask = self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
+                    if mask == 0 {
+                        continue;
+                    }
 
-                    if self.r_bit(pivot) == true {
-                        self.tableau[r_column_block_index(n, i)] ^=
-                            self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
-                    }
-                    for col2 in (0..n).rev() {
-                        if self.z_bit(pivot, col2) == true {
-                            self.tableau[z_column_block_index(n, i, col2)] ^=
-                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
+                    // Determine phase shift.
+                    let mut bit1: BitBlock = 0;
+                    let mut bit2: BitBlock = 0;
+                    for col2 in 0..n {
+                        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
+                            x & !z
                         }
+                        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
+                            !x & z
+                        }
+                        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
+                            x & z
+                        }
+
+                        let x1 = if self.x_bit(pivot, col2) { !0 } else { 0 };
+                        let z1 = if self.z_bit(pivot, col2) { !0 } else { 0 };
+                        let x2 = self.tableau[x_column_block_index(n, i, col2)];
+                        let z2 = self.tableau[z_column_block_index(n, i, col2)];
+
+                        let add = (x(x1, z1) & y(x2, z2))
+                            | (y(x1, z1) & z(x2, z2))
+                            | (z(x1, z1) & x(x2, z2));
+                        bit2 ^= add & bit1;
+                        bit1 ^= add;
+
+                        let sub = (y(x1, z1) & x(x2, z2))
+                            | (z(x1, z1) & y(x2, z2))
+                            | (x(x1, z1) & z(x2, z2));
+                        bit2 ^= sub & !bit1;
+                        bit1 ^= sub;
                     }
-                    for col2 in (0..n).rev() {
+                    debug_assert!(bit1 == 0, "Imaginary phase");
+                    self.tableau[r_column_block_index(n, i)] ^= bit2 & mask;
+
+                    // XOR
+                    for col2 in 0..n {
                         if self.x_bit(pivot, col2) == true {
-                            self.tableau[x_column_block_index(n, i, col2)] ^=
-                                self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
+                            self.tableau[x_column_block_index(n, i, col2)] ^= mask;
                         }
+                        if self.z_bit(pivot, col2) == true {
+                            self.tableau[z_column_block_index(n, i, col2)] ^= mask;
+                        }
+                    }
+                    if self.r_bit(pivot) == true {
+                        self.tableau[r_column_block_index(n, i)] ^= mask;
                     }
                 }
 
