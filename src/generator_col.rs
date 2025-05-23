@@ -245,8 +245,8 @@ impl Generator {
                     // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
                     // This should never be able to happen, and we cannot represent it.
                     debug_assert!(phase_bit1 == 0, "Imaginary sign");
-                    // phase_bit2 = 1  =>  phase = i^2 = -1    flip the sign bit.
-                    // phase_bit2 = 0  =>  phase = i^0 = +1    do nothing.
+                    // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
+                    // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
                     self.tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
 
                     // XOR
