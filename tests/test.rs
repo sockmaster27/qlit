@@ -2,7 +2,7 @@ use num_complex::Complex;
 use pyo3::{ffi::c_str, Python};
 use qlit::{
     clifford_circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*},
-    python_module, simulate_circuit,
+    python_module,
 };
 
 #[test]
@@ -51,184 +51,375 @@ fn invalid_qubit_index() {
     );
 }
 
-#[test]
-#[should_panic]
-fn mismatched_qubit_number() {
-    let circuit = CliffordTCircuit::new(8, []).unwrap();
-    let w = [false; 9];
-    simulate_circuit(&w, &circuit);
-}
+mod cpu {
+    use qlit::simulate_circuit_gpu;
 
-#[test]
-fn zero() {
-    let circuit = CliffordTCircuit::new(8, []).unwrap();
+    use super::*;
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+    #[test]
+    #[should_panic]
+    fn mismatched_qubit_number() {
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let w = [false; 9];
+        simulate_circuit_gpu(&w, &circuit);
+    }
 
-        let result = simulate_circuit(&w, &circuit);
+    #[test]
+    fn zero() {
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
 
-        let expected = match i {
-            0b0000_0000 => Complex::ONE,
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn imaginary() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
+                0b1000_0000 => Complex::I / 2_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn flipped() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b1000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn bell_state() {
+        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn larger_clifford_circuit() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
+                | 0b1011_0000 => Complex::I / 8_f64.sqrt(),
+                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn larger_circuit() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                T(0),
+                H(1),
+                S(1),
+                H(3),
+                H(0),
+                S(0),
+                S(1),
+                S(2),
+                T(1),
+                H(0),
+                Cnot(1, 0),
+                T(0),
+                S(3),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
+                0b1000_0000 => Complex {
+                    re: 0.125_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b0100_0000 => Complex {
+                    re: -0.125_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b1100_0000 => Complex {
+                    re: 0.25,
+                    im: -0.25,
+                },
+                0b0001_0000 => Complex {
+                    re: -0.25,
+                    im: 0.25,
+                },
+                0b1001_0000 => Complex {
+                    re: 0.0,
+                    im: 0.125_f64.sqrt(),
+                },
+                0b0101_0000 => Complex {
+                    re: 0.0,
+                    im: -0.125_f64.sqrt(),
+                },
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
     }
 }
 
-#[test]
-fn imaginary() {
-    let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+mod gpu {
+    use qlit::simulate_circuit_gpu;
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+    use super::*;
 
-        let result = simulate_circuit(&w, &circuit);
-
-        let expected = match i {
-            0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
-            0b1000_0000 => Complex::I / 2_f64.sqrt(),
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+    #[test]
+    #[should_panic]
+    fn mismatched_qubit_number() {
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let w = [false; 9];
+        simulate_circuit_gpu(&w, &circuit);
     }
-}
 
-#[test]
-fn flipped() {
-    let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+    #[test]
+    fn zero() {
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
 
-        let result = simulate_circuit(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit);
 
-        let expected = match i {
-            0b1000_0000 => Complex::ONE,
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
     }
-}
 
-#[test]
-fn bell_state() {
-    let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+    #[test]
+    fn imaginary() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
 
-        let result = simulate_circuit(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit);
 
-        let expected = match i {
-            0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+            let expected = match i {
+                0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
+                0b1000_0000 => Complex::I / 2_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
     }
-}
 
-#[test]
-fn larger_clifford_circuit() {
-    let circuit = CliffordTCircuit::new(
-        8,
-        [
-            H(0),
-            H(1),
-            S(2),
-            H(3),
-            S(1),
-            S(0),
-            Cnot(2, 3),
-            S(1),
-            H(0),
-            S(3),
-            Cnot(1, 0),
-            S(3),
-            H(1),
-            S(3),
-            S(1),
-            S(3),
-            H(1),
-            Cnot(3, 2),
-            H(1),
-            Cnot(3, 1),
-        ],
-    )
-    .unwrap();
+    #[test]
+    fn flipped() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
 
-        let result = simulate_circuit(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit);
 
-        let expected = match i {
-            0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000 | 0b1011_0000 => {
-                Complex::I / 8_f64.sqrt()
-            }
-            0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+            let expected = match i {
+                0b1000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
     }
-}
 
-#[test]
-fn larger_circuit() {
-    let circuit = CliffordTCircuit::new(
-        8,
-        [
-            T(0),
-            H(1),
-            S(1),
-            H(3),
-            H(0),
-            S(0),
-            S(1),
-            S(2),
-            T(1),
-            H(0),
-            Cnot(1, 0),
-            T(0),
-            S(3),
-        ],
-    )
-    .unwrap();
+    #[test]
+    fn bell_state() {
+        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
-    for i in 0b0000_0000..=0b1111_1111 {
-        let w = bits_to_bools(i);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
 
-        let result = simulate_circuit(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit);
 
-        let expected = match i {
-            0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
-            0b1000_0000 => Complex {
-                re: 0.125_f64.sqrt(),
-                im: 0.0,
-            },
-            0b0100_0000 => Complex {
-                re: -0.125_f64.sqrt(),
-                im: 0.0,
-            },
-            0b1100_0000 => Complex {
-                re: 0.25,
-                im: -0.25,
-            },
-            0b0001_0000 => Complex {
-                re: -0.25,
-                im: 0.25,
-            },
-            0b1001_0000 => Complex {
-                re: 0.0,
-                im: 0.125_f64.sqrt(),
-            },
-            0b0101_0000 => Complex {
-                re: 0.0,
-                im: -0.125_f64.sqrt(),
-            },
-            _ => Complex::ZERO,
-        };
-        assert_almost_eq(result, expected, i);
+            let expected = match i {
+                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn larger_clifford_circuit() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
+                | 0b1011_0000 => Complex::I / 8_f64.sqrt(),
+                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn larger_circuit() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                T(0),
+                H(1),
+                S(1),
+                H(3),
+                H(0),
+                S(0),
+                S(1),
+                S(2),
+                T(1),
+                H(0),
+                Cnot(1, 0),
+                T(0),
+                S(3),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
+                0b1000_0000 => Complex {
+                    re: 0.125_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b0100_0000 => Complex {
+                    re: -0.125_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b1100_0000 => Complex {
+                    re: 0.25,
+                    im: -0.25,
+                },
+                0b0001_0000 => Complex {
+                    re: -0.25,
+                    im: 0.25,
+                },
+                0b1001_0000 => Complex {
+                    re: 0.0,
+                    im: 0.125_f64.sqrt(),
+                },
+                0b0101_0000 => Complex {
+                    re: 0.0,
+                    im: -0.125_f64.sqrt(),
+                },
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
     }
 }
 
