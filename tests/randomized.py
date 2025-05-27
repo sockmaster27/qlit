@@ -11,7 +11,7 @@ class QlitRandomizedTests(unittest.TestCase):
         iterations = 100
         for i in range(iterations):
             qubits = 20
-            t_gates = 0
+            t_gates = 5
             gates = 100
             seed = 1234 + i
             circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
@@ -26,10 +26,16 @@ class QlitRandomizedTests(unittest.TestCase):
                         qiskit_circuit.h(a)
                     case CliffordTGate.S(a):
                         qiskit_circuit.s(a)
+                    case CliffordTGate.Sdg(a):
+                        qiskit_circuit.sdg(a)
                     case CliffordTGate.Cnot(a, b):
                         qiskit_circuit.cx(a, b)
                     case CliffordTGate.T(a):
                         qiskit_circuit.t(a)
+                    case CliffordTGate.Tdg(a):
+                        qiskit_circuit.tdg(a)
+                    case _:
+                        raise ValueError(f"Unknown gate: {gate}")
 
             state = Statevector.from_instruction(qiskit_circuit)
             # Remember that Qiskit uses reversed basis states

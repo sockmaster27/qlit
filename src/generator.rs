@@ -56,6 +56,16 @@ impl Generator {
             self.tableau[z] ^= self.tableau[x];
         }
     }
+    pub fn apply_sdg_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let x = x_column_block_index(n, i, a);
+            let z = z_column_block_index(n, i, a);
+            self.tableau[z] ^= self.tableau[x];
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+        }
+    }
     pub fn apply_h_gate(&mut self, a: usize) {
         let n = self.n;
         for i in 0..column_block_length(n) {
@@ -890,7 +900,7 @@ mod tests {
                 S(a) => g.apply_s_gate(a),
                 H(a) => g.apply_h_gate(a),
                 Cnot(a, b) => g.apply_cnot_gate(a, b),
-                T(_) => unreachable!(),
+                _ => unreachable!(),
             }
         }
     }

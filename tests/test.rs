@@ -1,7 +1,7 @@
 use num_complex::Complex;
 use pyo3::{ffi::c_str, Python};
 use qlit::{
-    clifford_circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*},
+    circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*},
     python_module,
 };
 

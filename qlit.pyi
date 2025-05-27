@@ -10,6 +10,9 @@ class CliffordTGate:
     @dataclass
     class S:
         a: int
+    @dataclass
+    class Sdg:
+        a: int
 
     @dataclass
     class Cnot:
@@ -18,6 +21,9 @@ class CliffordTGate:
 
     @dataclass
     class T:
+        a: int
+    @dataclass
+    class Tdg:
         a: int
 
 

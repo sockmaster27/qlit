@@ -17,6 +17,11 @@ pub enum CliffordTGate {
     H(usize),
     Cnot(usize, usize),
     T(usize),
+
+    /// The inverse of the S gate.
+    Sdg(usize),
+    /// The inverse of the ST gate.
+    Tdg(usize),
 }
 #[pymethods]
 impl CliffordTGate {
@@ -26,6 +31,9 @@ impl CliffordTGate {
             CliffordTGate::H(a) => format!("CliffordTGate.H({a})"),
             CliffordTGate::Cnot(a, b) => format!("CliffordTGate.Cnot({a}, {b})"),
             CliffordTGate::T(a) => format!("CliffordTGate.T({a})"),
+
+            CliffordTGate::Sdg(a) => format!("CliffordTGate.Sdg({a})"),
+            CliffordTGate::Tdg(a) => format!("CliffordTGate.Tdg({a})"),
         }
     }
 }
@@ -131,6 +139,16 @@ impl CliffordTCircuit {
                     }
                     t_gates += 1;
                 }
+                CliffordTGate::Sdg(a) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                }
+                CliffordTGate::Tdg(a) => {
+                    if a >= qubits {
+                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+                    }
+                }
             }
         }
         Ok(CliffordTCircuit {
@@ -195,12 +213,17 @@ impl CliffordTCircuit {
                 .map(|i| {
                     let a = rng.random_range(0..qubits);
                     if t_gate_positions.contains(&i) {
-                        CliffordTGate::T(a)
+                        match rng.random_range(0..=1) {
+                            0 => CliffordTGate::T(a),
+                            1 => CliffordTGate::Tdg(a),
+                            _ => unreachable!(),
+                        }
                     } else {
-                        match rng.random_range(0..=2) {
+                        match rng.random_range(0..=3) {
                             0 => CliffordTGate::H(a),
                             1 => CliffordTGate::S(a),
-                            2 => {
+                            2 => CliffordTGate::Sdg(a),
+                            3 => {
                                 let mut b = a;
                                 while b == a {
                                     b = rng.random_range(0..qubits);

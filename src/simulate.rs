@@ -3,7 +3,7 @@ use std::{f64::consts::SQRT_2, vec};
 use num_complex::Complex;
 
 use crate::{
-    clifford_circuit::{CliffordTCircuit, CliffordTGate},
+    circuit::{CliffordTCircuit, CliffordTGate},
     generator::Generator,
     gpu_generator::GpuGenerator,
 };
@@ -15,6 +15,15 @@ const C_I: Complex<f64> = Complex {
 const C_Z: Complex<f64> = Complex {
     re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
     im: -1.0 / (2.0 * SQRT_2),
+};
+
+const CDG_I: Complex<f64> = Complex {
+    re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
+    im: -1.0 / (2.0 * SQRT_2),
+};
+const CDG_Z: Complex<f64> = Complex {
+    re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
+    im: 1.0 / (2.0 * SQRT_2),
 };
 
 /// Compute the coefficient of the given basis state, `w`,
@@ -48,6 +57,12 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                     }
                     g.apply_s_gate(a);
                 }
+                CliffordTGate::Sdg(a) => {
+                    if x[a] == true {
+                        x_coeff *= -Complex::I;
+                    }
+                    g.apply_sdg_gate(a);
+                }
                 CliffordTGate::Cnot(a, b) => {
                     x[b] ^= x[a];
                     g.apply_cnot_gate(a, b);
@@ -76,6 +91,18 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                         }
                         g.apply_z_gate(a);
                         x_coeff *= C_Z;
+                    }
+                    seen_t_gates += 1;
+                }
+                CliffordTGate::Tdg(a) => {
+                    if path[seen_t_gates] == false {
+                        x_coeff *= CDG_I;
+                    } else {
+                        if x[a] == true {
+                            x_coeff *= -1.0;
+                        }
+                        g.apply_z_gate(a);
+                        x_coeff *= CDG_Z;
                     }
                     seen_t_gates += 1;
                 }
@@ -152,6 +179,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                     }
                     seen_t_gates += 1;
                 }
+                _ => todo!(),
             }
         }
 
