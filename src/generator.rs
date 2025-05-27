@@ -90,6 +90,22 @@ impl Generator {
             self.tableau[xb] ^= self.tableau[xa];
         }
     }
+    pub fn apply_cz_gate(&mut self, a: usize, b: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let xa = x_column_block_index(n, i, a);
+            let za = z_column_block_index(n, i, a);
+            let xb = x_column_block_index(n, i, b);
+            let zb = z_column_block_index(n, i, b);
+            // TODO: Simplify expression?
+            self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
+                ^ (self.tableau[xa] & self.tableau[xb] & !(self.tableau[zb] ^ self.tableau[za]))
+                ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
+            self.tableau[za] ^= self.tableau[xb];
+            self.tableau[zb] ^= self.tableau[xa];
+        }
+    }
     pub fn apply_z_gate(&mut self, a: usize) {
         let n = self.n;
         for i in 0..column_block_length(n) {

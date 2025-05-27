@@ -67,6 +67,12 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                     x[b] ^= x[a];
                     g.apply_cnot_gate(a, b);
                 }
+                CliffordTGate::Cz(a, b) => {
+                    if x[a] == true && x[b] == true {
+                        x_coeff *= -Complex::ONE;
+                    }
+                    g.apply_cz_gate(a, b);
+                }
                 CliffordTGate::H(a) => {
                     let r = g.coeff_ratio_flipped_bit(&x, a);
                     if r != -Complex::ONE {

@@ -20,6 +20,11 @@ class CliffordTGate:
         b: int
 
     @dataclass
+    class Cz:
+        a: int
+        b: int
+
+    @dataclass
     class T:
         a: int
     @dataclass

@@ -30,6 +30,8 @@ class QlitRandomizedTests(unittest.TestCase):
                         qiskit_circuit.sdg(a)
                     case CliffordTGate.Cnot(a, b):
                         qiskit_circuit.cx(a, b)
+                    case CliffordTGate.Cz(a, b):
+                        qiskit_circuit.cz(a, b)
                     case CliffordTGate.T(a):
                         qiskit_circuit.t(a)
                     case CliffordTGate.Tdg(a):
