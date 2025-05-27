@@ -617,7 +617,7 @@ impl Debug for Generator {
 
 #[cfg(test)]
 mod tests {
-    use crate::clifford_circuit::{CliffordTCircuit, CliffordTGate::*};
+    use crate::circuit::{CliffordTCircuit, CliffordTGate::*};
     use crate::utils::bits_to_bools;
 
     use super::*;

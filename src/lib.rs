@@ -1,8 +1,8 @@
-use clifford_circuit::{CliffordTCircuit, CliffordTGate};
+use circuit::{CliffordTCircuit, CliffordTGate};
 use num_complex::Complex;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
 
-pub mod clifford_circuit;
+pub mod circuit;
 mod generator;
 mod gpu_generator;
 mod simulate;
