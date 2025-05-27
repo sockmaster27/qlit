@@ -5,8 +5,10 @@ use num_complex::Complex;
 use crate::{
     circuit::{CliffordTCircuit, CliffordTGate},
     generator::Generator,
-    gpu_generator::GpuGenerator,
 };
+
+#[cfg(feature = "gpu")]
+use crate::gpu_generator::GpuGenerator;
 
 const C_I: Complex<f64> = Complex {
     re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
@@ -128,6 +130,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 ///
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
+#[cfg(feature = "gpu")]
 pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();

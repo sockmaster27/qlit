@@ -52,7 +52,7 @@ fn invalid_qubit_index() {
 }
 
 mod cpu {
-    use qlit::simulate_circuit_gpu;
+    use qlit::simulate_circuit;
 
     use super::*;
 
@@ -61,7 +61,7 @@ mod cpu {
     fn mismatched_qubit_number() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
         let w = [false; 9];
-        simulate_circuit_gpu(&w, &circuit);
+        simulate_circuit(&w, &circuit);
     }
 
     #[test]
@@ -71,7 +71,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -88,7 +88,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -106,7 +106,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -123,7 +123,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -165,7 +165,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -202,7 +202,7 @@ mod cpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
@@ -237,6 +237,7 @@ mod cpu {
     }
 }
 
+#[cfg(feature = "gpu")]
 mod gpu {
     use qlit::simulate_circuit_gpu;
 

@@ -3,6 +3,9 @@ name = "qlit"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+gpu = []
+
 [lib]
 name = "qlit"
 crate-type = ["cdylib", "rlib"]

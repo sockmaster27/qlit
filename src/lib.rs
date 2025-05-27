@@ -4,11 +4,15 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
 
 pub mod circuit;
 mod generator;
+#[cfg(feature = "gpu")]
 mod gpu_generator;
 mod simulate;
 mod utils;
 
-pub use simulate::{simulate_circuit, simulate_circuit_gpu};
+pub use simulate::simulate_circuit;
+
+#[cfg(feature = "gpu")]
+pub use simulate::simulate_circuit_gpu;
 
 fn parse_basis_state(w: &Bound<PyString>, n: usize) -> PyResult<Vec<bool>> {
     let w_str = w.to_str()?;
