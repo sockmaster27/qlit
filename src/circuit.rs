@@ -3,95 +3,34 @@ use std::{error::Error, fmt::Display};
 use pyo3::{conversion::FromPyObjectBound, prelude::*};
 use rand::{rngs::SmallRng, Rng, RngCore, SeedableRng};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CliffordGate {
-    S(usize),
-    H(usize),
-    Cnot(usize, usize),
-}
-
 #[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
     S(usize),
-    H(usize),
-    Cnot(usize, usize),
-    T(usize),
-
     /// The inverse of the S gate.
     Sdg(usize),
-    /// The inverse of the ST gate.
+
+    H(usize),
+
+    Cnot(usize, usize),
+
+    T(usize),
+    /// The inverse of the T gate.
     Tdg(usize),
 }
 #[pymethods]
 impl CliffordTGate {
     fn __repr__(&self) -> String {
         match self {
-            CliffordTGate::S(a) => format!("CliffordTGate.S({a})"),
             CliffordTGate::H(a) => format!("CliffordTGate.H({a})"),
-            CliffordTGate::Cnot(a, b) => format!("CliffordTGate.Cnot({a}, {b})"),
-            CliffordTGate::T(a) => format!("CliffordTGate.T({a})"),
 
+            CliffordTGate::S(a) => format!("CliffordTGate.S({a})"),
             CliffordTGate::Sdg(a) => format!("CliffordTGate.Sdg({a})"),
+
+            CliffordTGate::Cnot(a, b) => format!("CliffordTGate.Cnot({a}, {b})"),
+
+            CliffordTGate::T(a) => format!("CliffordTGate.T({a})"),
             CliffordTGate::Tdg(a) => format!("CliffordTGate.Tdg({a})"),
-        }
-    }
-}
-impl From<CliffordGate> for CliffordTGate {
-    fn from(gate: CliffordGate) -> Self {
-        match gate {
-            CliffordGate::S(a) => CliffordTGate::S(a),
-            CliffordGate::H(a) => CliffordTGate::H(a),
-            CliffordGate::Cnot(a, b) => CliffordTGate::Cnot(a, b),
-        }
-    }
-}
-
-pub struct CliffordCircuit {
-    /// The number of qubits in the circuit.
-    qubits: usize,
-    /// The ordered list of gates in the circuit.
-    gates: Vec<CliffordGate>,
-}
-impl CliffordCircuit {
-    pub fn new(qubits: usize, gates: impl IntoIterator<Item = CliffordGate>) -> Self {
-        // TODO: Validate gate indices less than n
-        let gates: Vec<CliffordGate> = gates.into_iter().collect();
-        CliffordCircuit { qubits, gates }
-    }
-
-    /// The number of qubits in the circuit.
-    pub fn qubits(&self) -> usize {
-        self.qubits
-    }
-
-    /// The gates in the circuit, in the order that they are applied.
-    pub fn gates(&self) -> &[CliffordGate] {
-        &self.gates
-    }
-
-    /// Create a random circuit with the given number of `qubits` and `gates`.
-    pub fn random(qubits: usize, gates: usize, seed: u64) -> Self {
-        let mut rng = SmallRng::seed_from_u64(seed);
-        CliffordCircuit {
-            qubits,
-            gates: (0..gates)
-                .map(|_| {
-                    let a = rng.random_range(0..qubits);
-                    match rng.next_u32() % 3 {
-                        0 => CliffordGate::H(a),
-                        1 => CliffordGate::S(a),
-                        2 => {
-                            let mut b = a;
-                            while b == a {
-                                b = rng.random_range(0..qubits);
-                            }
-                            CliffordGate::Cnot(a, b)
-                        }
-                        _ => unreachable!(),
-                    }
-                })
-                .collect(),
         }
     }
 }
