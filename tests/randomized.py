@@ -8,7 +8,7 @@ from qiskit.quantum_info import Statevector
 
 class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
-        iterations = 100
+        iterations = 1000
         for i in range(iterations):
             qubits = 10
             t_gates = 5
@@ -52,7 +52,7 @@ class QlitRandomizedTests(unittest.TestCase):
                 w_coeff_qiskit,
                 msg=f"\n{w=} \n{state.data=} \n{qiskit_circuit.draw()}",
             )
-            print("done")
+            print("✅", end="", flush=True)
 
 
 if __name__ == "__main__":
