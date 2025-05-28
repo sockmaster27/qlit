@@ -44,7 +44,7 @@ impl CliffordTGate {
 pub struct CliffordTCircuit {
     /// The number of qubits in the circuit.
     qubits: usize,
-    /// The number of T gates in the circuit.
+    /// The number of `T` and `Tdg` gates in the circuit.
     t_gates: usize,
     /// The ordered list of gates in the circuit.
     gates: Vec<CliffordTGate>,
@@ -99,6 +99,7 @@ impl CliffordTCircuit {
                     if a >= qubits {
                         return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
                     }
+                    t_gates += 1;
                 }
             }
         }
@@ -114,7 +115,7 @@ impl CliffordTCircuit {
         self.qubits
     }
 
-    /// The number of T gates in the circuit.
+    /// The number of `T` and `Tdg` gates in the circuit.
     pub fn t_gates(&self) -> usize {
         self.t_gates
     }
