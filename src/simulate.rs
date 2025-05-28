@@ -1,4 +1,7 @@
-use std::{f64::consts::SQRT_2, vec};
+use std::{
+    f64::consts::{FRAC_1_SQRT_2, SQRT_2},
+    vec,
+};
 
 use num_complex::Complex;
 
@@ -12,22 +15,22 @@ use crate::gpu_generator::GpuGenerator;
 
 // T = C_I*I + C_Z*Z
 const C_I: Complex<f64> = Complex {
-    re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
-    im: 1.0 / (2.0 * SQRT_2),
+    re: 0.5 + 0.5 * FRAC_1_SQRT_2,
+    im: 0.5 * FRAC_1_SQRT_2,
 };
 const C_Z: Complex<f64> = Complex {
-    re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
-    im: -1.0 / (2.0 * SQRT_2),
+    re: 0.5 - 0.5 * FRAC_1_SQRT_2,
+    im: -0.5 * FRAC_1_SQRT_2,
 };
 
 // Tdg = C_I_DG*I + C_Z_DG*Z
 const C_I_DG: Complex<f64> = Complex {
-    re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
-    im: -1.0 / (2.0 * SQRT_2),
+    re: 0.5 + 0.5 * FRAC_1_SQRT_2,
+    im: -0.5 * FRAC_1_SQRT_2,
 };
 const C_Z_DG: Complex<f64> = Complex {
-    re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
-    im: 1.0 / (2.0 * SQRT_2),
+    re: 0.5 - 0.5 * FRAC_1_SQRT_2,
+    im: 0.5 * FRAC_1_SQRT_2,
 };
 
 /// Compute the coefficient of the given basis state, `w`,
