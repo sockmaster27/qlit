@@ -28,7 +28,7 @@ fn parse_basis_state(w: &Bound<PyString>, n: usize) -> PyResult<Vec<bool>> {
             '0' => Ok(false),
             '1' => Ok(true),
             _ => Err(PyErr::new::<PyValueError, _>(format!(
-                "Basis state with length {w_len} does not match circuit with {n} qubits"
+                "Basis state must only contain '0' and '1', found '{c}'"
             ))),
         })
         .collect();
