@@ -10,6 +10,7 @@ use crate::{
 #[cfg(feature = "gpu")]
 use crate::gpu_generator::GpuGenerator;
 
+// T = C_I*I + C_Z*Z
 const C_I: Complex<f64> = Complex {
     re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
     im: 1.0 / (2.0 * SQRT_2),
@@ -19,11 +20,12 @@ const C_Z: Complex<f64> = Complex {
     im: -1.0 / (2.0 * SQRT_2),
 };
 
-const CDG_I: Complex<f64> = Complex {
+// Tdg = C_I_DG*I + C_Z_DG*Z
+const C_I_DG: Complex<f64> = Complex {
     re: (SQRT_2 + 1.0) / (2.0 * SQRT_2),
     im: -1.0 / (2.0 * SQRT_2),
 };
-const CDG_Z: Complex<f64> = Complex {
+const C_Z_DG: Complex<f64> = Complex {
     re: (SQRT_2 - 1.0) / (2.0 * SQRT_2),
     im: 1.0 / (2.0 * SQRT_2),
 };
@@ -104,13 +106,13 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                 }
                 CliffordTGate::Tdg(a) => {
                     if path[seen_t_gates] == false {
-                        x_coeff *= CDG_I;
+                        x_coeff *= C_I_DG;
                     } else {
                         if x[a] == true {
                             x_coeff *= -1.0;
                         }
                         g.apply_z_gate(a);
-                        x_coeff *= CDG_Z;
+                        x_coeff *= C_Z_DG;
                     }
                     seen_t_gates += 1;
                 }
