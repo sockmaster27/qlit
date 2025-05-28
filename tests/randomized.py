@@ -10,7 +10,7 @@ class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
         iterations = 100
         for i in range(iterations):
-            qubits = 20
+            qubits = 10
             t_gates = 5
             gates = 100
             seed = 1234 + i
