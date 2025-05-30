@@ -9,7 +9,7 @@ mod gpu_generator;
 mod simulate;
 mod utils;
 
-pub use simulate::simulate_circuit;
+pub use simulate::{simulate_circuit, simulate_circuit_parallel};
 
 #[cfg(feature = "gpu")]
 pub use simulate::simulate_circuit_gpu;
@@ -44,11 +44,24 @@ fn py_simulate_circuit(w: &Bound<PyString>, circuit: &CliffordTCircuit) -> PyRes
     ))
 }
 
+#[pyfunction]
+#[pyo3(name = "simulate_circuit_parallel")]
+fn py_simulate_circuit_parallel(
+    w: &Bound<PyString>,
+    circuit: &CliffordTCircuit,
+) -> PyResult<Complex<f64>> {
+    Ok(simulate_circuit_parallel(
+        &parse_basis_state(w, circuit.qubits())?,
+        circuit,
+    ))
+}
+
 #[pymodule]
 #[pyo3(name = "qlit")]
 pub fn python_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CliffordTGate>()?;
     m.add_class::<CliffordTCircuit>()?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simulate_circuit_parallel, m)?)?;
     Ok(())
 }
