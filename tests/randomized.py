@@ -22,6 +22,12 @@ class QlitRandomizedTests(unittest.TestCase):
             qiskit_circuit = QuantumCircuit(qubits)
             for gate in circuit.gates:
                 match gate:
+                    case CliffordTGate.X(a):
+                        qiskit_circuit.x(a)
+                    case CliffordTGate.Y(a):
+                        qiskit_circuit.y(a)
+                    case CliffordTGate.Z(a):
+                        qiskit_circuit.z(a)
                     case CliffordTGate.H(a):
                         qiskit_circuit.h(a)
                     case CliffordTGate.S(a):

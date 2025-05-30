@@ -6,6 +6,10 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 #[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
+    X(usize),
+    Y(usize),
+    Z(usize),
+
     S(usize),
     /// The inverse of the S gate.
     Sdg(usize),
@@ -13,7 +17,6 @@ pub enum CliffordTGate {
     H(usize),
 
     Cnot(usize, usize),
-
     Cz(usize, usize),
 
     T(usize),
@@ -24,6 +27,10 @@ pub enum CliffordTGate {
 impl CliffordTGate {
     fn __repr__(&self) -> String {
         match self {
+            CliffordTGate::X(a) => format!("CliffordTGate.X({a})"),
+            CliffordTGate::Y(a) => format!("CliffordTGate.Y({a})"),
+            CliffordTGate::Z(a) => format!("CliffordTGate.Z({a})"),
+
             CliffordTGate::H(a) => format!("CliffordTGate.H({a})"),
 
             CliffordTGate::S(a) => format!("CliffordTGate.S({a})"),
@@ -56,49 +63,34 @@ impl CliffordTCircuit {
     ) -> Result<Self, CircuitCreationError> {
         let gates: Vec<CliffordTGate> = gates.into_iter().collect();
         let mut t_gates = 0;
+        let check_index = |a| {
+            if a >= qubits {
+                return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
+            }
+            Ok(())
+        };
         for &gate in &gates {
             match gate {
-                CliffordTGate::H(a) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
-                }
-                CliffordTGate::S(a) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
-                }
-                CliffordTGate::Sdg(a) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
-                }
+                CliffordTGate::X(a) => check_index(a)?,
+                CliffordTGate::Y(a) => check_index(a)?,
+                CliffordTGate::Z(a) => check_index(a)?,
+                CliffordTGate::H(a) => check_index(a)?,
+                CliffordTGate::S(a) => check_index(a)?,
+                CliffordTGate::Sdg(a) => check_index(a)?,
                 CliffordTGate::Cnot(a, b) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
-                    if b >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: b, qubits });
-                    }
+                    check_index(a)?;
+                    check_index(b)?;
                 }
                 CliffordTGate::Cz(a, b) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
-                    if b >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: b, qubits });
-                    }
+                    check_index(a)?;
+                    check_index(b)?;
                 }
                 CliffordTGate::T(a) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
+                    check_index(a)?;
                     t_gates += 1;
                 }
                 CliffordTGate::Tdg(a) => {
-                    if a >= qubits {
-                        return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-                    }
+                    check_index(a)?;
                     t_gates += 1;
                 }
             }
@@ -164,6 +156,10 @@ impl CliffordTCircuit {
             gates: (0..gates)
                 .map(|i| {
                     let a = rng.random_range(0..qubits);
+                    let mut b = a;
+                    while b == a {
+                        b = rng.random_range(0..qubits);
+                    }
                     if t_gate_positions.contains(&i) {
                         match rng.random_range(0..=1) {
                             0 => CliffordTGate::T(a),
@@ -171,24 +167,15 @@ impl CliffordTCircuit {
                             _ => unreachable!(),
                         }
                     } else {
-                        match rng.random_range(0..=4) {
-                            0 => CliffordTGate::H(a),
-                            1 => CliffordTGate::S(a),
-                            2 => CliffordTGate::Sdg(a),
-                            3 => {
-                                let mut b = a;
-                                while b == a {
-                                    b = rng.random_range(0..qubits);
-                                }
-                                CliffordTGate::Cnot(a, b)
-                            }
-                            4 => {
-                                let mut b = a;
-                                while b == a {
-                                    b = rng.random_range(0..qubits);
-                                }
-                                CliffordTGate::Cz(a, b)
-                            }
+                        match rng.random_range(0..=7) {
+                            0 => CliffordTGate::X(a),
+                            1 => CliffordTGate::Y(a),
+                            2 => CliffordTGate::Z(a),
+                            3 => CliffordTGate::H(a),
+                            4 => CliffordTGate::S(a),
+                            5 => CliffordTGate::Sdg(a),
+                            6 => CliffordTGate::Cnot(a, b),
+                            7 => CliffordTGate::Cz(a, b),
                             _ => unreachable!(),
                         }
                     }

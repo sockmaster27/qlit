@@ -4,6 +4,16 @@ from typing import Iterable
 
 class CliffordTGate:
     @dataclass
+    class X:
+        a: int
+    @dataclass
+    class Y:
+        a: int
+    @dataclass
+    class Z:
+        a: int
+
+    @dataclass
     class H:
         a: int
 

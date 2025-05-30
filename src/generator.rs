@@ -106,6 +106,23 @@ impl Generator {
             self.tableau[zb] ^= self.tableau[xa];
         }
     }
+    pub fn apply_x_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let z = z_column_block_index(n, i, a);
+            self.tableau[r] ^= self.tableau[z];
+        }
+    }
+    pub fn apply_y_gate(&mut self, a: usize) {
+        let n = self.n;
+        for i in 0..column_block_length(n) {
+            let r = r_column_block_index(n, i);
+            let x = x_column_block_index(n, i, a);
+            let z = z_column_block_index(n, i, a);
+            self.tableau[r] ^= self.tableau[x] ^ self.tableau[z];
+        }
+    }
     pub fn apply_z_gate(&mut self, a: usize) {
         let n = self.n;
         for i in 0..column_block_length(n) {
