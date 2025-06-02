@@ -56,6 +56,8 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     let mut done = false;
 
     while !done {
+        // The invariant for these is that
+        // x_coeff = <x|psi> != 0
         let mut x = vec![false; n];
         let mut x_coeff = Complex::ONE;
         let mut g = Generator::zero(n);
@@ -182,6 +184,8 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
+                // The invariant for these is that
+                // x_coeff = <x|psi> != 0
                 let mut x = vec![false; n];
                 let mut x_coeff = Complex::ONE;
                 let mut g = Generator::zero(n);
@@ -244,6 +248,7 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
                             }
                             g.apply_h_gate(a);
                         }
+
                         CliffordTGate::T(a) => {
                             if path[seen_t_gates] == false {
                                 x_coeff *= C_I;
