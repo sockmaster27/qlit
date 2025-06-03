@@ -1,4 +1,5 @@
 use std::{
+    cmp::min,
     f64::consts::{FRAC_1_SQRT_2, SQRT_2},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -188,7 +189,11 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        for _ in 0..num_cpus::get_physical() {
+        let threads = min(
+            num_cpus::get_physical(),
+            2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+        );
+        for _ in 0..threads {
             s.spawn(|_| loop {
                 let mut next_path_locked = next_path.lock().unwrap();
                 if done.load(Ordering::SeqCst) {
@@ -231,7 +236,11 @@ pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Com
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        for _ in 0..num_cpus::get_physical() {
+        let threads = min(
+            num_cpus::get_physical(),
+            2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+        );
+        for _ in 0..threads {
             s.spawn(|_| loop {
                 let mut next_path_locked = next_path.lock().unwrap();
                 if done.load(Ordering::SeqCst) {
