@@ -114,7 +114,6 @@ fn main(
                 tableau[column_block_index(block_index, j)] ^= mask;
             }
         }
-        
     }
 }
 

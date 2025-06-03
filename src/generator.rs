@@ -136,6 +136,8 @@ impl Generator {
     /// ```text
     /// coefficient_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
+    ///
+    /// This will mutate the generator in such a way that it becomes uninitialized.
     pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         debug_assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
@@ -167,8 +169,7 @@ impl Generator {
         // Compute the (w2, w1) entry in the stabilizer of the correct form.
         self.stabilizer_matrix_entry(aux_row, w1, w2)
     }
-
-    /// Same as [`coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
+    /// Same as [`Self::coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
     pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
         let n = self.n;
         debug_assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
@@ -177,22 +178,23 @@ impl Generator {
         self.bring_into_rref();
 
         // Identify the row with a set bit in the given position.
-        let mut row = 0;
+        let mut row = None;
         for j in 0..n {
             if self.x_bit(j, flipped_bit) == true {
-                row = j;
+                row = Some(j);
                 break;
             }
         }
 
         // Compute the (w2, w1) entry in the stabilizer of the correct form.
-        self.stabilizer_matrix_entry(
-            row,
-            w1,
-            w1.iter()
-                .enumerate()
-                .map(|(i, &b)| if i == flipped_bit { !b } else { b }),
-        )
+        let w2 = w1
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| if i == flipped_bit { !b } else { b });
+        match row {
+            None => Complex::ZERO,
+            Some(row) => self.stabilizer_matrix_entry(row, w1, w2),
+        }
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.

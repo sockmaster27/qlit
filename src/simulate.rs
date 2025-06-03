@@ -4,7 +4,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Mutex,
     },
-    thread, vec,
+    vec,
 };
 
 use num_complex::Complex;
@@ -37,6 +37,107 @@ const C_Z_DG: Complex<f64> = Complex {
     im: 0.5 * FRAC_1_SQRT_2,
 };
 
+/// Apply the gates in `gates` to `x`, `x_coeff` and `g`.
+///
+/// For each `T`/`Tdg` gate in the circuit, `path` determines whether it is applied as a `Z` gate or not.
+///
+/// This is done in such a way to maintain the invariant that
+/// `x_coeff = <x|psi> != 0`.
+fn apply_gates_for_path(
+    x: &mut [bool],
+    x_coeff: &mut Complex<f64>,
+    g: &mut Generator,
+    path: &[bool],
+    gates: &[CliffordTGate],
+) {
+    let mut seen_t_gates = 0;
+    for &gate in gates {
+        match gate {
+            CliffordTGate::X(a) => {
+                x[a] = !x[a];
+                g.apply_x_gate(a);
+            }
+            CliffordTGate::Y(a) => {
+                if x[a] == true {
+                    *x_coeff *= -Complex::I;
+                } else {
+                    *x_coeff *= Complex::I;
+                }
+                x[a] = !x[a];
+                g.apply_y_gate(a);
+            }
+            CliffordTGate::Z(a) => {
+                if x[a] == true {
+                    *x_coeff *= -Complex::ONE;
+                }
+                g.apply_z_gate(a);
+            }
+            CliffordTGate::S(a) => {
+                if x[a] == true {
+                    *x_coeff *= Complex::I;
+                }
+                g.apply_s_gate(a);
+            }
+            CliffordTGate::Sdg(a) => {
+                if x[a] == true {
+                    *x_coeff *= -Complex::I;
+                }
+                g.apply_sdg_gate(a);
+            }
+            CliffordTGate::Cnot(a, b) => {
+                x[b] ^= x[a];
+                g.apply_cnot_gate(a, b);
+            }
+            CliffordTGate::Cz(a, b) => {
+                if x[a] == true && x[b] == true {
+                    *x_coeff *= -Complex::ONE;
+                }
+                g.apply_cz_gate(a, b);
+            }
+            CliffordTGate::H(a) => {
+                let r = g.coeff_ratio_flipped_bit(&x, a);
+                if r != -Complex::ONE {
+                    *x_coeff *= (r + 1.0) / SQRT_2;
+                    x[a] = false;
+                } else {
+                    if x[a] == false {
+                        *x_coeff *= 2.0 / SQRT_2;
+                    } else {
+                        *x_coeff *= -2.0 / SQRT_2;
+                    }
+                    x[a] = true;
+                }
+                g.apply_h_gate(a);
+            }
+
+            CliffordTGate::T(a) => {
+                if path[seen_t_gates] == false {
+                    *x_coeff *= C_I;
+                } else {
+                    if x[a] == true {
+                        *x_coeff *= -Complex::ONE;
+                    }
+                    g.apply_z_gate(a);
+                    *x_coeff *= C_Z;
+                }
+                seen_t_gates += 1;
+            }
+            CliffordTGate::Tdg(a) => {
+                if path[seen_t_gates] == false {
+                    *x_coeff *= C_I_DG;
+                } else {
+                    if x[a] == true {
+                        *x_coeff *= -Complex::ONE;
+                    }
+                    g.apply_z_gate(a);
+                    *x_coeff *= C_Z_DG;
+                }
+                seen_t_gates += 1;
+            }
+        }
+    }
+}
+
 /// Compute the coefficient of the given basis state, `w`,
 /// after `circuit` has been applied to the zero state.
 ///
@@ -56,97 +157,10 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     let mut done = false;
 
     while !done {
-        // The invariant for these is that
-        // x_coeff = <x|psi> != 0
         let mut x = vec![false; n];
         let mut x_coeff = Complex::ONE;
         let mut g = Generator::zero(n);
-        let mut seen_t_gates = 0;
-        for &gate in circuit.gates() {
-            match gate {
-                CliffordTGate::X(a) => {
-                    x[a] = !x[a];
-                    g.apply_x_gate(a);
-                }
-                CliffordTGate::Y(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::I;
-                    } else {
-                        x_coeff *= Complex::I;
-                    }
-                    x[a] = !x[a];
-                    g.apply_y_gate(a);
-                }
-                CliffordTGate::Z(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::ONE;
-                    }
-                    g.apply_z_gate(a);
-                }
-                CliffordTGate::S(a) => {
-                    if x[a] == true {
-                        x_coeff *= Complex::I;
-                    }
-                    g.apply_s_gate(a);
-                }
-                CliffordTGate::Sdg(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::I;
-                    }
-                    g.apply_sdg_gate(a);
-                }
-                CliffordTGate::Cnot(a, b) => {
-                    x[b] ^= x[a];
-                    g.apply_cnot_gate(a, b);
-                }
-                CliffordTGate::Cz(a, b) => {
-                    if x[a] == true && x[b] == true {
-                        x_coeff *= -Complex::ONE;
-                    }
-                    g.apply_cz_gate(a, b);
-                }
-                CliffordTGate::H(a) => {
-                    let r = g.coeff_ratio_flipped_bit(&x, a);
-                    if r != -Complex::ONE {
-                        x_coeff *= (r + 1.0) / SQRT_2;
-                        x[a] = false;
-                    } else {
-                        if x[a] == false {
-                            x_coeff *= 2.0 / SQRT_2;
-                        } else {
-                            x_coeff *= -2.0 / SQRT_2;
-                        }
-                        x[a] = true;
-                    }
-                    g.apply_h_gate(a);
-                }
-                CliffordTGate::T(a) => {
-                    if path[seen_t_gates] == false {
-                        x_coeff *= C_I;
-                    } else {
-                        if x[a] == true {
-                            x_coeff *= -1.0;
-                        }
-                        g.apply_z_gate(a);
-                        x_coeff *= C_Z;
-                    }
-                    seen_t_gates += 1;
-                }
-                CliffordTGate::Tdg(a) => {
-                    if path[seen_t_gates] == false {
-                        x_coeff *= C_I_DG;
-                    } else {
-                        if x[a] == true {
-                            x_coeff *= -1.0;
-                        }
-                        g.apply_z_gate(a);
-                        x_coeff *= C_Z_DG;
-                    }
-                    seen_t_gates += 1;
-                }
-            }
-        }
-
+        apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
         w_coeff += x_coeff * g.coeff_ratio(&x, w);
 
         done = increment_path(&mut path);
@@ -173,108 +187,65 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
     let w_coeff = Mutex::new(Complex::ZERO);
     let done = AtomicBool::new(false);
 
-    thread::scope(|s| {
+    rayon::in_place_scope(|s| {
         for _ in 0..num_cpus::get_physical() {
-            s.spawn(|| loop {
+            s.spawn(|_| loop {
                 let mut next_path_locked = next_path.lock().unwrap();
                 if done.load(Ordering::SeqCst) {
-                    return;
+                    break;
                 }
                 let path = next_path_locked.clone();
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                // The invariant for these is that
-                // x_coeff = <x|psi> != 0
                 let mut x = vec![false; n];
                 let mut x_coeff = Complex::ONE;
                 let mut g = Generator::zero(n);
-                let mut seen_t_gates = 0;
-                for &gate in circuit.gates() {
-                    match gate {
-                        CliffordTGate::X(a) => {
-                            x[a] = !x[a];
-                            g.apply_x_gate(a);
-                        }
-                        CliffordTGate::Y(a) => {
-                            if x[a] == true {
-                                x_coeff *= -Complex::I;
-                            } else {
-                                x_coeff *= Complex::I;
-                            }
-                            x[a] = !x[a];
-                            g.apply_y_gate(a);
-                        }
-                        CliffordTGate::Z(a) => {
-                            if x[a] == true {
-                                x_coeff *= -Complex::ONE;
-                            }
-                            g.apply_z_gate(a);
-                        }
-                        CliffordTGate::S(a) => {
-                            if x[a] == true {
-                                x_coeff *= Complex::I;
-                            }
-                            g.apply_s_gate(a);
-                        }
-                        CliffordTGate::Sdg(a) => {
-                            if x[a] == true {
-                                x_coeff *= -Complex::I;
-                            }
-                            g.apply_sdg_gate(a);
-                        }
-                        CliffordTGate::Cnot(a, b) => {
-                            x[b] ^= x[a];
-                            g.apply_cnot_gate(a, b);
-                        }
-                        CliffordTGate::Cz(a, b) => {
-                            if x[a] == true && x[b] == true {
-                                x_coeff *= -Complex::ONE;
-                            }
-                            g.apply_cz_gate(a, b);
-                        }
-                        CliffordTGate::H(a) => {
-                            let r = g.coeff_ratio_flipped_bit(&x, a);
-                            if r != -Complex::ONE {
-                                x_coeff *= (r + 1.0) / SQRT_2;
-                                x[a] = false;
-                            } else {
-                                if x[a] == false {
-                                    x_coeff *= 2.0 / SQRT_2;
-                                } else {
-                                    x_coeff *= -2.0 / SQRT_2;
-                                }
-                                x[a] = true;
-                            }
-                            g.apply_h_gate(a);
-                        }
+                apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
 
-                        CliffordTGate::T(a) => {
-                            if path[seen_t_gates] == false {
-                                x_coeff *= C_I;
-                            } else {
-                                if x[a] == true {
-                                    x_coeff *= -1.0;
-                                }
-                                g.apply_z_gate(a);
-                                x_coeff *= C_Z;
-                            }
-                            seen_t_gates += 1;
-                        }
-                        CliffordTGate::Tdg(a) => {
-                            if path[seen_t_gates] == false {
-                                x_coeff *= C_I_DG;
-                            } else {
-                                if x[a] == true {
-                                    x_coeff *= -1.0;
-                                }
-                                g.apply_z_gate(a);
-                                x_coeff *= C_Z_DG;
-                            }
-                            seen_t_gates += 1;
-                        }
-                    }
+                *w_coeff.lock().unwrap() += x_coeff * g.coeff_ratio(&x, w);
+            });
+        }
+    });
+
+    let res = *w_coeff.lock().unwrap();
+    res
+}
+
+/// Compute the coefficient of the given basis state, `w`,
+/// after `circuit` has been applied to the zero state.
+///
+/// # Panics
+/// If `w` has a length different from `circuit.qubits()`.
+pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+    let w_len = w.len();
+    let n = circuit.qubits();
+    let t = circuit.t_gates();
+    assert_eq!(
+        w_len, n,
+        "Basis state with length {w_len} does not match circuit with {n} qubits"
+    );
+
+    let next_path = Mutex::new(vec![false; t]);
+    let w_coeff = Mutex::new(Complex::ZERO);
+    let done = AtomicBool::new(false);
+
+    rayon::in_place_scope(|s| {
+        for _ in 0..num_cpus::get_physical() {
+            s.spawn(|_| loop {
+                let mut next_path_locked = next_path.lock().unwrap();
+                if done.load(Ordering::SeqCst) {
+                    break;
                 }
+                let path = next_path_locked.clone();
+                done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                drop(next_path_locked);
+
+                let mut x = vec![false; n];
+                let mut x_coeff = Complex::ONE;
+                let mut g = Generator::zero(n);
+                apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
+
                 *w_coeff.lock().unwrap() += x_coeff * g.coeff_ratio(&x, w);
             });
         }
