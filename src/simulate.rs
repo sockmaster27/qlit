@@ -184,25 +184,35 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
+    let next_path = Mutex::new(vec![false; t]);
     let w_coeff = Mutex::new(Complex::ZERO);
+    let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        let mut next_path = vec![false; t];
-        let mut done = false;
-        while !done {
-            let path_clone = next_path.clone();
-            done = increment_path(&mut next_path);
-
+        let threads = min(
+            num_cpus::get_physical(),
+            2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+        );
+        for _ in 0..threads {
             s.spawn(|_| {
-                // Take ownership of the path_clone
-                let path = path_clone;
+                let mut w_coeff_local = Complex::ZERO;
+                loop {
+                    let mut next_path_locked = next_path.lock().unwrap();
+                    if done.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let path = next_path_locked.clone();
+                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                    drop(next_path_locked);
 
-                let mut x = vec![false; n];
-                let mut x_coeff = Complex::ONE;
-                let mut g = Generator::zero(n);
-                apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
+                    let mut x = vec![false; n];
+                    let mut x_coeff = Complex::ONE;
+                    let mut g = Generator::zero(n);
+                    apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
 
-                *w_coeff.lock().unwrap() += x_coeff * g.coeff_ratio(&x, w);
+                    w_coeff_local += x_coeff * g.coeff_ratio(&x, w);
+                }
+                *w_coeff.lock().unwrap() += w_coeff_local;
             });
         }
     });
@@ -210,6 +220,10 @@ pub fn simulate_circuit_parallel(w: &[bool], circuit: &CliffordTCircuit) -> Comp
     let res = *w_coeff.lock().unwrap();
     res
 }
+
+// The batch size describes the number of paths claimed by a thread at once.
+const BATCH_SIZE_LOG2: usize = 7;
+const BATCH_SIZE: usize = 1 << BATCH_SIZE_LOG2;
 
 /// Compute the coefficient of the given basis state, `w`,
 /// after `circuit` has been applied to the zero state.
@@ -227,7 +241,7 @@ pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Com
 
     let next_path = Mutex::new(vec![false; t]);
     let w_coeff = Mutex::new(Complex::ZERO);
-    let done = AtomicBool::new(false);
+    let done_globally = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
         let threads = min(
@@ -235,21 +249,34 @@ pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Com
             2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
         );
         for _ in 0..threads {
-            s.spawn(|_| loop {
-                let mut next_path_locked = next_path.lock().unwrap();
-                if done.load(Ordering::SeqCst) {
-                    break;
+            s.spawn(|_| {
+                let mut w_coeff_local = Complex::ZERO;
+                loop {
+                    let mut next_path_locked = next_path.lock().unwrap();
+                    if done_globally.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let mut path = next_path_locked.clone();
+                    done_globally.store(
+                        increment_path_by(&mut *next_path_locked, BATCH_SIZE_LOG2),
+                        Ordering::SeqCst,
+                    );
+                    drop(next_path_locked);
+
+                    for _ in 0..BATCH_SIZE {
+                        let mut x = vec![false; n];
+                        let mut x_coeff = Complex::ONE;
+                        let mut g = Generator::zero(n);
+                        apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
+                        w_coeff_local += x_coeff * g.coeff_ratio(&x, w);
+
+                        let done_locally = increment_path(&mut path);
+                        if done_locally {
+                            break;
+                        }
+                    }
                 }
-                let path = next_path_locked.clone();
-                done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
-                drop(next_path_locked);
-
-                let mut x = vec![false; n];
-                let mut x_coeff = Complex::ONE;
-                let mut g = Generator::zero(n);
-                apply_gates_for_path(&mut x, &mut x_coeff, &mut g, &path, &circuit.gates());
-
-                *w_coeff.lock().unwrap() += x_coeff * g.coeff_ratio(&x, w);
+                *w_coeff.lock().unwrap() += w_coeff_local;
             });
         }
     });
@@ -334,9 +361,14 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
 }
 
 /// Mutate the given path to the next one.
-/// Returns true if the given path is the all-true path.
+/// Returns true if this results in the all-false path.
 fn increment_path(path: &mut Vec<bool>) -> bool {
-    for i in 0..path.len() {
+    increment_path_by(path, 0)
+}
+/// Mutate the given path to the `n`th next one, (`n = 2^n_log2`).
+/// Returns true if this results in going through the all-false path.
+fn increment_path_by(path: &mut Vec<bool>, n_log2: usize) -> bool {
+    for i in n_log2..path.len() {
         path[i] = !path[i];
         if path[i] == true {
             return false;
