@@ -1,7 +1,7 @@
 # This module is NOT called from test.rs
 import random
 import unittest
-from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel
+from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
@@ -51,7 +51,7 @@ class QlitRandomizedTests(unittest.TestCase):
             w_coeff_qiskit = state.data[int(w_be, 2)]
 
             # qlit
-            w_coeff_qlit = simulate_circuit_parallel(w, circuit)
+            w_coeff_qlit = simulate_circuit_parallel1(w, circuit)
 
             self.assertAlmostEqual(
                 w_coeff_qlit,
