@@ -15,6 +15,7 @@ enum Pauli {
     Z,
 }
 
+#[derive(Clone)]
 pub struct Generator {
     n: usize,
     /// The augmented stabilizer tableau,
