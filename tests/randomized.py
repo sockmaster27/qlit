@@ -10,9 +10,9 @@ class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
         iterations = 1000
         for i in range(iterations):
-            qubits = 2
-            t_gates = 2
-            gates = 2
+            qubits = 10
+            t_gates = 5
+            gates = 100
             seed = 1234 + i
             circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
             random.seed(seed)
