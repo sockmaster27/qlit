@@ -392,15 +392,15 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
 
                     let mut xs = vec![vec![false; n]; batch_size];
                     let mut x_coeffs = vec![Complex::ONE; batch_size];
-                    let mut gs = vec![generator1::Generator::zero(n, 0); batch_size];
+                    let mut g = generator1::Generator::zero(n, batch_size_log2);
                     let mut seen_t_gates = 0;
                     for &gate in circuit.gates() {
                         match gate {
                             CliffordTGate::X(a) => {
                                 for i in 0..batch_size {
                                     xs[i][a] = !xs[i][a];
-                                    gs[i].apply_x_gate(a);
                                 }
+                                g.apply_x_gate(a);
                             }
                             CliffordTGate::Y(a) => {
                                 for i in 0..batch_size {
@@ -410,50 +410,50 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         x_coeffs[i] *= Complex::I;
                                     }
                                     xs[i][a] = !xs[i][a];
-                                    gs[i].apply_y_gate(a);
                                 }
+                                g.apply_y_gate(a);
                             }
                             CliffordTGate::Z(a) => {
                                 for i in 0..batch_size {
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
-                                    gs[i].apply_z_gate(a);
                                 }
+                                g.apply_z_gate(a);
                             }
                             CliffordTGate::S(a) => {
                                 for i in 0..batch_size {
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= Complex::I;
                                     }
-                                    gs[i].apply_s_gate(a);
                                 }
+                                g.apply_s_gate(a);
                             }
                             CliffordTGate::Sdg(a) => {
                                 for i in 0..batch_size {
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::I;
                                     }
-                                    gs[i].apply_sdg_gate(a);
                                 }
+                                g.apply_sdg_gate(a);
                             }
                             CliffordTGate::Cnot(a, b) => {
                                 for i in 0..batch_size {
                                     xs[i][b] ^= xs[i][a];
-                                    gs[i].apply_cnot_gate(a, b);
                                 }
+                                g.apply_cnot_gate(a, b);
                             }
                             CliffordTGate::Cz(a, b) => {
                                 for i in 0..batch_size {
                                     if xs[i][a] == true && xs[i][b] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
-                                    gs[i].apply_cz_gate(a, b);
                                 }
+                                g.apply_cz_gate(a, b);
                             }
                             CliffordTGate::H(a) => {
                                 for i in 0..batch_size {
-                                    let r = gs[i].coeff_ratio_flipped_bit(0, &xs[i], a);
+                                    let r = g.coeff_ratio_flipped_bit(i, &xs[i], a);
                                     if r != -Complex::ONE {
                                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
                                         xs[i][a] = false;
@@ -465,8 +465,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         }
                                         xs[i][a] = true;
                                     }
-                                    gs[i].apply_h_gate(a);
                                 }
+                                g.apply_h_gate(a);
                             }
 
                             CliffordTGate::T(a) => {
@@ -481,8 +481,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                                 x_coeffs[i] *= -Complex::ONE;
                                             }
                                             x_coeffs[i] *= C_Z;
-                                            gs[i].apply_z_gate(a);
                                         }
+                                        g.apply_z_gate(a);
                                     }
                                 } else {
                                     let chunks = 1 << ((seen_t_gates - path.len()) + 1);
@@ -496,11 +496,11 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                                 x_coeffs[index_z] *= -Complex::ONE;
                                             }
                                             x_coeffs[index_z] *= C_Z;
-                                            gs[index_z].apply_z_gate(a);
 
                                             x_coeffs[index_i] *= C_I;
                                         }
                                     }
+                                    g.apply_t_gate(a);
                                 }
 
                                 seen_t_gates += 1;
@@ -517,8 +517,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                                 x_coeffs[i] *= -Complex::ONE;
                                             }
                                             x_coeffs[i] *= C_Z_DG;
-                                            gs[i].apply_z_gate(a);
                                         }
+                                        g.apply_z_gate(a);
                                     }
                                 } else {
                                     let chunks = 1 << ((seen_t_gates - path.len()) + 1);
@@ -532,11 +532,11 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                                 x_coeffs[index_z] *= -Complex::ONE;
                                             }
                                             x_coeffs[index_z] *= C_Z_DG;
-                                            gs[index_z].apply_z_gate(a);
 
                                             x_coeffs[index_i] *= C_I_DG;
                                         }
                                     }
+                                    g.apply_t_gate(a);
                                 }
 
                                 seen_t_gates += 1;
@@ -544,7 +544,7 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                         }
                     }
                     for i in 0..batch_size {
-                        w_coeff_local += x_coeffs[i] * gs[i].coeff_ratio(0, &xs[i], w);
+                        w_coeff_local += x_coeffs[i] * g.coeff_ratio(i, &xs[i], w);
                     }
                 }
                 *w_coeff.lock().unwrap() += w_coeff_local;
