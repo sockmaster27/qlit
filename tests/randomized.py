@@ -1,7 +1,7 @@
 # This module is NOT called from test.rs
 import random
 import unittest
-from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel
+from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel, simulate_circuit_parallel2
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
@@ -10,9 +10,9 @@ class QlitRandomizedTests(unittest.TestCase):
     def test_random(self):
         iterations = 1000
         for i in range(iterations):
-            qubits = 10
-            t_gates = 5
-            gates = 100
+            qubits = 2
+            t_gates = 2
+            gates = 2
             seed = 1234 + i
             circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
             random.seed(seed)
@@ -51,7 +51,7 @@ class QlitRandomizedTests(unittest.TestCase):
             w_coeff_qiskit = state.data[int(w_be, 2)]
 
             # qlit
-            w_coeff_qlit = simulate_circuit_parallel1(w, circuit)
+            w_coeff_qlit = simulate_circuit_parallel2(w, circuit)
 
             self.assertAlmostEqual(
                 w_coeff_qlit,

@@ -4,6 +4,7 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
 
 pub mod circuit;
 mod generator;
+mod generator1;
 #[cfg(feature = "gpu")]
 mod gpu_generator;
 mod simulate;
@@ -14,6 +15,8 @@ pub use simulate::{simulate_circuit, simulate_circuit_parallel, simulate_circuit
 
 #[cfg(feature = "gpu")]
 pub use simulate::simulate_circuit_gpu;
+
+use crate::simulate::simulate_circuit_parallel2;
 
 fn parse_basis_state(w: &Bound<PyString>, n: usize) -> PyResult<Vec<bool>> {
     let w_str = w.to_str()?;
@@ -69,6 +72,18 @@ fn py_simulate_circuit_parallel1(
     ))
 }
 
+#[pyfunction]
+#[pyo3(name = "simulate_circuit_parallel2")]
+fn py_simulate_circuit_parallel2(
+    w: &Bound<PyString>,
+    circuit: &CliffordTCircuit,
+) -> PyResult<Complex<f64>> {
+    Ok(simulate_circuit_parallel2(
+        &parse_basis_state(w, circuit.qubits())?,
+        circuit,
+    ))
+}
+
 #[pymodule]
 #[pyo3(name = "qlit")]
 pub fn python_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -79,5 +94,6 @@ pub fn python_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit_parallel, m)?)?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit_parallel1, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simulate_circuit_parallel2, m)?)?;
     Ok(())
 }

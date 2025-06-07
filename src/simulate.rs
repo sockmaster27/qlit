@@ -14,6 +14,7 @@ use rayon::Scope;
 use crate::{
     circuit::{CliffordTCircuit, CliffordTGate},
     generator::Generator,
+    generator1,
 };
 
 #[cfg(feature = "gpu")]
@@ -345,6 +346,205 @@ pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Com
     let g = Generator::zero(n);
     rayon::in_place_scope(|s| {
         apply_gates(s, x, x_coeff, g, &circuit.gates(), w, &w_coeff);
+    });
+
+    let res = *w_coeff.lock().unwrap();
+    res
+}
+
+/// Compute the coefficient of the given basis state, `w`,
+/// after `circuit` has been applied to the zero state.
+///
+/// # Panics
+/// If `w` has a length different from `circuit.qubits()`.
+pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+    let w_len = w.len();
+    let n = circuit.qubits();
+    let t = circuit.t_gates();
+    assert_eq!(
+        w_len, n,
+        "Basis state with length {w_len} does not match circuit with {n} qubits"
+    );
+
+    let batch_size_log2 = min(1, t);
+    let batch_size = 1 << batch_size_log2;
+
+    let next_path = Mutex::new(vec![false; t - batch_size_log2]);
+    let w_coeff = Mutex::new(Complex::ZERO);
+    let done = AtomicBool::new(false);
+
+    rayon::in_place_scope(|s| {
+        let threads = min(
+            num_cpus::get(),
+            2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+        );
+        for _ in 0..threads {
+            s.spawn(|_| {
+                let mut w_coeff_local = Complex::ZERO;
+                loop {
+                    let mut next_path_locked = next_path.lock().unwrap();
+                    if done.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let path = next_path_locked.clone();
+                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                    drop(next_path_locked);
+
+                    let mut xs = vec![vec![false; n]; batch_size];
+                    let mut x_coeffs = vec![Complex::ONE; batch_size];
+                    let mut g = generator1::Generator::zero(n, batch_size_log2);
+                    let mut seen_t_gates = 0;
+                    for &gate in circuit.gates() {
+                        match gate {
+                            CliffordTGate::X(a) => {
+                                for i in 0..batch_size {
+                                    xs[i][a] = !xs[i][a];
+                                }
+                                g.apply_x_gate(a);
+                            }
+                            CliffordTGate::Y(a) => {
+                                for i in 0..batch_size {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::I;
+                                    } else {
+                                        x_coeffs[i] *= Complex::I;
+                                    }
+                                    xs[i][a] = !xs[i][a];
+                                }
+                                g.apply_y_gate(a);
+                            }
+                            CliffordTGate::Z(a) => {
+                                for i in 0..batch_size {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::ONE;
+                                    }
+                                }
+                                g.apply_z_gate(a);
+                            }
+                            CliffordTGate::S(a) => {
+                                for i in 0..batch_size {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= Complex::I;
+                                    }
+                                }
+                                g.apply_s_gate(a);
+                            }
+                            CliffordTGate::Sdg(a) => {
+                                for i in 0..batch_size {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::I;
+                                    }
+                                }
+                                g.apply_sdg_gate(a);
+                            }
+                            CliffordTGate::Cnot(a, b) => {
+                                for i in 0..batch_size {
+                                    xs[i][b] ^= xs[i][a];
+                                }
+                                g.apply_cnot_gate(a, b);
+                            }
+                            CliffordTGate::Cz(a, b) => {
+                                for i in 0..batch_size {
+                                    if xs[i][a] == true && xs[i][b] == true {
+                                        x_coeffs[i] *= -Complex::ONE;
+                                    }
+                                }
+                                g.apply_cz_gate(a, b);
+                            }
+                            CliffordTGate::H(a) => {
+                                for i in 0..batch_size {
+                                    let r = g.coeff_ratio_flipped_bit(i, &xs[i], a);
+                                    if r != -Complex::ONE {
+                                        x_coeffs[i] *= (r + 1.0) / SQRT_2;
+                                        xs[i][a] = false;
+                                    } else {
+                                        if xs[i][a] == false {
+                                            x_coeffs[i] *= 2.0 / SQRT_2;
+                                        } else {
+                                            x_coeffs[i] *= -2.0 / SQRT_2;
+                                        }
+                                        xs[i][a] = true;
+                                    }
+                                }
+                                g.apply_h_gate(a);
+                            }
+
+                            CliffordTGate::T(a) => {
+                                if seen_t_gates < path.len() {
+                                    if path[seen_t_gates] == false {
+                                        for i in 0..batch_size {
+                                            x_coeffs[i] *= C_I;
+                                        }
+                                    } else {
+                                        for i in 0..batch_size {
+                                            if xs[i][a] == true {
+                                                x_coeffs[i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[i] *= C_Z;
+                                        }
+                                        g.apply_z_gate(a);
+                                    }
+                                } else {
+                                    let chunks = 1 << (seen_t_gates + 1);
+                                    let chunk_size = batch_size / chunks;
+                                    for c in 0..(chunks / 2) {
+                                        for i in 0..chunk_size {
+                                            if xs[2 * c * chunk_size + i][a] == true {
+                                                x_coeffs[2 * c * chunk_size + i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[2 * c * chunk_size + i] *= C_Z;
+
+                                            x_coeffs[1 + 2 * c * chunk_size + i] *= C_I;
+                                        }
+                                    }
+                                    g.apply_t_gate(a);
+                                }
+
+                                seen_t_gates += 1;
+                            }
+                            CliffordTGate::Tdg(a) => {
+                                if seen_t_gates < path.len() {
+                                    if path[seen_t_gates] == false {
+                                        for i in 0..batch_size {
+                                            x_coeffs[i] *= C_I_DG;
+                                        }
+                                    } else {
+                                        for i in 0..batch_size {
+                                            if xs[i][a] == true {
+                                                x_coeffs[i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[i] *= C_Z_DG;
+                                        }
+                                        g.apply_z_gate(a);
+                                    }
+                                } else {
+                                    let chunks = 1 << (seen_t_gates + 1);
+                                    let chunk_size = batch_size / chunks;
+                                    for c in 0..(chunks / 2) {
+                                        for i in 0..chunk_size {
+                                            if xs[2 * c * chunk_size + i][a] == true {
+                                                x_coeffs[2 * c * chunk_size + i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[2 * c * chunk_size + i] *= C_Z_DG;
+
+                                            x_coeffs[(1 + 2 * c) * chunk_size + i] *= C_I_DG;
+                                        }
+                                    }
+                                    g.apply_t_gate(a);
+                                }
+
+                                seen_t_gates += 1;
+                            }
+                        }
+                    }
+                    for i in 0..batch_size {
+                        println!("{i} {}", x_coeffs[i] * g.coeff_ratio(i, &xs[i], w));
+                        w_coeff_local += x_coeffs[i] * g.coeff_ratio(i, &xs[i], w);
+                    }
+                }
+                *w_coeff.lock().unwrap() += w_coeff_local;
+            });
+        }
     });
 
     let res = *w_coeff.lock().unwrap();
