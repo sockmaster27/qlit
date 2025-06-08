@@ -19,7 +19,6 @@ enum Pauli {
 pub struct Generator {
     n: usize,
     r_cols: usize,
-    seen_t_gates: usize,
     /// The augmented stabilizer tableau,
     /// ```text
     /// P1 -> x1 x2 ... xn | z1 z2 ... zn | r1 r2 ... r2^t
@@ -49,8 +48,7 @@ impl Generator {
         }
         Generator {
             n,
-            r_cols,
-            seen_t_gates: 0,
+            r_cols: 1,
             tableau,
         }
     }
@@ -170,18 +168,15 @@ impl Generator {
     pub fn apply_t_gate(&mut self, a: usize) {
         let n = self.n;
         let r_cols = self.r_cols;
-        let chunks = 1 << (self.seen_t_gates + 1);
-        let chunk_size = r_cols / chunks;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
-            for c in 0..(chunks / 2) {
-                for j in 0..chunk_size {
-                    let r = r_column_block_index(n, i, 2 * c * chunk_size + j);
-                    self.tableau[r] ^= self.tableau[x];
-                }
+            for j in 0..r_cols {
+                let r1 = r_column_block_index(n, i, j);
+                let r2 = r_column_block_index(n, i, j + r_cols);
+                self.tableau[r2] = self.tableau[r1] ^ self.tableau[x];
             }
         }
-        self.seen_t_gates += 1;
+        self.r_cols *= 2;
     }
 
     /// Compute the ratio of the coefficients of `w1` and `w2`, such that

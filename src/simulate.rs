@@ -352,6 +352,9 @@ pub fn simulate_circuit_parallel1(w: &[bool], circuit: &CliffordTCircuit) -> Com
     res
 }
 
+/// TODO: Find an optimal value for this.
+const MAX_BATCH_SIZE_LOG2: usize = 16;
+
 /// Compute the coefficient of the given basis state, `w`,
 /// after `circuit` has been applied to the zero state.
 ///
@@ -377,8 +380,7 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
         .unwrap_or(usize::MAX);
 
     // Ensure that there is at least one batch per thread.
-    let batch_size_log2 = min(16, t - threads_log2);
-    let batch_size = 1 << batch_size_log2;
+    let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
 
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
     let w_coeff = Mutex::new(Complex::ZERO);
@@ -397,20 +399,23 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                     done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                     drop(next_path_locked);
 
-                    let mut xs = vec![vec![false; n]; batch_size];
-                    let mut x_coeffs = vec![Complex::ONE; batch_size];
+                    let mut r_cols = 1;
+                    let mut xs = vec![vec![false; n]];
+                    let mut x_coeffs = vec![Complex::ONE];
                     let mut g = generator1::Generator::zero(n, batch_size_log2);
                     let mut seen_t_gates = 0;
                     for &gate in circuit.gates() {
                         match gate {
                             CliffordTGate::X(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     xs[i][a] = !xs[i][a];
                                 }
                                 g.apply_x_gate(a);
                             }
                             CliffordTGate::Y(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::I;
                                     } else {
@@ -421,7 +426,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                 g.apply_y_gate(a);
                             }
                             CliffordTGate::Z(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
@@ -429,7 +435,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                 g.apply_z_gate(a);
                             }
                             CliffordTGate::S(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= Complex::I;
                                     }
@@ -437,7 +444,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                 g.apply_s_gate(a);
                             }
                             CliffordTGate::Sdg(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::I;
                                     }
@@ -445,13 +453,15 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                 g.apply_sdg_gate(a);
                             }
                             CliffordTGate::Cnot(a, b) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     xs[i][b] ^= xs[i][a];
                                 }
                                 g.apply_cnot_gate(a, b);
                             }
                             CliffordTGate::Cz(a, b) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true && xs[i][b] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
@@ -459,7 +469,8 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                 g.apply_cz_gate(a, b);
                             }
                             CliffordTGate::H(a) => {
-                                for i in 0..batch_size {
+                                for i in 0..r_cols {
+                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     let r = g.coeff_ratio_flipped_bit(i, &xs[i], a);
                                     if r != -Complex::ONE {
                                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
@@ -479,11 +490,11 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             CliffordTGate::T(a) => {
                                 if seen_t_gates < path.len() {
                                     if path[seen_t_gates] == false {
-                                        for i in 0..batch_size {
+                                        for i in 0..r_cols {
                                             x_coeffs[i] *= C_I;
                                         }
                                     } else {
-                                        for i in 0..batch_size {
+                                        for i in 0..r_cols {
                                             if xs[i][a] == true {
                                                 x_coeffs[i] *= -Complex::ONE;
                                             }
@@ -492,22 +503,21 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         g.apply_z_gate(a);
                                     }
                                 } else {
-                                    let chunks = 1 << ((seen_t_gates - path.len()) + 1);
-                                    let chunk_size = batch_size / chunks;
-                                    for c in 0..(chunks / 2) {
-                                        for i in 0..chunk_size {
-                                            let index_z = 2 * c * chunk_size + i;
-                                            let index_i = (1 + 2 * c) * chunk_size + i;
+                                    for i in 0..r_cols {
+                                        let index_i = i;
+                                        let index_z = i + r_cols;
+                                        xs.push(xs[index_i].clone());
+                                        x_coeffs.push(x_coeffs[index_i]);
 
-                                            if xs[index_z][a] == true {
-                                                x_coeffs[index_z] *= -Complex::ONE;
-                                            }
-                                            x_coeffs[index_z] *= C_Z;
+                                        x_coeffs[index_i] *= C_I;
 
-                                            x_coeffs[index_i] *= C_I;
+                                        if xs[index_z][a] == true {
+                                            x_coeffs[index_z] *= -Complex::ONE;
                                         }
+                                        x_coeffs[index_z] *= C_Z;
                                     }
                                     g.apply_t_gate(a);
+                                    r_cols *= 2;
                                 }
 
                                 seen_t_gates += 1;
@@ -515,11 +525,11 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             CliffordTGate::Tdg(a) => {
                                 if seen_t_gates < path.len() {
                                     if path[seen_t_gates] == false {
-                                        for i in 0..batch_size {
+                                        for i in 0..r_cols {
                                             x_coeffs[i] *= C_I_DG;
                                         }
                                     } else {
-                                        for i in 0..batch_size {
+                                        for i in 0..r_cols {
                                             if xs[i][a] == true {
                                                 x_coeffs[i] *= -Complex::ONE;
                                             }
@@ -528,29 +538,28 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         g.apply_z_gate(a);
                                     }
                                 } else {
-                                    let chunks = 1 << ((seen_t_gates - path.len()) + 1);
-                                    let chunk_size = batch_size / chunks;
-                                    for c in 0..(chunks / 2) {
-                                        for i in 0..chunk_size {
-                                            let index_z = 2 * c * chunk_size + i;
-                                            let index_i = (1 + 2 * c) * chunk_size + i;
+                                    for i in 0..r_cols {
+                                        let index_i = i;
+                                        let index_z = i + r_cols;
+                                        xs.push(xs[index_i].clone());
+                                        x_coeffs.push(x_coeffs[index_i]);
 
-                                            if xs[index_z][a] == true {
-                                                x_coeffs[index_z] *= -Complex::ONE;
-                                            }
-                                            x_coeffs[index_z] *= C_Z_DG;
+                                        x_coeffs[index_i] *= C_I_DG;
 
-                                            x_coeffs[index_i] *= C_I_DG;
+                                        if xs[index_z][a] == true {
+                                            x_coeffs[index_z] *= -Complex::ONE;
                                         }
+                                        x_coeffs[index_z] *= C_Z_DG;
                                     }
                                     g.apply_t_gate(a);
+                                    r_cols *= 2;
                                 }
 
                                 seen_t_gates += 1;
                             }
                         }
                     }
-                    for i in 0..batch_size {
+                    for i in 0..r_cols {
                         w_coeff_local += x_coeffs[i] * g.coeff_ratio(i, &xs[i], w);
                     }
                 }
