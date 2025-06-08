@@ -14,7 +14,7 @@ use rayon::Scope;
 use crate::{
     circuit::{CliffordTCircuit, CliffordTGate},
     generator::Generator,
-    generator1,
+    tableau::ExtendedTableau,
 };
 
 #[cfg(feature = "gpu")]
@@ -402,20 +402,18 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                     let mut r_cols = 1;
                     let mut xs = vec![vec![false; n]];
                     let mut x_coeffs = vec![Complex::ONE];
-                    let mut g = generator1::Generator::zero(n, batch_size_log2);
+                    let mut g = ExtendedTableau::zero(n, batch_size_log2);
                     let mut seen_t_gates = 0;
                     for &gate in circuit.gates() {
                         match gate {
                             CliffordTGate::X(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     xs[i][a] = !xs[i][a];
                                 }
                                 g.apply_x_gate(a);
                             }
                             CliffordTGate::Y(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::I;
                                     } else {
@@ -427,7 +425,6 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             }
                             CliffordTGate::Z(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
@@ -436,7 +433,6 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             }
                             CliffordTGate::S(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= Complex::I;
                                     }
@@ -445,7 +441,6 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             }
                             CliffordTGate::Sdg(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true {
                                         x_coeffs[i] *= -Complex::I;
                                     }
@@ -454,14 +449,12 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             }
                             CliffordTGate::Cnot(a, b) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     xs[i][b] ^= xs[i][a];
                                 }
                                 g.apply_cnot_gate(a, b);
                             }
                             CliffordTGate::Cz(a, b) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     if xs[i][a] == true && xs[i][b] == true {
                                         x_coeffs[i] *= -Complex::ONE;
                                     }
@@ -470,7 +463,6 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                             }
                             CliffordTGate::H(a) => {
                                 for i in 0..r_cols {
-                                    assert!(i < xs.len(), "{seen_t_gates} --- {xs:?}");
                                     let r = g.coeff_ratio_flipped_bit(i, &xs[i], a);
                                     if r != -Complex::ONE {
                                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
@@ -516,7 +508,7 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         }
                                         x_coeffs[index_z] *= C_Z;
                                     }
-                                    g.apply_t_gate(a);
+                                    g.split_r_columns(a);
                                     r_cols *= 2;
                                 }
 
@@ -551,7 +543,7 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
                                         }
                                         x_coeffs[index_z] *= C_Z_DG;
                                     }
-                                    g.apply_t_gate(a);
+                                    g.split_r_columns(a);
                                     r_cols *= 2;
                                 }
 

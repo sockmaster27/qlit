@@ -4,10 +4,10 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyString};
 
 pub mod circuit;
 mod generator;
-mod generator1;
 #[cfg(feature = "gpu")]
 mod gpu_generator;
 mod simulate;
+mod tableau;
 mod utils;
 
 use rayon::ThreadPoolBuilder;

@@ -15,9 +15,12 @@ enum Pauli {
     Z,
 }
 
+/// An extended stabilizer tableau.
 #[derive(Clone)]
-pub struct Generator {
+pub struct ExtendedTableau {
+    /// The number of qubits in the tableau.
     n: usize,
+    /// The current number of active r-columns in the tableau.
     r_cols: usize,
     /// The augmented stabilizer tableau,
     /// ```text
@@ -37,16 +40,17 @@ pub struct Generator {
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     tableau: Vec<BitBlock>,
 }
-impl Generator {
-    /// Initialize a new generator with `n` qubits in the initial zero state.
+impl ExtendedTableau {
+    /// Initialize a new tableau with `n` qubits in the initial zero state.
+    /// This allocates a tableau with capacity for `2^r_cols_log2` r-columns.
     pub fn zero(n: usize, r_cols_log2: usize) -> Self {
-        let r_cols = 1 << r_cols_log2;
-        let mut tableau = vec![0; tableau_block_length(n, r_cols)];
+        let r_cols_capacity = 1 << r_cols_log2;
+        let mut tableau = vec![0; tableau_block_length(n, r_cols_capacity)];
         for i in 0..n {
             let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
         }
-        Generator {
+        ExtendedTableau {
             n,
             r_cols: 1,
             tableau,
@@ -165,7 +169,11 @@ impl Generator {
         }
     }
 
-    pub fn apply_t_gate(&mut self, a: usize) {
+    /// Double the number of r-columns in the tableau to represent the current state of the tableau both with and without the Z(a) gate applied.
+    ///
+    /// The first half of the resulting r-columns will be unchanged,
+    /// while the second half will be those where the Z(a) gate is applied.
+    pub fn split_r_columns(&mut self, a: usize) {
         let n = self.n;
         let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
@@ -184,8 +192,8 @@ impl Generator {
     /// coefficient_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
     ///
-    /// This will mutate the generator in such a way that it becomes uninitialized.
-    pub fn coeff_ratio(&mut self, j: usize, w1: &[bool], w2: &[bool]) -> Complex<f64> {
+    /// This will respect the sign of the `i`th column.
+    pub fn coeff_ratio(&mut self, i: usize, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         let r_cols = self.r_cols;
         debug_assert_eq!(w1.len(), n, "Basis state 1 must have length {n}");
@@ -205,9 +213,9 @@ impl Generator {
         }
         // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
         let mut row = 0;
-        for j in 0..n {
-            if self.x_bit(row, j) == true {
-                if w1[j] != w2[j] {
+        for q in 0..n {
+            if self.x_bit(row, q) == true {
+                if w1[q] != w2[q] {
                     self.multiply_rows_into(row, aux_row);
                 }
                 row += 1;
@@ -215,12 +223,14 @@ impl Generator {
         }
 
         // Compute the (w2, w1) entry in the stabilizer of the correct form.
-        self.stabilizer_matrix_entry(j, aux_row, w1, w2)
+        self.stabilizer_matrix_entry(i, aux_row, w1, w2)
     }
     /// Same as [`Self::coeff_ratio`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
+    ///
+    /// This will respect the sign of the `i`th column.
     pub fn coeff_ratio_flipped_bit(
         &mut self,
-        j: usize,
+        i: usize,
         w1: &[bool],
         flipped_bit: usize,
     ) -> Complex<f64> {
@@ -246,7 +256,7 @@ impl Generator {
             .map(|(i, &b)| if i == flipped_bit { !b } else { b });
         match row {
             None => Complex::ZERO,
-            Some(row) => self.stabilizer_matrix_entry(j, row, w1, w2),
+            Some(row) => self.stabilizer_matrix_entry(i, row, w1, w2),
         }
     }
 
@@ -366,7 +376,9 @@ impl Generator {
     }
 
     /// Compute the entry of the `row`th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
-    fn stabilizer_matrix_entry<W1, W2>(&self, j: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
+    ///
+    /// This will respect the sign of the `i`th column.
+    fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
         W2: IntoIterator<Item: Borrow<bool>>,
@@ -375,7 +387,7 @@ impl Generator {
         let mut w1 = w1.into_iter();
         let mut w2 = w2.into_iter();
 
-        let mut res = if self.row_negative(j, row) {
+        let mut res = if self.row_negative(i, row) {
             -Complex::ONE
         } else {
             Complex::ONE
@@ -498,12 +510,14 @@ impl Generator {
     }
 
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
-    fn row_negative(&self, j: usize, row: usize) -> bool {
+    ///
+    /// This will respect the sign of the `i`th column.
+    fn row_negative(&self, i: usize, row: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
-        self.tableau[r_column_block_index(n, row_block_index, j)] & row_bitmask != 0
+        self.tableau[r_column_block_index(n, row_block_index, i)] & row_bitmask != 0
     }
 
     /// Get the Pauli matrix corresponding to the `q`th tensor element in the `p`th row,
@@ -655,7 +669,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -676,7 +690,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -699,7 +713,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -722,7 +736,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -743,7 +757,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -789,7 +803,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = Generator::zero(8, 0);
+            let mut g = ExtendedTableau::zero(8, 0);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(0, &w1, &w2);
 
@@ -843,7 +857,7 @@ mod tests {
         .unwrap();
 
         let w = bits_to_bools(0b1000_0000);
-        let mut g = Generator::zero(8, 0);
+        let mut g = ExtendedTableau::zero(8, 0);
         apply_clifford_circuit(&mut g, &circuit);
 
         assert_eq!(g.coeff_ratio_flipped_bit(0, &w, 0), -Complex::ONE);
@@ -880,7 +894,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut g = Generator::zero(8, 0);
+        let mut g = ExtendedTableau::zero(8, 0);
         apply_clifford_circuit(&mut g, &circuit);
 
         let w1 = bits_to_bools(0b1000_0000);
@@ -909,7 +923,7 @@ mod tests {
         }
     }
 
-    fn apply_clifford_circuit(g: &mut Generator, circuit: &CliffordTCircuit) {
+    fn apply_clifford_circuit(g: &mut ExtendedTableau, circuit: &CliffordTCircuit) {
         for &gate in circuit.gates() {
             match gate {
                 S(a) => g.apply_s_gate(a),
