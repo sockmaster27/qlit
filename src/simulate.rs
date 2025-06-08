@@ -366,7 +366,18 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
-    let batch_size_log2 = min(1, t);
+    let threads = min(
+        num_cpus::get(),
+        2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+    );
+    let threads_log2 = threads
+        .next_power_of_two()
+        .ilog2()
+        .try_into()
+        .unwrap_or(usize::MAX);
+
+    // Ensure that there is at least one batch per thread.
+    let batch_size_log2 = min(16, t - threads_log2);
     let batch_size = 1 << batch_size_log2;
 
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
@@ -374,10 +385,6 @@ pub fn simulate_circuit_parallel2(w: &[bool], circuit: &CliffordTCircuit) -> Com
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        let threads = min(
-            num_cpus::get(),
-            2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
-        );
         for _ in 0..threads {
             s.spawn(|_| {
                 let mut w_coeff_local = Complex::ZERO;
