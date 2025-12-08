@@ -434,7 +434,7 @@ fn assert_almost_eq(result: Complex<f64>, expected: Complex<f64>, i: u8) {
 #[test]
 fn python() {
     pyo3::append_to_inittab!(python_module);
-    Python::with_gil(|py| Python::run(py, c_str!(include_str!("test.py")), None, None).unwrap());
+    Python::attach(|py| Python::run(py, c_str!(include_str!("test.py")), None, None).unwrap());
 }
 
 /// Convert the 8 bits to a vector of 8 booleans.

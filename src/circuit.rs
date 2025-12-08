@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use pyo3::{conversion::FromPyObjectBound, prelude::*};
+use pyo3::{conversion::FromPyObject, prelude::*};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 #[pyclass]
@@ -123,7 +123,7 @@ impl CliffordTCircuit {
     fn py_new(qubits: usize, gates: Bound<'_, PyAny>) -> PyResult<Self> {
         let gates: PyResult<Vec<CliffordTGate>> = gates
             .try_iter()?
-            .flat_map(|r| r.map(|obj| CliffordTGate::from_py_object_bound((&obj).into())))
+            .flat_map(|r| r.map(|obj| CliffordTGate::extract((&obj).into()).map_err(Into::into)))
             .collect();
         Ok(CliffordTCircuit::new(qubits, gates?)?)
     }
