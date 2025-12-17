@@ -117,8 +117,9 @@ jobs:
         strategy:
             matrix:
                 platform:
-                    - runner: macos-13
-                      target: x86_64
+                    # macos-13 has been decomissioned - this will be fixed in next release of maturin
+                    # - runner: macos-13
+                    #   target: x86_64
                     - runner: macos-14
                       target: aarch64
         steps:
