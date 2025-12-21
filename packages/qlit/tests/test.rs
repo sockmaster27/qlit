@@ -1,8 +1,6 @@
 use num_complex::Complex;
-use pyo3::{ffi::c_str, Python};
 use qlit::{
-    circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*},
-    python_module,
+    circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*}
 };
 
 #[test]
@@ -429,12 +427,6 @@ fn assert_almost_eq(result: Complex<f64>, expected: Complex<f64>, i: u8) {
         (result - expected).norm() < 1e-10,
         "w={i:008b}\nresult={result:?}\nexpected={expected:?}",
     );
-}
-
-#[test]
-fn python() {
-    pyo3::append_to_inittab!(python_module);
-    Python::attach(|py| Python::run(py, c_str!(include_str!("test.py")), None, None).unwrap());
 }
 
 /// Convert the 8 bits to a vector of 8 booleans.

@@ -1,9 +1,7 @@
 use std::{error::Error, fmt::Display};
 
-use pyo3::{conversion::FromPyObject, prelude::*};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
     X(usize),
@@ -23,30 +21,7 @@ pub enum CliffordTGate {
     /// The inverse of the T gate.
     Tdg(usize),
 }
-#[pymethods]
-impl CliffordTGate {
-    fn __repr__(&self) -> String {
-        match self {
-            CliffordTGate::X(a) => format!("CliffordTGate.X({a})"),
-            CliffordTGate::Y(a) => format!("CliffordTGate.Y({a})"),
-            CliffordTGate::Z(a) => format!("CliffordTGate.Z({a})"),
 
-            CliffordTGate::H(a) => format!("CliffordTGate.H({a})"),
-
-            CliffordTGate::S(a) => format!("CliffordTGate.S({a})"),
-            CliffordTGate::Sdg(a) => format!("CliffordTGate.Sdg({a})"),
-
-            CliffordTGate::Cnot(a, b) => format!("CliffordTGate.Cnot({a}, {b})"),
-
-            CliffordTGate::Cz(a, b) => format!("CliffordTGate.Cz({a}, {b})"),
-
-            CliffordTGate::T(a) => format!("CliffordTGate.T({a})"),
-            CliffordTGate::Tdg(a) => format!("CliffordTGate.Tdg({a})"),
-        }
-    }
-}
-
-#[pyclass]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliffordTCircuit {
     /// The number of qubits in the circuit.
@@ -102,34 +77,7 @@ impl CliffordTCircuit {
         })
     }
 
-    /// The number of qubits in the circuit.
-    pub fn qubits(&self) -> usize {
-        self.qubits
-    }
-
-    /// The number of `T` and `Tdg` gates in the circuit.
-    pub fn t_gates(&self) -> usize {
-        self.t_gates
-    }
-
-    /// The gates in the circuit, in the order that they are applied.
-    pub fn gates(&self) -> &[CliffordTGate] {
-        &self.gates
-    }
-}
-#[pymethods]
-impl CliffordTCircuit {
-    #[new]
-    fn py_new(qubits: usize, gates: Bound<'_, PyAny>) -> PyResult<Self> {
-        let gates: PyResult<Vec<CliffordTGate>> = gates
-            .try_iter()?
-            .flat_map(|r| r.map(|obj| CliffordTGate::extract((&obj).into()).map_err(Into::into)))
-            .collect();
-        Ok(CliffordTCircuit::new(qubits, gates?)?)
-    }
-
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    #[staticmethod]
     pub fn random(qubits: usize, gates: usize, t_gates: usize, seed: u64) -> Self {
         assert!(
             t_gates <= gates,
@@ -185,24 +133,18 @@ impl CliffordTCircuit {
     }
 
     /// The number of qubits in the circuit.
-    #[getter]
-    #[pyo3(name = "qubits")]
-    fn py_qubits(&self) -> usize {
+    pub fn qubits(&self) -> usize {
         self.qubits
     }
 
-    /// The number of T gates in the circuit.
-    #[getter]
-    #[pyo3(name = "t_gates")]
-    fn py_t_gates(&self) -> usize {
+    /// The number of `T` and `Tdg` gates in the circuit.
+    pub fn t_gates(&self) -> usize {
         self.t_gates
     }
 
     /// The gates in the circuit, in the order that they are applied.
-    #[getter]
-    #[pyo3(name = "gates")]
-    fn py_gates(&self) -> Vec<CliffordTGate> {
-        self.gates.clone()
+    pub fn gates(&self) -> &[CliffordTGate] {
+        &self.gates
     }
 }
 
@@ -223,8 +165,3 @@ impl Display for CircuitCreationError {
     }
 }
 impl Error for CircuitCreationError {}
-impl From<CircuitCreationError> for PyErr {
-    fn from(value: CircuitCreationError) -> Self {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(value.to_string())
-    }
-}

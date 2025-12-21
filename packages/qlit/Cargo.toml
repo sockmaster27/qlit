@@ -1,0 +1,15 @@
+[package]
+name = "qlit"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+gpu = []
+
+[dependencies]
+num-complex = "0.4.6"
+num_cpus = "1.16.0"
+pollster = "0.4.0"
+rand = { version = "0.9.0", features = ["small_rng"] }
+rayon = "1.10.0"
+wgpu = "24.0.1"

@@ -1,0 +1,35 @@
+[project]
+name = "qlit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "sockmaster27", email = "61235930+sockmaster27@users.noreply.github.com" },
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = []
+
+[dependency-groups]
+dev = ["qiskit>=1.2.4"]
+
+[tool.maturin]
+module-name = "qlit._core"
+python-packages = ["qlit"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "src/**/*.rs" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"

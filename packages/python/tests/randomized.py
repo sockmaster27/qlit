@@ -1,4 +1,3 @@
-# This module is NOT called from test.rs
 import random
 import unittest
 from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel, simulate_circuit_parallel2

@@ -1,4 +1,3 @@
-# This module is called from test.rs
 from math import sqrt
 import unittest
 from qlit import simulate_circuit, CliffordTCircuit, CliffordTGate

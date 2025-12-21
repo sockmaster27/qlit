@@ -1,19 +1,2 @@
-[build-system]
-requires = ["maturin>=1.8,<2.0"]
-build-backend = "maturin"
-
-[project]
-name = "qlit"
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
-]
-dynamic = ["version"]
-dependencies = []
-
-[dependency-groups]
-dev = [
-    "qiskit>=1.2.4",
-]
+[tool.uv.workspace]
+members = ["packages/python", "packages/tests"]
