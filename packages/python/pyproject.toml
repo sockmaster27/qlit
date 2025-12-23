@@ -1,6 +1,7 @@
 [project]
 name = "qlit"
 version = "0.1.0"
+license = "MPL-2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
