@@ -4,9 +4,6 @@ version = "0.1.0"
 license = "MPL-2.0"
 description = "Strong exact simulation of Clifford+T quantum circuits"
 readme = "README.md"
-authors = [
-    { name = "sockmaster27", email = "61235930+sockmaster27@users.noreply.github.com" },
-]
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Rust",
