@@ -25,9 +25,9 @@ cache-keys = [
     { file = "pyproject.toml" },
     { file = "src/**/*.rs" },
     { file = "Cargo.toml" },
-    { file = "Cargo.lock" },
     { file = "../qlit/src/*" },
     { file = "../qlit/Cargo.toml" },
+    { file = "../../Cargo.lock" },
 ]
 
 [build-system]
