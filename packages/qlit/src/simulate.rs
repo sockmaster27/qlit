@@ -2,8 +2,8 @@ use std::{
     cmp::min,
     f64::consts::{FRAC_1_SQRT_2, SQRT_2},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     vec,
 };
