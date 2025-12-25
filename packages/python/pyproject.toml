@@ -26,6 +26,8 @@ cache-keys = [
     { file = "src/**/*.rs" },
     { file = "Cargo.toml" },
     { file = "Cargo.lock" },
+    { file = "../qlit/src/*" },
+    { file = "../qlit/Cargo.toml" },
 ]
 
 [build-system]
