@@ -1,0 +1,40 @@
+name: Bench
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+    workflow_dispatch:
+
+jobs:
+    rust-bench:
+        name: Run Rust benchmarks
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+            - name: Setup rust toolchain, cache and cargo-codspeed binary
+              uses: moonrepo/setup-rust@v0
+              with:
+                  channel: stable
+                  cache-target: release
+                  bins: cargo-codspeed
+            - name: Build benchmark
+              run: cargo codspeed build
+            - name: Benchmark
+              uses: CodSpeedHQ/action@v4
+              with:
+                  mode: simulation
+                  run: cargo codspeed run
+
+    python-bench:
+        name: Run Python benchmarks
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+            - uses: astral-sh/setup-uv@v7
+            - name: Benchmark
+              uses: CodSpeedHQ/action@v4
+              with:
+                  mode: simulation
+                  run: uv run pytest packages/python/benches/bench.py --codspeed

@@ -1,6 +1,6 @@
 # To execute locally, run
 #
-#    uv run pytest packages\python\benches\bench.py --codspeed
+#    uv run pytest packages/python/benches/bench.py --codspeed
 #
 
 import pytest
