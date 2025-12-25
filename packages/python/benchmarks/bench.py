@@ -1,3 +1,8 @@
+# To execute locally, run
+#
+#    uv run pytest packages\python\benchmarks\bench.py --codspeed
+#
+
 import pytest
 import random
 from qlit import CliffordTCircuit, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel, simulate_circuit_parallel2
