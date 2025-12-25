@@ -13,7 +13,7 @@ classifiers = [
 dependencies = []
 
 [dependency-groups]
-dev = ["qiskit>=1.2.4"]
+dev = ["pytest-codspeed>=4.2.0", "qiskit>=1.2.4"]
 
 [tool.maturin]
 module-name = "qlit._core"
