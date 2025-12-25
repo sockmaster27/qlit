@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
@@ -79,6 +79,7 @@ impl CliffordTCircuit {
 
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     pub fn random(qubits: usize, gates: usize, t_gates: usize, seed: u64) -> Self {
+        assert!(0 < qubits, "qubits must be greater than 0");
         assert!(
             t_gates <= gates,
             "t_gates must be less than or equal to gates"
