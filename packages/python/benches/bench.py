@@ -7,7 +7,7 @@ import pytest
 import random
 from qlit import CliffordTCircuit, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel, simulate_circuit_parallel2
 
-target = simulate_circuit_parallel2
+target = simulate_circuit
 
 def setup(qubits, gates, t_gates):
     seed = 123
