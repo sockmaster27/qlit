@@ -13,8 +13,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
-            - name: Setup rust toolchain, cache and cargo-codspeed binary
-              uses: moonrepo/setup-rust@v0
+            - uses: moonrepo/setup-rust@v0
               with:
                   channel: nightly
                   cache-target: release
@@ -32,6 +31,10 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
+            - uses: moonrepo/setup-rust@v0
+              with:
+                  channel: nightly
+                  cache-target: release
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true
