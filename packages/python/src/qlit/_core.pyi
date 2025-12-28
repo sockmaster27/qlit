@@ -44,7 +44,7 @@ class CliffordTGate:
 
 class CliffordTCircuit:
     def __init__(self, qubits: int, gates: Iterable[CliffordTGate]) -> None: ...
-    @classmethod
+    @staticmethod
     def random(qubits: int, gates: int, t_gates: int, seed: int) -> CliffordTCircuit: ...
 
     @property
