@@ -1,5 +1,5 @@
 use divan::{Bencher, black_box};
-use qlit::{circuit::CliffordTCircuit, simulate_circuit};
+use qlit::{CliffordTCircuit, simulate_circuit};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 fn main() {

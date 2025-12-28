@@ -1,6 +1,6 @@
 use num_complex::Complex;
 use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
-use qlit::circuit::{CliffordTCircuit, CliffordTGate};
+use qlit::{CliffordTCircuit, CliffordTGate, simulate_circuit};
 use rayon::ThreadPoolBuilder;
 
 use pyo3::conversion::FromPyObject;
@@ -151,8 +151,12 @@ fn parse_basis_state(w: &Bound<PyString>, n: usize) -> PyResult<Vec<bool>> {
 }
 
 #[pyfunction]
-fn simulate_circuit(w: &Bound<PyString>, circuit: &PyCliffordTCircuit) -> PyResult<Complex<f64>> {
-    Ok(qlit::simulate_circuit(
+#[pyo3(name = "simulate_circuit")]
+fn py_simulate_circuit(
+    w: &Bound<PyString>,
+    circuit: &PyCliffordTCircuit,
+) -> PyResult<Complex<f64>> {
+    Ok(simulate_circuit(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
     ))
@@ -164,6 +168,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<PyCliffordTGate>()?;
     m.add_class::<PyCliffordTCircuit>()?;
-    m.add_function(wrap_pyfunction!(simulate_circuit, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
     Ok(())
 }

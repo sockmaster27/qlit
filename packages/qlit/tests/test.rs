@@ -1,7 +1,5 @@
 use num_complex::Complex;
-use qlit::{
-    circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*}
-};
+use qlit::{CircuitCreationError, CliffordTCircuit, CliffordTGate::*};
 
 #[test]
 fn invalid_qubit_index() {
