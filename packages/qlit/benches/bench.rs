@@ -1,5 +1,5 @@
 use divan::{Bencher, black_box};
-use qlit::{circuit::CliffordTCircuit, simulate_circuit_parallel2};
+use qlit::{circuit::CliffordTCircuit, simulate_circuit};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 fn main() {
@@ -20,7 +20,7 @@ fn qubits(bencher: Bencher, qubits: usize) {
     let t_gates = 5;
     let (w, circuit) = setup(qubits, gates, t_gates);
     bencher.bench_local(move || {
-        simulate_circuit_parallel2(black_box(&w), black_box(&circuit));
+        simulate_circuit(black_box(&w), black_box(&circuit));
     });
 }
 
@@ -30,7 +30,7 @@ fn gates(bencher: Bencher, gates: usize) {
     let t_gates = 5;
     let (w, circuit) = setup(qubits, gates, t_gates);
     bencher.bench_local(move || {
-        simulate_circuit_parallel2(black_box(&w), black_box(&circuit));
+        simulate_circuit(black_box(&w), black_box(&circuit));
     });
 }
 
@@ -40,6 +40,6 @@ fn t_gates(bencher: Bencher, t_gates: usize) {
     let gates = 1000;
     let (w, circuit) = setup(qubits, gates, t_gates);
     bencher.bench_local(move || {
-        simulate_circuit_parallel2(black_box(&w), black_box(&circuit));
+        simulate_circuit(black_box(&w), black_box(&circuit));
     });
 }

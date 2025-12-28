@@ -158,39 +158,6 @@ fn simulate_circuit(w: &Bound<PyString>, circuit: &PyCliffordTCircuit) -> PyResu
     ))
 }
 
-#[pyfunction]
-fn simulate_circuit_parallel(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
-    Ok(qlit::simulate_circuit_parallel(
-        &parse_basis_state(w, circuit.qubits())?,
-        &circuit.0,
-    ))
-}
-
-#[pyfunction]
-fn simulate_circuit_parallel1(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
-    Ok(qlit::simulate_circuit_parallel1(
-        &parse_basis_state(w, circuit.qubits())?,
-        &circuit.0,
-    ))
-}
-
-#[pyfunction]
-fn simulate_circuit_parallel2(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
-    Ok(qlit::simulate_circuit_parallel2(
-        &parse_basis_state(w, circuit.qubits())?,
-        &circuit.0,
-    ))
-}
-
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ThreadPoolBuilder::new().build_global().unwrap();
@@ -198,8 +165,5 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCliffordTGate>()?;
     m.add_class::<PyCliffordTCircuit>()?;
     m.add_function(wrap_pyfunction!(simulate_circuit, m)?)?;
-    m.add_function(wrap_pyfunction!(simulate_circuit_parallel, m)?)?;
-    m.add_function(wrap_pyfunction!(simulate_circuit_parallel1, m)?)?;
-    m.add_function(wrap_pyfunction!(simulate_circuit_parallel2, m)?)?;
     Ok(())
 }

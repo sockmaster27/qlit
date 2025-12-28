@@ -646,7 +646,7 @@ fn tableau_block_length(n: usize, r_cols: usize) -> usize {
 }
 
 /// Bit-shift the given block such that the `from`th bit is moved to the `to`th position.
-pub fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
+fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
     if to < from {
         block << (from - to)
     } else {

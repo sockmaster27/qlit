@@ -1,6 +1,6 @@
 import random
 import unittest
-from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_parallel1, simulate_circuit_parallel, simulate_circuit_parallel2
+from qlit import CliffordTCircuit, CliffordTGate, simulate_circuit
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
@@ -50,7 +50,7 @@ class QlitRandomizedTests(unittest.TestCase):
             w_coeff_qiskit = state.data[int(w_be, 2)]
 
             # qlit
-            w_coeff_qlit = simulate_circuit_parallel2(w, circuit)
+            w_coeff_qlit = simulate_circuit(w, circuit)
 
             self.assertAlmostEqual(
                 w_coeff_qlit,
