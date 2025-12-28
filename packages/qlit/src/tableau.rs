@@ -1,10 +1,10 @@
+use num_complex::Complex;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::mem;
+use std::simd::Simd;
 
-use num_complex::Complex;
-
-type BitBlock = u64;
+type BitBlock = Simd<u64, 4>;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
 #[derive(Debug)]
@@ -45,7 +45,7 @@ impl ExtendedTableau {
     /// This allocates a tableau with capacity for `2^r_cols_log2` r-columns.
     pub fn zero(n: usize, r_cols_log2: usize) -> Self {
         let r_cols_capacity = 1 << r_cols_log2;
-        let mut tableau = vec![0; tableau_block_length(n, r_cols_capacity)];
+        let mut tableau = vec![BitBlock::splat(0); tableau_block_length(n, r_cols_capacity)];
         for i in 0..n {
             let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
@@ -65,9 +65,11 @@ impl ExtendedTableau {
             let z = z_column_block_index(n, i, a);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+                let v = self.tableau[x] & self.tableau[z];
+                self.tableau[r] ^= v;
             }
-            self.tableau[z] ^= self.tableau[x];
+            let v = self.tableau[x];
+            self.tableau[z] ^= v;
         }
     }
     pub fn apply_sdg_gate(&mut self, a: usize) {
@@ -76,10 +78,12 @@ impl ExtendedTableau {
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
             let z = z_column_block_index(n, i, a);
-            self.tableau[z] ^= self.tableau[x];
+            let v = self.tableau[x];
+            self.tableau[z] ^= v;
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+                let v = self.tableau[x] & self.tableau[z];
+                self.tableau[r] ^= v;
             }
         }
     }
@@ -91,7 +95,8 @@ impl ExtendedTableau {
             let z = z_column_block_index(n, i, a);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
+                let v = self.tableau[x] & self.tableau[z];
+                self.tableau[r] ^= v;
             }
             self.tableau.swap(z, x);
         }
@@ -106,11 +111,14 @@ impl ExtendedTableau {
             let zb = z_column_block_index(n, i, b);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^=
+                let v =
                     self.tableau[xa] & self.tableau[zb] & !(self.tableau[xb] ^ self.tableau[za]);
+                self.tableau[r] ^= v;
             }
-            self.tableau[za] ^= self.tableau[zb];
-            self.tableau[xb] ^= self.tableau[xa];
+            let v = self.tableau[zb];
+            self.tableau[za] ^= v;
+            let v = self.tableau[xa];
+            self.tableau[xb] ^= v;
         }
     }
     pub fn apply_cz_gate(&mut self, a: usize, b: usize) {
@@ -124,14 +132,17 @@ impl ExtendedTableau {
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
                 // TODO: Simplify expression?
-                self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
+                let v = (self.tableau[xb] & self.tableau[zb])
                     ^ (self.tableau[xa]
                         & self.tableau[xb]
                         & !(self.tableau[zb] ^ self.tableau[za]))
                     ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
+                self.tableau[r] ^= v;
             }
-            self.tableau[za] ^= self.tableau[xb];
-            self.tableau[zb] ^= self.tableau[xa];
+            let v = self.tableau[xb];
+            self.tableau[za] ^= v;
+            let v = self.tableau[xa];
+            self.tableau[zb] ^= v;
         }
     }
     pub fn apply_x_gate(&mut self, a: usize) {
@@ -141,7 +152,8 @@ impl ExtendedTableau {
             let z = z_column_block_index(n, i, a);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[z];
+                let v = self.tableau[z];
+                self.tableau[r] ^= v;
             }
         }
     }
@@ -153,7 +165,8 @@ impl ExtendedTableau {
             let z = z_column_block_index(n, i, a);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] ^ self.tableau[z];
+                let v = self.tableau[x] ^ self.tableau[z];
+                self.tableau[r] ^= v;
             }
         }
     }
@@ -164,7 +177,8 @@ impl ExtendedTableau {
             let x = x_column_block_index(n, i, a);
             for j in 0..r_cols {
                 let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x];
+                let v = self.tableau[x];
+                self.tableau[r] ^= v;
             }
         }
     }
@@ -281,10 +295,10 @@ impl ExtendedTableau {
                 let aux_mask = if i == aux_block_index {
                     !bitmask(aux_bit_index)
                 } else {
-                    !0
+                    !BitBlock::splat(0)
                 };
                 let block = self.tableau[x_column_block_index(n, i, col)] & aux_mask;
-                if block != 0 {
+                if block != BitBlock::splat(0) {
                     let row = BLOCK_SIZE * i + lsb_index(block);
                     if row >= a {
                         pivot = Some(row);
@@ -301,11 +315,11 @@ impl ExtendedTableau {
                     let pivot_mask = if i == pivot_block_index {
                         !bitmask(pivot_bit_index)
                     } else {
-                        !0
+                        !BitBlock::splat(0)
                     };
                     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
                     let mask = self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
-                    if mask == 0 {
+                    if mask == BitBlock::splat(0) {
                         continue;
                     }
 
@@ -313,8 +327,8 @@ impl ExtendedTableau {
                     // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
                     // but in a bit block so we can operate on all rows in the block at once.
                     // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
-                    let mut phase_bit1: BitBlock = 0;
-                    let mut phase_bit2: BitBlock = 0;
+                    let mut phase_bit1: BitBlock = BitBlock::splat(0);
+                    let mut phase_bit2: BitBlock = BitBlock::splat(0);
                     for col2 in 0..n {
                         fn x(x: BitBlock, z: BitBlock) -> BitBlock {
                             x & !z
@@ -329,8 +343,16 @@ impl ExtendedTableau {
                         let x1 = self.tableau[x_column_block_index(n, i, col2)];
                         let z1 = self.tableau[z_column_block_index(n, i, col2)];
                         // Fill these blocks with the bits in the pivot row.
-                        let x2 = if self.x_bit(pivot, col2) { !0 } else { 0 };
-                        let z2 = if self.z_bit(pivot, col2) { !0 } else { 0 };
+                        let x2 = if self.x_bit(pivot, col2) {
+                            !BitBlock::splat(0)
+                        } else {
+                            BitBlock::splat(0)
+                        };
+                        let z2 = if self.z_bit(pivot, col2) {
+                            !BitBlock::splat(0)
+                        } else {
+                            BitBlock::splat(0)
+                        };
 
                         // XY = +iZ
                         // YZ = +iX
@@ -353,7 +375,7 @@ impl ExtendedTableau {
                     // A valid stabilizer row can only ever have a prefix of +1 or -1.
                     // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
                     // This should never be able to happen, and we cannot represent it.
-                    debug_assert!(phase_bit1 == 0, "Imaginary sign");
+                    debug_assert!(phase_bit1 == BitBlock::splat(0), "Imaginary sign");
                     // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
                     // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
                     for j in 0..r_cols {
@@ -468,11 +490,12 @@ impl ExtendedTableau {
         for j in 0..(n + n + r_cols) {
             let source_block = column_block_index(n, source_block_index, j);
             let target_block = column_block_index(n, target_block_index, j);
-            self.tableau[target_block] ^= align_bit_to(
+            let v = align_bit_to(
                 self.tableau[source_block] & source_bitmask,
                 source_bit_index,
                 target_bit_index,
             );
+            self.tableau[target_block] ^= v;
         }
     }
 
@@ -493,8 +516,8 @@ impl ExtendedTableau {
         for j in 0..(n + n + r_cols) {
             let block1 = column_block_index(n, row1_block_index, j);
             let block2 = column_block_index(n, row2_block_index, j);
-            let bit1 = self.tableau[block1] & row1_bitmask != 0;
-            let bit2 = self.tableau[block2] & row2_bitmask != 0;
+            let bit1 = self.tableau[block1] & row1_bitmask != BitBlock::splat(0);
+            let bit2 = self.tableau[block2] & row2_bitmask != BitBlock::splat(0);
             match (bit1, bit2) {
                 (true, false) => {
                     unset_bit(&mut self.tableau[block1], row1_bit_index);
@@ -517,7 +540,8 @@ impl ExtendedTableau {
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
-        self.tableau[r_column_block_index(n, row_block_index, i)] & row_bitmask != 0
+        self.tableau[r_column_block_index(n, row_block_index, i)] & row_bitmask
+            != BitBlock::splat(0)
     }
 
     /// Get the Pauli matrix corresponding to the `q`th tensor element in the `p`th row,
@@ -527,8 +551,10 @@ impl ExtendedTableau {
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
 
-        let x = self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
-        let z = self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
+        let x = self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask
+            != BitBlock::splat(0);
+        let z = self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask
+            != BitBlock::splat(0);
 
         match (x, z) {
             (false, false) => Pauli::I,
@@ -544,7 +570,7 @@ impl ExtendedTableau {
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
-        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != BitBlock::splat(0)
     }
     /// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
     fn x_bit(&self, row: usize, q: usize) -> bool {
@@ -569,8 +595,15 @@ impl ExtendedTableau {
 /// # Panics
 /// If `block` is zero in debug mode.
 fn lsb_index(block: BitBlock) -> usize {
-    debug_assert!(block != 0);
-    let trailing_zeros: usize = block.trailing_zeros().try_into().unwrap();
+    debug_assert!(block != BitBlock::splat(0));
+    let mut trailing_zeros: usize = 0;
+    for &v in block.as_array().iter().rev() {
+        let t = v.trailing_zeros() as usize;
+        trailing_zeros += t;
+        if t != 64 {
+            break;
+        }
+    }
     BLOCK_SIZE - 1 - trailing_zeros
 }
 
@@ -583,9 +616,17 @@ fn lsb_index(block: BitBlock) -> usize {
 ///
 /// # Panics
 /// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
-fn bitmask(i: usize) -> BitBlock {
+fn bitmask(mut i: usize) -> BitBlock {
     debug_assert!(i < BLOCK_SIZE);
-    1 << (BLOCK_SIZE - 1 - i)
+    let mut v = [0; 4];
+    for j in 0..4 {
+        if i < 64 {
+            v[j] = 1 << (64 - 1 - i);
+            break;
+        }
+        i -= 64;
+    }
+    BitBlock::from(v)
 }
 
 /// Set the i'th bit of the given block, i.e. set the bit to 1.
@@ -648,9 +689,11 @@ fn tableau_block_length(n: usize, r_cols: usize) -> usize {
 /// Bit-shift the given block such that the `from`th bit is moved to the `to`th position.
 fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
     if to < from {
-        block << (from - to)
+        let v: u64 = (from - to).try_into().unwrap();
+        block << v
     } else {
-        block >> (to - from)
+        let v: u64 = (to - from).try_into().unwrap();
+        block >> v
     }
 }
 

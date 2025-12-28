@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 mod circuit;
 #[cfg(feature = "gpu")]
 mod gpu_generator;
