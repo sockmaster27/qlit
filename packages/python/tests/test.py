@@ -5,12 +5,19 @@ from qlit import simulate_circuit, CliffordTCircuit, CliffordTGate
 
 class QlitPythonTests(unittest.TestCase):
     def test_invalid_qubit_index(self):
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.H(165)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.X(165)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.X(8)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Y(8)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Z(8)])
         self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.H(8)])
         self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.S(8)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Sdg(8)])
         self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.T(8)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Tdg(8)])
         self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cnot(8, 4)])
         self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cnot(4, 8)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cz(8, 4)])
+        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cz(4, 8)])
     
 
     def test_mismatched_qubit_number(self):
