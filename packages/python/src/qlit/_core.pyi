@@ -1,46 +1,27 @@
-from dataclasses import dataclass
 from typing import Iterable
 
 
 class CliffordTGate:
-    @dataclass
-    class X:
-        a: int
-    @dataclass
-    class Y:
-        a: int
-    @dataclass
-    class Z:
-        a: int
-
-    @dataclass
-    class H:
-        a: int
-
-    @dataclass
-    class S:
-        a: int
-    @dataclass
-    class Sdg:
-        a: int
-
-    @dataclass
-    class Cnot:
-        a: int
-        b: int
-
-    @dataclass
-    class Cz:
-        a: int
-        b: int
-
-    @dataclass
-    class T:
-        a: int
-    @dataclass
-    class Tdg:
-        a: int
-
+    @staticmethod
+    def X(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def Y(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def Z(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def S(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def Sdg(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def H(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def T(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def Tdg(qubit: int) -> CliffordTGate: ...
+    @staticmethod
+    def Cnot(control: int, target: int) -> CliffordTGate: ...
+    @staticmethod
+    def Cz(control: int, target: int) -> CliffordTGate: ...
 
 class CliffordTCircuit:
     def __init__(self, qubits: int, gates: Iterable[CliffordTGate]) -> None: ...
