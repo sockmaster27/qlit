@@ -1,8 +1,8 @@
 mod circuit;
-#[cfg(feature = "gpu")]
-mod gpu_generator;
 mod simulate;
 mod tableau;
+#[cfg(feature = "gpu")]
+mod tableau_gpu;
 mod utils;
 
 pub use circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate};

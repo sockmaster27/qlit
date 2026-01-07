@@ -35,6 +35,12 @@ pub struct GpuContext {
     apply_s_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_s_gate_pipeline: wgpu::ComputePipeline,
 
+    apply_x_gate_bind_group_layout: wgpu::BindGroupLayout,
+    apply_x_gate_pipeline: wgpu::ComputePipeline,
+
+    apply_y_gate_bind_group_layout: wgpu::BindGroupLayout,
+    apply_y_gate_pipeline: wgpu::ComputePipeline,
+
     apply_z_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_z_gate_pipeline: wgpu::ComputePipeline,
 
@@ -114,7 +120,7 @@ impl GpuContext {
         let apply_cnot_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Apply Cnot Gate"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("gpu_generator/apply_cnot_gate.wgsl").into(),
+                include_str!("tableau_gpu/apply_cnot_gate.wgsl").into(),
             ),
         });
         let apply_cnot_gate_pipeline_layout =
@@ -152,9 +158,7 @@ impl GpuContext {
             });
         let apply_h_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Apply H Gate"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("gpu_generator/apply_h_gate.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_h_gate.wgsl").into()),
         });
         let apply_h_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -188,9 +192,7 @@ impl GpuContext {
             });
         let apply_s_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Apply S Gate"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("gpu_generator/apply_s_gate.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_s_gate.wgsl").into()),
         });
         let apply_s_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -203,6 +205,74 @@ impl GpuContext {
                 label: Some("Apply S Gate"),
                 layout: Some(&apply_s_gate_pipeline_layout),
                 module: &apply_s_gate_module,
+                entry_point: Some("main"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        // - X
+        let apply_x_gate_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Apply X Gate"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let apply_x_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Apply X Gate"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_x_gate.wgsl").into()),
+        });
+        let apply_x_gate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Apply X Gate"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &apply_x_gate_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let apply_x_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply X Gate"),
+                layout: Some(&apply_x_gate_pipeline_layout),
+                module: &apply_x_gate_module,
+                entry_point: Some("main"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        // - Y
+        let apply_y_gate_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Apply Y Gate"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let apply_y_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Apply Y Gate"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_y_gate.wgsl").into()),
+        });
+        let apply_y_gate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Apply Y Gate"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &apply_y_gate_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let apply_y_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply Y Gate"),
+                layout: Some(&apply_y_gate_pipeline_layout),
+                module: &apply_y_gate_module,
                 entry_point: Some("main"),
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -224,9 +294,7 @@ impl GpuContext {
             });
         let apply_z_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Apply Z Gate"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("gpu_generator/apply_z_gate.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_z_gate.wgsl").into()),
         });
         let apply_z_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -284,7 +352,7 @@ impl GpuContext {
         let elimination_pass_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Elimination Pass"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("gpu_generator/elimination_pass.wgsl").into(),
+                include_str!("tableau_gpu/elimination_pass.wgsl").into(),
             ),
         });
         let elimination_pass_pipeline_layout =
@@ -335,7 +403,7 @@ impl GpuContext {
             });
         let swap_rows_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Swap Rows"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("gpu_generator/swap_rows.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/swap_rows.wgsl").into()),
         });
         let swap_rows_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -366,6 +434,12 @@ impl GpuContext {
             apply_s_gate_bind_group_layout,
             apply_s_gate_pipeline,
 
+            apply_x_gate_bind_group_layout,
+            apply_x_gate_pipeline,
+
+            apply_y_gate_bind_group_layout,
+            apply_y_gate_pipeline,
+
             apply_z_gate_bind_group_layout,
             apply_z_gate_pipeline,
 
@@ -378,12 +452,12 @@ impl GpuContext {
     }
 }
 
-pub struct GpuGenerator {
+pub struct TableauGpu {
     n: u32,
     tableau_bind_group: wgpu::BindGroup,
 }
-impl GpuGenerator {
-    pub fn zero(n: usize) -> GpuGenerator {
+impl TableauGpu {
+    pub fn zero(n: usize) -> Self {
         let gpu = get_gpu();
 
         let n: u32 = n.try_into().expect("n does not fit into u32");
@@ -424,7 +498,7 @@ impl GpuGenerator {
             ],
         });
 
-        GpuGenerator {
+        TableauGpu {
             n,
             tableau_bind_group,
         }
@@ -540,6 +614,76 @@ impl GpuGenerator {
         compute_pass.set_pipeline(&gpu.apply_s_gate_pipeline);
         compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
         compute_pass.set_bind_group(1, &apply_s_gate_bind_group, &[]);
+        compute_pass.dispatch_workgroups(
+            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
+            1,
+            1,
+        );
+        drop(compute_pass);
+
+        gpu.queue.submit([encoder.finish()]);
+    }
+    pub fn apply_x_gate(&mut self, a: usize) {
+        let gpu = get_gpu();
+
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let a_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("a"),
+                contents: &a.to_ne_bytes(),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+        let apply_x_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("X Bind Group"),
+            layout: &gpu.apply_x_gate_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: a_buf.as_entire_binding(),
+            }],
+        });
+
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.apply_x_gate_pipeline);
+        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        compute_pass.set_bind_group(1, &apply_x_gate_bind_group, &[]);
+        compute_pass.dispatch_workgroups(
+            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
+            1,
+            1,
+        );
+        drop(compute_pass);
+
+        gpu.queue.submit([encoder.finish()]);
+    }
+    pub fn apply_y_gate(&mut self, a: usize) {
+        let gpu = get_gpu();
+
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let a_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("a"),
+                contents: &a.to_ne_bytes(),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+        let apply_y_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Y Bind Group"),
+            layout: &gpu.apply_y_gate_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: a_buf.as_entire_binding(),
+            }],
+        });
+
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.apply_y_gate_pipeline);
+        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        compute_pass.set_bind_group(1, &apply_y_gate_bind_group, &[]);
         compute_pass.dispatch_workgroups(
             column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
             1,
@@ -750,4 +894,285 @@ fn tableau_byte_length(n: u32) -> u32 {
 /// Convert some number of blocks to the corresponding number of bytes.
 fn blocks_to_bytes(n: u32) -> u32 {
     n * (BLOCK_SIZE / 8)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::circuit::{CliffordTCircuit, CliffordTGate::*};
+    use crate::utils::bits_to_bools;
+
+    use super::*;
+
+    #[test]
+    fn zero() {
+        let circuit = CliffordTCircuit::new(8, []).unwrap();
+
+        let w1 = bits_to_bools(0b0000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if i == 0b0000_0000 {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn imaginary() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+
+        let w1 = bits_to_bools(0b0000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if i == 0b0000_0000 {
+                Complex::ONE
+            } else if i == 0b1000_0000 {
+                Complex::I
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn negative_imaginary() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if i == 0b0000_0000 {
+                -Complex::I
+            } else if i == 0b1000_0000 {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn flipped() {
+        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if i == 0b1000_0000 {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn bell_state() {
+        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+
+        let w1 = bits_to_bools(0b1100_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn larger_circuit() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        )
+        .unwrap();
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let mut g = TableauGpu::zero(8);
+            apply_clifford_circuit(&mut g, &circuit);
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if [
+                0b0000_0000,
+                0b0100_0000,
+                0b1100_0000,
+                0b0011_0000,
+                0b0111_0000,
+                0b1011_0000,
+            ]
+            .contains(&i)
+            {
+                -Complex::ONE
+            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn bitflip_ratio() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        )
+        .unwrap();
+
+        let w = bits_to_bools(0b1000_0000);
+        let mut g = TableauGpu::zero(8);
+        apply_clifford_circuit(&mut g, &circuit);
+
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::ZERO);
+    }
+
+    #[test]
+    fn repeated_reading() {
+        let circuit = CliffordTCircuit::new(
+            8,
+            [
+                H(0),
+                H(1),
+                S(2),
+                H(3),
+                S(1),
+                S(0),
+                Cnot(2, 3),
+                S(1),
+                H(0),
+                S(3),
+                Cnot(1, 0),
+                S(3),
+                H(1),
+                S(3),
+                S(1),
+                S(3),
+                H(1),
+                Cnot(3, 2),
+                H(1),
+                Cnot(3, 1),
+            ],
+        )
+        .unwrap();
+
+        let mut g = TableauGpu::zero(8);
+        apply_clifford_circuit(&mut g, &circuit);
+
+        let w1 = bits_to_bools(0b1000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let result = g.coeff_ratio(&w1, &w2);
+
+            let expected = if [
+                0b0000_0000,
+                0b0100_0000,
+                0b1100_0000,
+                0b0011_0000,
+                0b0111_0000,
+                0b1011_0000,
+            ]
+            .contains(&i)
+            {
+                -Complex::ONE
+            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
+                Complex::ONE
+            } else {
+                Complex::ZERO
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    fn apply_clifford_circuit(g: &mut TableauGpu, circuit: &CliffordTCircuit) {
+        for &gate in circuit.gates() {
+            match gate {
+                S(a) => g.apply_s_gate(a),
+                H(a) => g.apply_h_gate(a),
+                Cnot(a, b) => g.apply_cnot_gate(a, b),
+                _ => unreachable!(),
+            }
+        }
+    }
 }

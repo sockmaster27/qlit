@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[cfg(feature = "gpu")]
-use crate::gpu_generator::GpuGenerator;
+use crate::tableau_gpu::TableauGpu;
 
 // T = C_I*I + C_Z*Z
 const C_I: Complex<f64> = Complex {
@@ -275,19 +275,56 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     while !done {
         let mut x = vec![false; n];
         let mut x_coeff = Complex::ONE;
-        let mut g = GpuGenerator::zero(n);
+        let mut g = TableauGpu::zero(n);
         let mut seen_t_gates = 0;
         for &gate in circuit.gates() {
             match gate {
+                CliffordTGate::X(a) => {
+                    x[a] = !x[a];
+                    g.apply_x_gate(a);
+                }
+                CliffordTGate::Y(a) => {
+                    if x[a] == true {
+                        x_coeff *= -Complex::I;
+                    } else {
+                        x_coeff *= Complex::I;
+                    }
+                    x[a] = !x[a];
+                    g.apply_y_gate(a);
+                }
+                CliffordTGate::Z(a) => {
+                    if x[a] == true {
+                        x_coeff *= -Complex::ONE;
+                    }
+                    g.apply_z_gate(a);
+                }
                 CliffordTGate::S(a) => {
                     if x[a] == true {
                         x_coeff *= Complex::I;
                     }
                     g.apply_s_gate(a);
                 }
+                CliffordTGate::Sdg(a) => {
+                    if x[a] == true {
+                        x_coeff *= -Complex::I;
+                    }
+                    // TODO: Optimize
+                    g.apply_s_gate(a);
+                    g.apply_s_gate(a);
+                    g.apply_s_gate(a);
+                }
                 CliffordTGate::Cnot(a, b) => {
                     x[b] ^= x[a];
                     g.apply_cnot_gate(a, b);
+                }
+                CliffordTGate::Cz(a, b) => {
+                    if x[a] == true && x[b] == true {
+                        x_coeff *= -Complex::ONE;
+                    }
+                    // TODO: Optimize
+                    g.apply_h_gate(b);
+                    g.apply_cnot_gate(a, b);
+                    g.apply_h_gate(b);
                 }
                 CliffordTGate::H(a) => {
                     let r = g.coeff_ratio_flipped_bit(&x, a);
@@ -304,19 +341,31 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                     }
                     g.apply_h_gate(a);
                 }
+
                 CliffordTGate::T(a) => {
                     if path[seen_t_gates] == false {
                         x_coeff *= C_I;
                     } else {
                         if x[a] == true {
-                            x_coeff *= -1.0;
+                            x_coeff *= -Complex::ONE;
                         }
-                        g.apply_z_gate(a);
                         x_coeff *= C_Z;
+                        g.apply_z_gate(a);
                     }
                     seen_t_gates += 1;
                 }
-                _ => todo!(),
+                CliffordTGate::Tdg(a) => {
+                    if path[seen_t_gates] == false {
+                        x_coeff *= C_I_DG;
+                    } else {
+                        if x[a] == true {
+                            x_coeff *= -Complex::ONE;
+                        }
+                        x_coeff *= C_Z_DG;
+                        g.apply_z_gate(a);
+                    }
+                    seen_t_gates += 1;
+                }
             }
         }
 

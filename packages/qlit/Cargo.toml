@@ -6,6 +6,7 @@ description = "Strong exact simulation of Clifford+T quantum circuits"
 edition = "2024"
 
 [features]
+default = ["gpu"]
 gpu = ["wgpu", "pollster"]
 
 [dependencies]
