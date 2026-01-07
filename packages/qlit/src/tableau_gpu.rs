@@ -130,7 +130,7 @@ impl GpuContext {
                     &tableau_bind_group_layout,
                     &apply_cnot_gate_bind_group_layout,
                 ],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_cnot_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -164,7 +164,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply H Gate"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &apply_h_gate_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_h_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -198,7 +198,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply S Gate"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &apply_s_gate_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_s_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -232,7 +232,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply X Gate"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &apply_x_gate_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_x_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -266,7 +266,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Y Gate"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &apply_y_gate_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_y_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -300,7 +300,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Z Gate"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &apply_z_gate_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let apply_z_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -362,7 +362,7 @@ impl GpuContext {
                     &tableau_bind_group_layout,
                     &elimination_pass_bind_group_layout,
                 ],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let elimination_pass_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -409,7 +409,7 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Swap Rows"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &swap_rows_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let swap_rows_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Swap Rows"),
