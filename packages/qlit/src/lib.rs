@@ -1,6 +1,7 @@
 mod circuit;
 #[cfg(feature = "gpu")]
 mod gpu_generator;
+mod path;
 mod simulate;
 mod tableau;
 mod utils;
