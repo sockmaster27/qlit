@@ -12,6 +12,7 @@ use num_complex::Complex;
 
 use crate::{
     circuit::{CliffordTCircuit, CliffordTGate},
+    path::Path,
     tableau::ExtendedTableau,
 };
 
@@ -68,7 +69,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
 
-    let next_path = Mutex::new(vec![false; t - batch_size_log2]);
+    let next_path = Mutex::new(Path::zero(t - batch_size_log2));
     let w_coeff = Mutex::new(Complex::ZERO);
     let done = AtomicBool::new(false);
 
@@ -82,7 +83,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                         break;
                     }
                     let path = next_path_locked.clone();
-                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                    done.store(next_path_locked.incr(), Ordering::SeqCst);
                     drop(next_path_locked);
 
                     let mut r_cols = 1;
@@ -167,7 +168,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 
                             CliffordTGate::T(a) => {
                                 if seen_t_gates < path.len() {
-                                    if path[seen_t_gates] == false {
+                                    if path.bit(seen_t_gates) == false {
                                         for i in 0..r_cols {
                                             x_coeffs[i] *= C_I;
                                         }
@@ -202,7 +203,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                             }
                             CliffordTGate::Tdg(a) => {
                                 if seen_t_gates < path.len() {
-                                    if path[seen_t_gates] == false {
+                                    if path.bit(seen_t_gates) == false {
                                         for i in 0..r_cols {
                                             x_coeffs[i] *= C_I_DG;
                                         }
@@ -323,21 +324,4 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     }
 
     coeff
-}
-
-/// Mutate the given path to the next one.
-/// Returns true if this results in the all-false path.
-fn increment_path(path: &mut Vec<bool>) -> bool {
-    increment_path_by(path, 0)
-}
-/// Mutate the given path to the `n`th next one, (`n = 2^n_log2`).
-/// Returns true if this results in going through the all-false path.
-fn increment_path_by(path: &mut Vec<bool>, n_log2: usize) -> bool {
-    for i in n_log2..path.len() {
-        path[i] = !path[i];
-        if path[i] == true {
-            return false;
-        }
-    }
-    true
 }
