@@ -6,7 +6,8 @@ alias BitBlock = u32;
 // The index of the column we wish to perform elimination on.
 @group(1) @binding(0) var<uniform> col: u32;
 @group(1) @binding(1) var<storage, read> a: u32;
-@group(1) @binding(2) var<storage, read_write> a_new: u32;
+@group(1) @binding(2) var<storage, read_write> a_out: u32;
+@group(1) @binding(3) var<storage, read_write> pivot_out: u32;
 
 
 // Perform elimination on the column with index col.
@@ -27,7 +28,7 @@ fn main(
 
     // Find pivot row.
     var pivot_found = false;
-    var pivot = 0u;
+    var pivot: u32 = 0;
     let a_block_index = a / block_size;
     for (var i = column_block_length() - 1; i >= a_block_index; i -= 1) {
         // Bitmask blocking out the auxiliary row.
@@ -40,79 +41,89 @@ fn main(
             let row = block_size * i + lsb_index(block);
             if row >= a {
                 pivot = row;
+                pivot_found = true;
                 break;
             }
         }
     }
 
     if !pivot_found {
-        a_new = a;
-    } else {
-        a_new = a + 1;
-
-        let pivot_block_index = pivot / block_size;
-        let pivot_bit_index = pivot % block_size;
-
-        // Bitmask blocking out the pivot row.
-        var pivot_mask: BitBlock = ~0u;
-        if block_index == pivot_block_index {
-            pivot_mask = ~bitmask(pivot_bit_index);
+        if block_index == 0 {
+            // Since we use the pivot_out variable to swap the pivot and a rows,
+            // we set it to a here so the swap operation is a no-op.
+            pivot_out = a;
+            a_out = a;
         }
-        // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-        let mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
-        if mask == 0 {
-            return;
+        return;
+    }
+
+    if block_index == 0 {
+        pivot_out = pivot;
+        a_out = a + 1;
+    }
+
+    let pivot_block_index = pivot / block_size;
+    let pivot_bit_index = pivot % block_size;
+
+    // Bitmask blocking out the pivot row.
+    var pivot_mask: BitBlock = ~0u;
+    if block_index == pivot_block_index {
+        pivot_mask = ~bitmask(pivot_bit_index);
+    }
+    // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
+    let mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
+    if mask == 0 {
+        return;
+    }
+
+    // Determine phase change caused by multiplication of the individual Pauli matrices.
+    // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
+    // but in a bit block so we can operate on all rows in the block at once.
+    // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+    var phase_bit1: BitBlock = 0u;
+    var phase_bit2: BitBlock = 0u;
+    for (var col2 = 0u; col2 < n; col2 += 1) {
+        let x1 = tableau[x_column_block_index(block_index, col2)];
+        let z1 = tableau[z_column_block_index(block_index, col2)];
+        // Fill these blocks with the bits in the pivot row.
+        var x2: BitBlock = 0u;
+        if x_bit(pivot, col2) { 
+            x2 = ~0u;
+        }
+        var z2: BitBlock = 0u;
+        if z_bit(pivot, col2) {
+            z2 = ~0u;
         }
 
-        // Determine phase change caused by multiplication of the individual Pauli matrices.
-        // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
-        // but in a bit block so we can operate on all rows in the block at once.
-        // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
-        var phase_bit1: BitBlock = 0u;
-        var phase_bit2: BitBlock = 0u;
-        for (var col2 = 0u; col2 < n; col2 += 1) {
-            let x1 = tableau[x_column_block_index(block_index, col2)];
-            let z1 = tableau[z_column_block_index(block_index, col2)];
-            // Fill these blocks with the bits in the pivot row.
-            var x2: BitBlock = 0u;
-            if x_bit(pivot, col2) { 
-                x2 = ~0u;
-            }
-            var z2: BitBlock = 0u;
-            if z_bit(pivot, col2) {
-                z2 = ~0u;
-            }
+        // XY = +iZ
+        // YZ = +iX
+        // ZX = +iY
+        let add = (x(x1, z1) & y(x2, z2))
+            | (y(x1, z1) & z(x2, z2))
+            | (z(x1, z1) & x(x2, z2));
+        phase_bit2 ^= add & phase_bit1;
+        phase_bit1 ^= add;
 
-            // XY = +iZ
-            // YZ = +iX
-            // ZX = +iY
-            let add = (x(x1, z1) & y(x2, z2))
-                | (y(x1, z1) & z(x2, z2))
-                | (z(x1, z1) & x(x2, z2));
-            phase_bit2 ^= add & phase_bit1;
-            phase_bit1 ^= add;
+        // YX = -iZ
+        // ZY = -iX
+        // XZ = -iY
+        let sub = (y(x1, z1) & x(x2, z2))
+            | (z(x1, z1) & y(x2, z2))
+            | (x(x1, z1) & z(x2, z2));
+        phase_bit2 ^= sub & ~phase_bit1;
+        phase_bit1 ^= sub;
+    }
+    // A valid stabilizer row can only ever have a prefix of +1 or -1.
+    // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
+    // This should never be able to happen, and we cannot represent it.
+    // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
+    // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
+    tableau[r_column_block_index(block_index)] ^= phase_bit2 & mask;
 
-            // YX = -iZ
-            // ZY = -iX
-            // XZ = -iY
-            let sub = (y(x1, z1) & x(x2, z2))
-                | (z(x1, z1) & y(x2, z2))
-                | (x(x1, z1) & z(x2, z2));
-            phase_bit2 ^= sub & ~phase_bit1;
-            phase_bit1 ^= sub;
-        }
-        // A valid stabilizer row can only ever have a prefix of +1 or -1.
-        // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
-        // This should never be able to happen, and we cannot represent it.
-        // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
-        // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
-        tableau[r_column_block_index(block_index)] ^= phase_bit2 & mask;
-
-        // XOR
-        for (var j = 0u; j < n + n + 1; j += 1) {
-            if bit(pivot, j) == true {
-                tableau[column_block_index(block_index, j)] ^= mask;
-            }
+    // XOR
+    for (var j = 0u; j < n + n + 1; j += 1) {
+        if bit(pivot, j) == true {
+            tableau[column_block_index(block_index, j)] ^= mask;
         }
     }
 }

@@ -4,7 +4,7 @@ const block_size: u32 = 32;
 alias BitBlock = u32;
 
 @group(1) @binding(0) var<storage, read> row1: u32;
-@group(1) @binding(1) var<uniform> row2: u32;
+@group(1) @binding(1) var<storage, read> row2: u32;
 
 
 // Swap the two rows.
