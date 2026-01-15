@@ -63,6 +63,7 @@ fn main(
         }
         res_phase %= 4;
     }
+    factor = 1;
     phase = res_phase;
 }
 

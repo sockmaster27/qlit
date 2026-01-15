@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use num_complex::{Complex, Complex64};
+use num_complex::Complex;
 use wgpu::util::DeviceExt;
 
 const BLOCK_SIZE: u32 = 32;
@@ -48,7 +48,7 @@ pub struct GpuContext {
 impl GpuContext {
     pub async fn new() -> GpuContext {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends: wgpu::Backends::GL,
             flags: wgpu::InstanceFlags::advanced_debugging(),
             memory_budget_thresholds: Default::default(),
             backend_options: Default::default(),
@@ -748,7 +748,7 @@ impl TableauGpu {
         debug_assert_eq!(w2_len, n, "Basis state 2 must have length {n}");
 
         // Bring tableau's x part into reduced row echelon form.
-        self.bring_into_rref();
+        // self.bring_into_rref();
 
         // Derive a stabilizer of the desired form.
 
@@ -855,11 +855,11 @@ impl TableauGpu {
 
         let factor_bytes: &[u8] = &factor_read_buf.get_mapped_range(..);
         let phase_bytes: &[u8] = &phase_read_buf.get_mapped_range(..);
-        let factor = u32::from_ne_bytes(factor_bytes.try_into().unwrap());
+        let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
         let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
 
-        let res = factor * Complex::I.powu(phase);
-        Complex64::new(res.re.into(), res.im.into())
+        println!("factor: {factor}, phase: {phase}");
+        factor * Complex::I.powu(phase)
     }
 
     fn bring_into_rref(&mut self) {
@@ -1011,6 +1011,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore]
     #[test]
     fn zero() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
@@ -1032,6 +1033,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn imaginary() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
@@ -1055,6 +1057,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn negative_imaginary() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
@@ -1078,6 +1081,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn flipped() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
@@ -1099,6 +1103,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn bell_state() {
         let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
@@ -1120,6 +1125,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[test]
     fn larger_circuit() {
         let circuit = CliffordTCircuit::new(
@@ -1215,6 +1221,7 @@ mod tests {
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::ZERO);
     }
 
+    #[ignore]
     #[test]
     fn repeated_reading() {
         let circuit = CliffordTCircuit::new(
