@@ -3,7 +3,10 @@ use std::sync::OnceLock;
 use num_complex::Complex;
 use wgpu::util::DeviceExt;
 
-const BLOCK_SIZE: u32 = 32;
+type BitBlock = u32;
+const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
+const BLOCK_SIZE: u32 = (BLOCK_SIZE_BYTES * 8) as u32;
+
 const WORKGROUP_SIZE: u32 = 64;
 const U32_SIZE: u64 = size_of::<u32>() as u64;
 
@@ -24,7 +27,9 @@ static GPU_CONTEXT: OnceLock<GpuContext> = OnceLock::new();
 pub struct GpuContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
+
     tableau_bind_group_layout: wgpu::BindGroupLayout,
+    zero_pipeline: wgpu::ComputePipeline,
 
     apply_cnot_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_cnot_gate_pipeline: wgpu::ComputePipeline,
@@ -66,6 +71,7 @@ impl GpuContext {
             .await
             .unwrap();
 
+        // Initialize tableau
         let tableau_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Tableau"),
@@ -92,6 +98,20 @@ impl GpuContext {
                     },
                 ],
             });
+        let zero_module = device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/zero.wgsl"));
+        let zero_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Zero Tableau"),
+            bind_group_layouts: &[&tableau_bind_group_layout],
+            immediate_size: 0,
+        });
+        let zero_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Zero Tableau"),
+            layout: Some(&zero_pipeline_layout),
+            module: &zero_module,
+            entry_point: Some("main"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
 
         let unitary_gate_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -439,7 +459,9 @@ impl GpuContext {
         GpuContext {
             device,
             queue,
+
             tableau_bind_group_layout,
+            zero_pipeline,
 
             apply_cnot_gate_bind_group_layout,
             apply_cnot_gate_pipeline,
@@ -472,7 +494,6 @@ impl TableauGpu {
         let gpu = get_gpu();
 
         let n: u32 = n.try_into().expect("n does not fit into u32");
-
         let n_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -481,19 +502,12 @@ impl TableauGpu {
                 usage: wgpu::BufferUsages::UNIFORM,
             });
 
-        let mut tableau_contents: Vec<u8> = vec![0; tableau_byte_length(n).try_into().unwrap()];
-        // Initialize stabilizers
-        for i in 0..n {
-            let byte_index: usize = z_column_byte_index(n, i / 8, i).try_into().unwrap();
-            tableau_contents[byte_index] = byte_bitmask(i % 8);
-        }
-        let tableau_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Tableau"),
-                contents: &tableau_contents,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Tableau"),
+            size: tableau_block_length(n) as u64 * BLOCK_SIZE_BYTES,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
         let tableau_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Tableau"),
             layout: &gpu.tableau_bind_group_layout,
@@ -508,6 +522,14 @@ impl TableauGpu {
                 },
             ],
         });
+
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.zero_pipeline);
+        compute_pass.set_bind_group(0, &tableau_bind_group, &[]);
+        compute_pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
+        drop(compute_pass);
+        gpu.queue.submit([encoder.finish()]);
 
         TableauGpu {
             n,
@@ -958,29 +980,6 @@ impl TableauGpu {
     }
 }
 
-/// Get the bitmask for the i'th bit in a byte, e.g.
-///
-/// ```text
-/// bitmask(0) -> 10000000
-/// bitmask(1) -> 01000000
-/// bitmask(6) -> 00000010
-/// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to 8 in debug mode.
-fn byte_bitmask(i: u32) -> u8 {
-    debug_assert!(i < 8);
-    1 << (7 - i)
-}
-
-/// Get the index of the i'th byte of the column representing the z part of the `q`th tensor element.
-/// The first half of the bytes will contain the stabilizer parts and the second half the destabilizer parts.
-fn z_column_byte_index(n: u32, i: u32, q: u32) -> u32 {
-    debug_assert!(i < column_byte_length(n));
-    debug_assert!(q < n);
-    (2 * q + 1) * column_byte_length(n) + i
-}
-
 /// Get the block-length of the columns in the tableau.
 fn column_block_length(n: u32) -> u32 {
     // Make room for the auxiliary row.
@@ -989,19 +988,6 @@ fn column_block_length(n: u32) -> u32 {
 /// Get the length of the tableau in blocks.
 fn tableau_block_length(n: u32) -> u32 {
     column_block_length(n) * (n + n + 1)
-}
-/// Get the length of each tableau column in bytes.
-fn column_byte_length(n: u32) -> u32 {
-    blocks_to_bytes(column_block_length(n))
-}
-/// Get the length of the tableau in bytes.
-fn tableau_byte_length(n: u32) -> u32 {
-    blocks_to_bytes(tableau_block_length(n))
-}
-
-/// Convert some number of blocks to the corresponding number of bytes.
-fn blocks_to_bytes(n: u32) -> u32 {
-    n * (BLOCK_SIZE / 8)
 }
 
 #[cfg(test)]

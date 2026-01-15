@@ -25,7 +25,7 @@ fn main(
     // Find pivot row.
     var row: u32 = 0;
     for (var j: u32 = 0; j < n; j += 1) {
-        if x_bit(j, flipped_bit) == true {
+        if x_bit(j, flipped_bit) {
             row = j;
             break;
         }
@@ -37,11 +37,11 @@ fn main(
     } 
     for (var q: u32 = 0; q < n; q += 1) {
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        if i(row, q) && flipped_bit != q {
+        if i(row, q) && (flipped_bit != q) {
             // Multiply by 1, no phase change
-        } else if x(row, q) && flipped_bit == q {
+        } else if x(row, q) && (flipped_bit == q) {
             // Multiply by 1, no phase change
-        } else if y(row, q) && flipped_bit == q {
+        } else if y(row, q) && (flipped_bit == q) {
             if w1[q] == 0 {
                 // Multiply by i
                 res_phase += 1;
@@ -49,7 +49,7 @@ fn main(
                 // Multiply by -i
                 res_phase += 3;
             }
-        } else if z(row, q) && flipped_bit != q {
+        } else if z(row, q) && (flipped_bit != q) {
             if w1[q] == 0 {
                 // Multiply by 1, no phase change
             } else {
@@ -120,14 +120,6 @@ fn lsb_index(block: BitBlock) -> u32 {
 /// Get the index of the i'th block of the `j`th column.
 fn column_block_index(i: u32, j: u32) -> u32 {
     return j * column_block_length() + i;
-}
-/// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
-fn x_column_block_index(i: u32, q: u32) -> u32 {
-    return column_block_index(i, 2 * q);
-}
-/// Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
-fn z_column_block_index(i: u32, q: u32) -> u32 {
-    return column_block_index(i, 2 * q + 1);
 }
 /// Get the index of the i'th block of the r column.
 fn r_column_block_index(i: u32) -> u32 {
