@@ -47,9 +47,18 @@ pub struct GpuContext {
 }
 impl GpuContext {
     pub async fn new() -> GpuContext {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            flags: wgpu::InstanceFlags::advanced_debugging(),
+            memory_budget_thresholds: Default::default(),
+            backend_options: Default::default(),
+        });
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: None,
+            })
             .await
             .unwrap();
         let (device, queue) = adapter
@@ -127,12 +136,8 @@ impl GpuContext {
                     },
                 ],
             });
-        let apply_cnot_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply Cnot Gate"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("tableau_gpu/apply_cnot_gate.wgsl").into(),
-            ),
-        });
+        let apply_cnot_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_cnot_gate.wgsl"));
         let apply_cnot_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Cnot Gate"),
@@ -152,10 +157,8 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
         // - H
-        let apply_h_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply H Gate"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_h_gate.wgsl").into()),
-        });
+        let apply_h_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_h_gate.wgsl"));
         let apply_h_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply H Gate"),
@@ -172,10 +175,8 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
         // - S
-        let apply_s_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply S Gate"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_s_gate.wgsl").into()),
-        });
+        let apply_s_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_s_gate.wgsl"));
         let apply_s_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply S Gate"),
@@ -192,10 +193,8 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
         // - X
-        let apply_x_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply X Gate"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_x_gate.wgsl").into()),
-        });
+        let apply_x_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_x_gate.wgsl"));
         let apply_x_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply X Gate"),
@@ -212,10 +211,8 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
         // - Y
-        let apply_y_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply Y Gate"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_y_gate.wgsl").into()),
-        });
+        let apply_y_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_y_gate.wgsl"));
         let apply_y_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Y Gate"),
@@ -232,10 +229,8 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
         // - Z
-        let apply_z_gate_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Apply Z Gate"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/apply_z_gate.wgsl").into()),
-        });
+        let apply_z_gate_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_z_gate.wgsl"));
         let apply_z_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Z Gate"),
@@ -303,12 +298,8 @@ impl GpuContext {
                     },
                 ],
             });
-        let elimination_pass_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Elimination Pass"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("tableau_gpu/elimination_pass.wgsl").into(),
-            ),
-        });
+        let elimination_pass_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/elimination_pass.wgsl"));
         let elimination_pass_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Elimination Pass"),
@@ -379,13 +370,9 @@ impl GpuContext {
                     },
                 ],
             });
-        let coeff_ratio_flipped_bit_module =
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Coeff Ratio Flipped Bit"),
-                source: wgpu::ShaderSource::Wgsl(
-                    include_str!("tableau_gpu/coeff_ratio_flipped_bit.wgsl").into(),
-                ),
-            });
+        let coeff_ratio_flipped_bit_module = device.create_shader_module(wgpu::include_wgsl!(
+            "tableau_gpu/coeff_ratio_flipped_bit.wgsl"
+        ));
         let coeff_ratio_flipped_bit_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Coeff Ratio Flipped Bit"),
@@ -432,10 +419,8 @@ impl GpuContext {
                     },
                 ],
             });
-        let swap_rows_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Swap Rows"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("tableau_gpu/swap_rows.wgsl").into()),
-        });
+        let swap_rows_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/swap_rows.wgsl"));
         let swap_rows_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Swap Rows"),
@@ -900,7 +885,7 @@ impl TableauGpu {
         let pivot_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("pivot_out"),
+                label: Some("pivot"),
                 contents: &0u32.to_ne_bytes(),
                 usage: wgpu::BufferUsages::STORAGE,
             });
@@ -908,7 +893,7 @@ impl TableauGpu {
             let col_buf = gpu
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("col"),
+                    label: Some(&format!("col {}", col)),
                     contents: &col.to_ne_bytes(),
                     usage: wgpu::BufferUsages::UNIFORM,
                 });
