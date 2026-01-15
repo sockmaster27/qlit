@@ -59,6 +59,7 @@ fn main(
         } else {
             // Multiply by 0
             factor = 0;
+            phase = 0;
             return;
         }
         res_phase %= 4;

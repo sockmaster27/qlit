@@ -18,7 +18,7 @@ fn main(
 ) {
     // Assign one thread to each row (block).
     let block_index = id.x;
-    if block_index > column_block_length() {
+    if block_index >= column_block_length() {
         return;
     }
 
@@ -30,7 +30,7 @@ fn main(
     var pivot_found = false;
     var pivot: u32 = 0;
     let a_block_index = a / block_size;
-    for (var i = column_block_length() - 1; i >= a_block_index; i -= 1) {
+    for (var i = a_block_index; i <  column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
@@ -42,7 +42,7 @@ fn main(
             if row >= a {
                 pivot = row;
                 pivot_found = true;
-                break;
+                // Continue to search for the bottom-most one
             }
         }
     }

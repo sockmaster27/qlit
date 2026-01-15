@@ -15,7 +15,7 @@ fn main(
 ) {
     // Assign one thread to each column.
     let j = id.x;
-    if j > (n + n + 1) {
+    if j >= (n + n + 1) {
         return;
     }
 
