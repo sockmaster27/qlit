@@ -47,6 +47,9 @@ pub struct GpuContext {
     coeff_ratio_flipped_bit_bind_group_layout: wgpu::BindGroupLayout,
     coeff_ratio_flipped_bit_pipeline: wgpu::ComputePipeline,
 
+    coeff_ratio_bind_group_layout: wgpu::BindGroupLayout,
+    coeff_ratio_pipeline: wgpu::ComputePipeline,
+
     swap_rows_bind_group_layout: wgpu::BindGroupLayout,
     swap_rows_pipeline: wgpu::ComputePipeline,
 }
@@ -412,6 +415,75 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
 
+        // Coeff ratio pipeline setups
+        let coeff_ratio_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Coeff Ratio"),
+                entries: &[
+                    // w1
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // w2
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // factor
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // phase
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let coeff_ratio_module =
+            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/coeff_ratio.wgsl"));
+        let coeff_ratio_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Coeff Ratio"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &coeff_ratio_bind_group_layout],
+                immediate_size: 0,
+            });
+        let coeff_ratio_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Coeff Ratio"),
+                layout: Some(&coeff_ratio_pipeline_layout),
+                module: &coeff_ratio_module,
+                entry_point: Some("main"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
         // Swap rows pipeline setups
         let swap_rows_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -478,6 +550,9 @@ impl GpuContext {
 
             coeff_ratio_flipped_bit_bind_group_layout,
             coeff_ratio_flipped_bit_pipeline,
+
+            coeff_ratio_bind_group_layout,
+            coeff_ratio_pipeline,
 
             swap_rows_bind_group_layout,
             swap_rows_pipeline,
@@ -770,12 +845,106 @@ impl TableauGpu {
         debug_assert_eq!(w2_len, n, "Basis state 2 must have length {n}");
 
         // Bring tableau's x part into reduced row echelon form.
-        // self.bring_into_rref();
+        self.bring_into_rref();
 
         // Derive a stabilizer of the desired form.
-
         // Compute the (w2, w1) entry in the stabilizer of the correct form.
-        Complex::ZERO
+        let gpu = get_gpu();
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let w1_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("w1"),
+                contents: &w1
+                    .iter()
+                    .flat_map(|&b| (if b { 1u32 } else { 0u32 }).to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let w2_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("w2"),
+                contents: &w2
+                    .iter()
+                    .flat_map(|&b| (if b { 1u32 } else { 0u32 }).to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let factor_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("factor"),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let phase_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("phase"),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let coeff_ratio_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Coeff Ratio Bind Group"),
+            layout: &gpu.coeff_ratio_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: w1_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: w2_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: factor_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: phase_buf.as_entire_binding(),
+                },
+            ],
+        });
+
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.coeff_ratio_pipeline);
+        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        compute_pass.set_bind_group(1, &coeff_ratio_bind_group, &[]);
+        compute_pass.dispatch_workgroups(1, 1, 1);
+        drop(compute_pass);
+
+        let factor_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("factor (Read Buffer)"),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let phase_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("phase (Read Buffer)"),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(&factor_buf, 0, &factor_read_buf, 0, U32_SIZE);
+        encoder.copy_buffer_to_buffer(&phase_buf, 0, &phase_read_buf, 0, U32_SIZE);
+
+        gpu.queue.submit([encoder.finish()]);
+
+        factor_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        phase_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        // TODO: To support WebGPU, we need to wait for the callbacks to be invoked.
+        // (See https://github.com/gfx-rs/wgpu/blob/993448ab2ca6155f0c859cad49624a119d8bc4b7/examples/standalone/01_hello_compute/src/main.rs)
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+
+        let factor_bytes: &[u8] = &factor_read_buf.get_mapped_range(..);
+        let phase_bytes: &[u8] = &phase_read_buf.get_mapped_range(..);
+        let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
+        let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
+
+        println!("factor: {factor}, phase: {phase}");
+        factor * Complex::I.powu(phase)
     }
 
     pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
@@ -880,7 +1049,6 @@ impl TableauGpu {
         let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
         let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
 
-        println!("factor: {factor}, phase: {phase}");
         factor * Complex::I.powu(phase)
     }
 
@@ -997,7 +1165,6 @@ mod tests {
 
     use super::*;
 
-    #[ignore]
     #[test]
     fn zero() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
@@ -1019,7 +1186,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn imaginary() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
@@ -1043,7 +1209,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn negative_imaginary() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
@@ -1067,7 +1232,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn flipped() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
@@ -1089,7 +1253,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn bell_state() {
         let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
