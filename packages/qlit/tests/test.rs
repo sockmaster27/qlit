@@ -316,7 +316,6 @@ mod gpu {
         }
     }
 
-    #[ignore]
     #[test]
     fn larger_clifford_circuit() {
         let circuit = CliffordTCircuit::new(
@@ -361,7 +360,6 @@ mod gpu {
         }
     }
 
-    #[ignore]
     #[test]
     fn larger_circuit() {
         let circuit = CliffordTCircuit::new(

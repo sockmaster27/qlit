@@ -23,10 +23,12 @@ fn main(
     let row2_block_index = row2 / block_size;
     let row1_bit_index = row1 % block_size;
     let row2_bit_index = row2 % block_size;
+    let row1_bitmask = bitmask(row1_bit_index);
+    let row2_bitmask = bitmask(row2_bit_index);
     let block1 = column_block_index(row1_block_index, j);
     let block2 = column_block_index(row2_block_index, j);
-    let bit1 = (block1 & bitmask(row1_bit_index)) != 0u;
-    let bit2 = (block2 & bitmask(row2_bit_index)) != 0u;
+    let bit1 = (tableau[block1] & row1_bitmask) != 0;
+    let bit2 = (tableau[block2] & row2_bitmask) != 0;
     if bit1 && !bit2 {
         tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
         tableau[block2] = set_bit(tableau[block2], row2_bit_index);

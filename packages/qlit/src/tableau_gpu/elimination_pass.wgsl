@@ -48,7 +48,7 @@ fn main(
     }
 
     if !pivot_found {
-        if block_index == 0 {
+        if id.x == 0 {
             // Since we use the pivot_out variable to swap the pivot and a rows,
             // we set it to a here so the swap operation is a no-op.
             pivot_out = a;
@@ -57,7 +57,7 @@ fn main(
         return;
     }
 
-    if block_index == 0 {
+    if id.x == 0 {
         pivot_out = pivot;
         a_out = a + 1;
     }

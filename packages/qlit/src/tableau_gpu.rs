@@ -1,7 +1,9 @@
-use std::sync::OnceLock;
+use std::{fmt::Debug, sync::OnceLock};
 
 use num_complex::Complex;
 use wgpu::util::DeviceExt;
+
+use crate::tableau;
 
 type BitBlock = u32;
 const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
@@ -562,6 +564,7 @@ impl GpuContext {
 
 pub struct TableauGpu {
     n: u32,
+    tableau_buf: wgpu::Buffer,
     tableau_bind_group: wgpu::BindGroup,
 }
 impl TableauGpu {
@@ -580,7 +583,7 @@ impl TableauGpu {
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Tableau"),
             size: tableau_block_length(n) as u64 * BLOCK_SIZE_BYTES,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let tableau_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -608,6 +611,7 @@ impl TableauGpu {
 
         TableauGpu {
             n,
+            tableau_buf,
             tableau_bind_group,
         }
     }
@@ -943,7 +947,6 @@ impl TableauGpu {
         let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
         let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
 
-        println!("factor: {factor}, phase: {phase}");
         factor * Complex::I.powu(phase)
     }
 
@@ -1147,6 +1150,105 @@ impl TableauGpu {
         gpu.queue.submit([encoder.finish()]);
     }
 }
+impl Debug for TableauGpu {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let gpu = get_gpu();
+
+        let n = self.n;
+
+        let tableau_block_length: u64 = tableau_block_length(n).into();
+        let tableau_byte_length: u64 = tableau_block_length * BLOCK_SIZE_BYTES;
+
+        let tableau_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tableau (Read Buffer)"),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            size: tableau_byte_length,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        encoder.copy_buffer_to_buffer(
+            &self.tableau_buf,
+            0,
+            &tableau_read_buf,
+            0,
+            tableau_byte_length,
+        );
+        gpu.queue.submit([encoder.finish()]);
+
+        tableau_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        let tableau_bytes: &[u8] = &tableau_read_buf.get_mapped_range(..);
+
+        let (chunks, chunk_remainder) = tableau_bytes.as_chunks::<4>();
+        assert_eq!(chunks.len(), tableau_block_length as usize);
+        assert_eq!(chunk_remainder.len(), 0);
+
+        let tableau: Vec<u32> = chunks.iter().map(|&c| u32::from_ne_bytes(c)).collect();
+        writeln!(f, "TableauGpu(n = {})", n)?;
+        for row in 0..n as usize {
+            for col in 0..n as usize {
+                write!(
+                    f,
+                    " {:?} ",
+                    if x_bit(n as usize, &tableau, row, col) {
+                        1
+                    } else {
+                        0
+                    }
+                )?;
+            }
+            write!(f, " | ")?;
+            for col in 0..n as usize {
+                write!(
+                    f,
+                    " {:?} ",
+                    if z_bit(n as usize, &tableau, row, col) {
+                        1
+                    } else {
+                        0
+                    }
+                )?;
+            }
+            write!(f, " | ")?;
+            write!(
+                f,
+                " {:?} \n",
+                if r_bit(n as usize, &tableau, row) {
+                    1
+                } else {
+                    0
+                }
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+fn bit(n: usize, tableau: &Vec<u32>, row: usize, j: usize) -> bool {
+    let row_block_index = row / 32;
+    let row_bit_index = row % 32;
+    let row_bitmask = bitmask(row_bit_index);
+    tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+}
+fn x_bit(n: usize, tableau: &Vec<u32>, row: usize, q: usize) -> bool {
+    bit(n, tableau, row, 2 * q)
+}
+fn z_bit(n: usize, tableau: &Vec<u32>, row: usize, q: usize) -> bool {
+    bit(n, tableau, row, 2 * q + 1)
+}
+fn r_bit(n: usize, tableau: &Vec<u32>, row: usize) -> bool {
+    bit(n, tableau, row, 2 * n)
+}
+fn bitmask(i: usize) -> BitBlock {
+    debug_assert!(i < 32);
+    1 << (32 - 1 - i)
+}
+fn column_block_index(n: usize, i: usize, j: usize) -> usize {
+    j * column_block_length(n as u32) as usize + i
+}
 
 /// Get the block-length of the columns in the tableau.
 fn column_block_length(n: u32) -> u32 {
@@ -1184,6 +1286,20 @@ mod tests {
             };
             assert_eq!(result, expected, "{i:008b}");
         }
+    }
+
+    #[test]
+    fn hadamard() {
+        let circuit = CliffordTCircuit::new(8, [H(1)]).unwrap();
+
+        let w1 = bits_to_bools(0b0000_0000);
+        let w2 = bits_to_bools(0b0100_0000);
+
+        let mut g = TableauGpu::zero(8);
+        apply_clifford_circuit(&mut g, &circuit);
+        let result = g.coeff_ratio(&w1, &w2);
+
+        assert_eq!(result, Complex::ONE);
     }
 
     #[test]
@@ -1274,7 +1390,6 @@ mod tests {
         }
     }
 
-    #[ignore]
     #[test]
     fn larger_circuit() {
         let circuit = CliffordTCircuit::new(
@@ -1370,7 +1485,6 @@ mod tests {
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::ZERO);
     }
 
-    #[ignore]
     #[test]
     fn repeated_reading() {
         let circuit = CliffordTCircuit::new(

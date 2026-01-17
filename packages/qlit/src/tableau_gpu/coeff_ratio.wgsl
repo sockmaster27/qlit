@@ -21,7 +21,7 @@ fn main(
     let aux_row = n;
     let aux_block_index = aux_row / block_size;
     let aux_bit_index = aux_row % block_size;
-        let aux_bitmask = bitmask(aux_bit_index);
+    let aux_bitmask = bitmask(aux_bit_index);
 
     // Reset the auxiliary row.
     for (var r: u32 = 0; r < n + n + 1; r += 1) {
