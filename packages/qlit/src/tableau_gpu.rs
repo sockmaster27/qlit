@@ -57,7 +57,7 @@ impl GpuContext {
     pub async fn new() -> GpuContext {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::advanced_debugging(),
+            flags: Default::default(),
             memory_budget_thresholds: Default::default(),
             backend_options: Default::default(),
         });
