@@ -3,8 +3,6 @@ use std::{fmt::Debug, sync::OnceLock};
 use num_complex::Complex;
 use wgpu::util::DeviceExt;
 
-use crate::tableau;
-
 type BitBlock = u32;
 const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
 const BLOCK_SIZE: u32 = (BLOCK_SIZE_BYTES * 8) as u32;
@@ -15,7 +13,7 @@ const U32_SIZE: u64 = size_of::<u32>() as u64;
 /// Initialize the global GPU context.
 ///
 /// This will happen automatically the first time it's needed,
-/// but this can be called to preempt that work at a more appropriate time.
+/// but this can be called to pre-empt that work at a more appropriate time.
 pub fn initialize_gpu() {
     get_gpu();
 }

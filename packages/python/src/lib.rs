@@ -1,6 +1,8 @@
 use num_complex::Complex;
 use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
-use qlit::{CliffordTCircuit, CliffordTGate, simulate_circuit, simulate_circuit_gpu};
+use qlit::{
+    CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit, simulate_circuit_gpu,
+};
 use rayon::ThreadPoolBuilder;
 
 use pyo3::conversion::FromPyObject;
@@ -177,6 +179,7 @@ fn py_simulate_circuit_gpu(
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ThreadPoolBuilder::new().build_global().unwrap();
+    initialize_global();
 
     m.add_class::<PyCliffordTGate>()?;
     m.add_class::<PyCliffordTCircuit>()?;
