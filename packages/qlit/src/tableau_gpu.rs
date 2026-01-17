@@ -55,24 +55,9 @@ pub struct GpuContext {
 }
 impl GpuContext {
     pub async fn new() -> GpuContext {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            flags: Default::default(),
-            memory_budget_thresholds: Default::default(),
-            backend_options: Default::default(),
-        });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: None,
-            })
-            .await
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap();
+        let instance = wgpu::Instance::new(&Default::default());
+        let adapter = instance.request_adapter(&Default::default()).await.unwrap();
+        let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
 
         // Initialize tableau
         let tableau_bind_group_layout =
