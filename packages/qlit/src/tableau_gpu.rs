@@ -29,29 +29,21 @@ pub struct GpuContext {
     queue: wgpu::Queue,
 
     tableau_bind_group_layout: wgpu::BindGroupLayout,
+    unary_gate_bind_group_layout: wgpu::BindGroupLayout,
+    binary_gate_bind_group_layout: wgpu::BindGroupLayout,
+    bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
+    coeff_ratio_bind_group_layout: wgpu::BindGroupLayout,
+
     zero_pipeline: wgpu::ComputePipeline,
-
-    apply_cnot_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_cnot_gate_pipeline: wgpu::ComputePipeline,
-
-    unitary_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_h_gate_pipeline: wgpu::ComputePipeline,
     apply_s_gate_pipeline: wgpu::ComputePipeline,
     apply_x_gate_pipeline: wgpu::ComputePipeline,
     apply_y_gate_pipeline: wgpu::ComputePipeline,
     apply_z_gate_pipeline: wgpu::ComputePipeline,
-
-    elimination_pass_bind_group_layout: wgpu::BindGroupLayout,
     elimination_pass_pipeline: wgpu::ComputePipeline,
-
-    coeff_ratio_flipped_bit_bind_group_layout: wgpu::BindGroupLayout,
-    coeff_ratio_flipped_bit_pipeline: wgpu::ComputePipeline,
-
-    coeff_ratio_bind_group_layout: wgpu::BindGroupLayout,
+    swap_pass_pipeline: wgpu::ComputePipeline,
     coeff_ratio_pipeline: wgpu::ComputePipeline,
-
-    swap_rows_bind_group_layout: wgpu::BindGroupLayout,
-    swap_rows_pipeline: wgpu::ComputePipeline,
 }
 impl GpuContext {
     pub async fn new() -> GpuContext {
@@ -59,11 +51,13 @@ impl GpuContext {
         let adapter = instance.request_adapter(&Default::default()).await.unwrap();
         let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
 
-        // Initialize tableau
+        let shader_module = device.create_shader_module(wgpu::include_wgsl!("tableau.wgsl"));
+
         let tableau_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Tableau"),
                 entries: &[
+                    // n
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -74,6 +68,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
+                    // tableau
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -86,42 +81,11 @@ impl GpuContext {
                     },
                 ],
             });
-        let zero_module = device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/zero.wgsl"));
-        let zero_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Zero Tableau"),
-            bind_group_layouts: &[&tableau_bind_group_layout],
-            immediate_size: 0,
-        });
-        let zero_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Zero Tableau"),
-            layout: Some(&zero_pipeline_layout),
-            module: &zero_module,
-            entry_point: Some("main"),
-            cache: None,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
-
-        let unitary_gate_bind_group_layout =
+        let unary_gate_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Unitary Gate"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        // Gate application pipeline setups
-        // - Cnot
-        let apply_cnot_gate_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Apply Cnot Gate"),
+                label: Some("Gate Application"),
                 entries: &[
+                    // a
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -132,6 +96,24 @@ impl GpuContext {
                         },
                         count: None,
                     },
+                ],
+            });
+        let binary_gate_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Gate Application"),
+                entries: &[
+                    // a
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // b
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -144,121 +126,9 @@ impl GpuContext {
                     },
                 ],
             });
-        let apply_cnot_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_cnot_gate.wgsl"));
-        let apply_cnot_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply Cnot Gate"),
-                bind_group_layouts: &[
-                    &tableau_bind_group_layout,
-                    &apply_cnot_gate_bind_group_layout,
-                ],
-                immediate_size: 0,
-            });
-        let apply_cnot_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Cnot Gate"),
-                layout: Some(&apply_cnot_gate_pipeline_layout),
-                module: &apply_cnot_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        // - H
-        let apply_h_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_h_gate.wgsl"));
-        let apply_h_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply H Gate"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unitary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_h_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply H Gate"),
-                layout: Some(&apply_h_gate_pipeline_layout),
-                module: &apply_h_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        // - S
-        let apply_s_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_s_gate.wgsl"));
-        let apply_s_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply S Gate"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unitary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_s_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply S Gate"),
-                layout: Some(&apply_s_gate_pipeline_layout),
-                module: &apply_s_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        // - X
-        let apply_x_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_x_gate.wgsl"));
-        let apply_x_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply X Gate"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unitary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_x_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply X Gate"),
-                layout: Some(&apply_x_gate_pipeline_layout),
-                module: &apply_x_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        // - Y
-        let apply_y_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_y_gate.wgsl"));
-        let apply_y_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply Y Gate"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unitary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_y_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Y Gate"),
-                layout: Some(&apply_y_gate_pipeline_layout),
-                module: &apply_y_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        // - Z
-        let apply_z_gate_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/apply_z_gate.wgsl"));
-        let apply_z_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply Z Gate"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unitary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_z_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Z Gate"),
-                layout: Some(&apply_z_gate_pipeline_layout),
-                module: &apply_z_gate_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-
-        // Elimination pass pipeline setups
-        let elimination_pass_bind_group_layout =
+        let bring_into_rref_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Elimination Pass"),
+                label: Some("Bring Into RREF"),
                 entries: &[
                     // col
                     wgpu::BindGroupLayoutEntry {
@@ -271,7 +141,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // a
+                    // a_in
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -306,104 +176,9 @@ impl GpuContext {
                     },
                 ],
             });
-        let elimination_pass_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/elimination_pass.wgsl"));
-        let elimination_pass_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Elimination Pass"),
-                bind_group_layouts: &[
-                    &tableau_bind_group_layout,
-                    &elimination_pass_bind_group_layout,
-                ],
-                immediate_size: 0,
-            });
-        let elimination_pass_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Elimination Pass"),
-                layout: Some(&elimination_pass_pipeline_layout),
-                module: &elimination_pass_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-
-        // Coeff ratio flipped bit pipeline setups
-        let coeff_ratio_flipped_bit_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Coeff Ratio Flipped Bit"),
-                entries: &[
-                    // w1
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // flipped_bit
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // factor
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // phase
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-        let coeff_ratio_flipped_bit_module = device.create_shader_module(wgpu::include_wgsl!(
-            "tableau_gpu/coeff_ratio_flipped_bit.wgsl"
-        ));
-        let coeff_ratio_flipped_bit_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Coeff Ratio Flipped Bit"),
-                bind_group_layouts: &[
-                    &tableau_bind_group_layout,
-                    &coeff_ratio_flipped_bit_bind_group_layout,
-                ],
-                immediate_size: 0,
-            });
-        let coeff_ratio_flipped_bit_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Coeff Ratio Flipped Bit"),
-                layout: Some(&coeff_ratio_flipped_bit_pipeline_layout),
-                module: &coeff_ratio_flipped_bit_module,
-                entry_point: Some("main"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-
-        // Coeff ratio pipeline setups
         let coeff_ratio_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Coeff Ratio"),
+                label: Some("Bring Into RREF"),
                 entries: &[
                     // w1
                     wgpu::BindGroupLayoutEntry {
@@ -451,11 +226,118 @@ impl GpuContext {
                     },
                 ],
             });
-        let coeff_ratio_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/coeff_ratio.wgsl"));
+
+        let zero_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Zero Tableau"),
+            bind_group_layouts: &[&tableau_bind_group_layout],
+            immediate_size: 0,
+        });
+        let zero_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Zero Tableau"),
+            layout: Some(&zero_pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("zero"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+
+        let unary_gate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Gate Application"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &unary_gate_bind_group_layout],
+                immediate_size: 0,
+            });
+        let binary_gate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Gate Application"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &binary_gate_bind_group_layout],
+                immediate_size: 0,
+            });
+        let apply_cnot_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply Cnot Gate"),
+                layout: Some(&binary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_cnot_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let apply_h_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply H Gate"),
+                layout: Some(&unary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_h_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let apply_s_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply S Gate"),
+                layout: Some(&unary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_s_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let apply_x_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply X Gate"),
+                layout: Some(&unary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_x_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let apply_y_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply Y Gate"),
+                layout: Some(&unary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_y_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let apply_z_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Apply Z Gate"),
+                layout: Some(&unary_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("apply_z_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
+        let bring_into_rref_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Bring Into RREF"),
+                bind_group_layouts: &[
+                    &tableau_bind_group_layout,
+                    &bring_into_rref_bind_group_layout,
+                ],
+                immediate_size: 0,
+            });
+        let elimination_pass_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Elimination Pass"),
+                layout: Some(&bring_into_rref_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("elimination_pass"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let swap_pass_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Swap Pass"),
+            layout: Some(&bring_into_rref_pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("swap_pass"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+
         let coeff_ratio_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Coeff Ratio"),
+                label: Some("Bring Into RREF"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &coeff_ratio_bind_group_layout],
                 immediate_size: 0,
             });
@@ -463,84 +345,32 @@ impl GpuContext {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("Coeff Ratio"),
                 layout: Some(&coeff_ratio_pipeline_layout),
-                module: &coeff_ratio_module,
-                entry_point: Some("main"),
+                module: &shader_module,
+                entry_point: Some("coeff_ratio"),
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
-
-        // Swap rows pipeline setups
-        let swap_rows_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Swap Rows"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-        let swap_rows_module =
-            device.create_shader_module(wgpu::include_wgsl!("tableau_gpu/swap_rows.wgsl"));
-        let swap_rows_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Swap Rows"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &swap_rows_bind_group_layout],
-                immediate_size: 0,
-            });
-        let swap_rows_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Swap Rows"),
-            layout: Some(&swap_rows_pipeline_layout),
-            module: &swap_rows_module,
-            entry_point: Some("main"),
-            cache: None,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
 
         GpuContext {
             device,
             queue,
 
             tableau_bind_group_layout,
+            unary_gate_bind_group_layout,
+            binary_gate_bind_group_layout,
+            bring_into_rref_bind_group_layout,
+            coeff_ratio_bind_group_layout,
+
             zero_pipeline,
-
-            apply_cnot_gate_bind_group_layout,
             apply_cnot_gate_pipeline,
-
-            unitary_gate_bind_group_layout,
             apply_h_gate_pipeline,
             apply_s_gate_pipeline,
             apply_x_gate_pipeline,
             apply_y_gate_pipeline,
             apply_z_gate_pipeline,
-
-            elimination_pass_bind_group_layout,
             elimination_pass_pipeline,
-
-            coeff_ratio_flipped_bit_bind_group_layout,
-            coeff_ratio_flipped_bit_pipeline,
-
-            coeff_ratio_bind_group_layout,
+            swap_pass_pipeline,
             coeff_ratio_pipeline,
-
-            swap_rows_bind_group_layout,
-            swap_rows_pipeline,
         }
     }
 }
@@ -622,7 +452,7 @@ impl TableauGpu {
             });
         let apply_cnot_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Cnot Bind Group"),
-            layout: &gpu.apply_cnot_gate_bind_group_layout,
+            layout: &gpu.binary_gate_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -663,7 +493,7 @@ impl TableauGpu {
             });
         let apply_h_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("H Bind Group"),
-            layout: &gpu.unitary_gate_bind_group_layout,
+            layout: &gpu.unary_gate_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: a_buf.as_entire_binding(),
@@ -698,7 +528,7 @@ impl TableauGpu {
             });
         let apply_s_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("S Bind Group"),
-            layout: &gpu.unitary_gate_bind_group_layout,
+            layout: &gpu.unary_gate_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: a_buf.as_entire_binding(),
@@ -733,7 +563,7 @@ impl TableauGpu {
             });
         let apply_x_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("X Bind Group"),
-            layout: &gpu.unitary_gate_bind_group_layout,
+            layout: &gpu.unary_gate_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: a_buf.as_entire_binding(),
@@ -768,7 +598,7 @@ impl TableauGpu {
             });
         let apply_y_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Y Bind Group"),
-            layout: &gpu.unitary_gate_bind_group_layout,
+            layout: &gpu.unary_gate_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: a_buf.as_entire_binding(),
@@ -803,7 +633,7 @@ impl TableauGpu {
             });
         let apply_z_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Z Bind Group"),
-            layout: &gpu.unitary_gate_bind_group_layout,
+            layout: &gpu.unary_gate_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: a_buf.as_entire_binding(),
@@ -934,108 +764,10 @@ impl TableauGpu {
     }
 
     pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
-        let n = self.n;
-        let w1_len: u32 = w1.len().try_into().expect("w1.len() does not fit into u32");
-        debug_assert_eq!(w1_len, n, "Basis state 1 must have length {n}");
-
-        // Bring tableau's x part into reduced row echelon form.
-        self.bring_into_rref();
-
-        // Pick the row with a set bit in the given position,
-        // and compute the (w2, w1) entry in the stabilizer of the correct form.
-        let gpu = get_gpu();
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let w1_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("w1"),
-                contents: &w1
-                    .iter()
-                    .flat_map(|&b| (if b { 1u32 } else { 0u32 }).to_ne_bytes())
-                    .collect::<Vec<u8>>(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let flipped_bit_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("flipped_bit"),
-                contents: &flipped_bit.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let factor_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("factor"),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        let phase_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("phase"),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        let coeff_ratio_flipped_bit_bind_group =
-            gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Coeff Ratio Flipped Bit Bind Group"),
-                layout: &gpu.coeff_ratio_flipped_bit_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: w1_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: flipped_bit_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: factor_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: phase_buf.as_entire_binding(),
-                    },
-                ],
-            });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.coeff_ratio_flipped_bit_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &coeff_ratio_flipped_bit_bind_group, &[]);
-        compute_pass.dispatch_workgroups(1, 1, 1);
-        drop(compute_pass);
-
-        let factor_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("factor (Read Buffer)"),
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        let phase_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("phase (Read Buffer)"),
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(&factor_buf, 0, &factor_read_buf, 0, U32_SIZE);
-        encoder.copy_buffer_to_buffer(&phase_buf, 0, &phase_read_buf, 0, U32_SIZE);
-
-        gpu.queue.submit([encoder.finish()]);
-
-        factor_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
-        phase_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
-        // TODO: To support WebGPU, we need to wait for the callbacks to be invoked.
-        // (See https://github.com/gfx-rs/wgpu/blob/993448ab2ca6155f0c859cad49624a119d8bc4b7/examples/standalone/01_hello_compute/src/main.rs)
-        gpu.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-
-        let factor_bytes: &[u8] = &factor_read_buf.get_mapped_range(..);
-        let phase_bytes: &[u8] = &phase_read_buf.get_mapped_range(..);
-        let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
-        let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
-
-        factor * Complex::I.powu(phase)
+        // TODO: Optimize (?)
+        let mut w2 = w1.to_vec();
+        w2[flipped_bit] = !w2[flipped_bit];
+        self.coeff_ratio(w1, &w2)
     }
 
     fn bring_into_rref(&mut self) {
@@ -1069,37 +801,37 @@ impl TableauGpu {
             let col_buf = gpu
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("col {}", col)),
+                    label: Some("col"),
                     contents: &col.to_ne_bytes(),
                     usage: wgpu::BufferUsages::UNIFORM,
                 });
-            let elimination_pass_bind_group =
-                gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Elimination Pass Bind Group"),
-                    layout: &gpu.elimination_pass_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: col_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: a_in_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: a_out_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: pivot_buf.as_entire_binding(),
-                        },
-                    ],
-                });
+            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Bring-into-RREF Pass Bind Group"),
+                layout: &gpu.bring_into_rref_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: col_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: a_in_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: a_out_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: pivot_buf.as_entire_binding(),
+                    },
+                ],
+            });
+
             let mut elimination_pass = encoder.begin_compute_pass(&Default::default());
             elimination_pass.set_pipeline(&gpu.elimination_pass_pipeline);
             elimination_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-            elimination_pass.set_bind_group(1, &elimination_pass_bind_group, &[]);
+            elimination_pass.set_bind_group(1, &bind_group, &[]);
             elimination_pass.dispatch_workgroups(
                 column_block_length(n).div_ceil(WORKGROUP_SIZE),
                 1,
@@ -1107,24 +839,10 @@ impl TableauGpu {
             );
             drop(elimination_pass);
 
-            let swap_rows_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Swap Rows Bind Group"),
-                layout: &gpu.swap_rows_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: a_in_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: pivot_buf.as_entire_binding(),
-                    },
-                ],
-            });
             let mut swap_pass = encoder.begin_compute_pass(&Default::default());
-            swap_pass.set_pipeline(&gpu.swap_rows_pipeline);
+            swap_pass.set_pipeline(&gpu.swap_pass_pipeline);
             swap_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-            swap_pass.set_bind_group(1, &swap_rows_bind_group, &[]);
+            swap_pass.set_bind_group(1, &bind_group, &[]);
             swap_pass.dispatch_workgroups((n + n + 1).div_ceil(WORKGROUP_SIZE), 1, 1);
             drop(swap_pass);
 
