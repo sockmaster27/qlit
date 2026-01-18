@@ -107,12 +107,23 @@ impl GpuContext {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Bring Into RREF"),
                 entries: &[
-                    // col
+                    // col_in
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // col_out
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -120,7 +131,7 @@ impl GpuContext {
                     },
                     // a_in
                     wgpu::BindGroupLayoutEntry {
-                        binding: 1,
+                        binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -131,7 +142,7 @@ impl GpuContext {
                     },
                     // a_out
                     wgpu::BindGroupLayoutEntry {
-                        binding: 2,
+                        binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -142,7 +153,7 @@ impl GpuContext {
                     },
                     // pivot_out
                     wgpu::BindGroupLayoutEntry {
-                        binding: 3,
+                        binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -571,6 +582,20 @@ impl TableauGpu {
         let n = self.n;
 
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut col_in_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("col1"),
+                contents: &0u32.to_ne_bytes(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let mut col_out_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("col2"),
+                contents: &0u32.to_ne_bytes(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
         let mut a_in_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -592,32 +617,29 @@ impl TableauGpu {
                 contents: &0u32.to_ne_bytes(),
                 usage: wgpu::BufferUsages::STORAGE,
             });
-        for col in 0..n {
-            let col_buf = gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("col"),
-                    contents: &col.to_ne_bytes(),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
+        for _ in 0..n {
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Bring-into-RREF Pass Bind Group"),
                 layout: &gpu.bring_into_rref_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: col_buf.as_entire_binding(),
+                        resource: col_in_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: a_in_buf.as_entire_binding(),
+                        resource: col_out_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: a_out_buf.as_entire_binding(),
+                        resource: a_in_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
+                        resource: a_out_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
                         resource: pivot_buf.as_entire_binding(),
                     },
                 ],
@@ -641,6 +663,7 @@ impl TableauGpu {
             swap_pass.dispatch_workgroups((n + n + 1).div_ceil(WORKGROUP_SIZE), 1, 1);
             drop(swap_pass);
 
+            (col_in_buf, col_out_buf) = (col_out_buf, col_in_buf);
             (a_in_buf, a_out_buf) = (a_out_buf, a_in_buf);
         }
         gpu.queue.submit([encoder.finish()]);

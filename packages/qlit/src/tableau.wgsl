@@ -105,10 +105,11 @@ fn apply_gates(
 }
 
 
-@group(1) @binding(0) var<uniform> col: u32;
-@group(1) @binding(1) var<storage, read> a_in: u32;
-@group(1) @binding(2) var<storage, read_write> a_out: u32;
-@group(1) @binding(3) var<storage, read_write> pivot_out: u32;
+@group(1) @binding(0) var<storage, read> col_in: u32;
+@group(1) @binding(1) var<storage, read_write> col_out: u32;
+@group(1) @binding(2) var<storage, read> a_in: u32;
+@group(1) @binding(3) var<storage, read_write> a_out: u32;
+@group(1) @binding(4) var<storage, read_write> pivot_out: u32;
 
 @compute
 @workgroup_size(64)
@@ -119,6 +120,10 @@ fn elimination_pass(
     let block_index = id.x;
     if block_index >= column_block_length() {
         return;
+    }
+
+    if id.x == 0 {
+        col_out = col_in + 1;
     }
 
     let aux_row = n;
@@ -135,7 +140,7 @@ fn elimination_pass(
         if i == aux_block_index {
             aux_mask = ~bitmask(aux_bit_index);
         }
-        let block = tableau[x_column_block_index(i, col)] & aux_mask;
+        let block = tableau[x_column_block_index(i, col_in)] & aux_mask;
         if block != 0 {
             let row = block_size * i + lsb_index(block);
             if row >= a_in {
@@ -170,7 +175,7 @@ fn elimination_pass(
         pivot_mask = ~bitmask(pivot_bit_index);
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-    let mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
+    let mask = tableau[x_column_block_index(block_index, col_in)] & pivot_mask;
     if mask == 0 {
         return;
     }
@@ -336,9 +341,9 @@ fn coeff_ratio(
     phase = res_phase;
 }
 
-/// Set row with index `dst` to be the product of the `src` and `dst` rows.
-///
-/// NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
+// Set row with index `dst` to be the product of the `src` and `dst` rows.
+//
+// NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
 fn multiply_rows_into(src: u32, dst: u32) {
     let src_block_index = src / block_size;
     let dst_block_index = dst / block_size;
