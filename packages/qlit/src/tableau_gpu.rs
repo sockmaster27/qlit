@@ -29,18 +29,12 @@ pub struct GpuContext {
     queue: wgpu::Queue,
 
     tableau_bind_group_layout: wgpu::BindGroupLayout,
-    unary_gate_bind_group_layout: wgpu::BindGroupLayout,
-    binary_gate_bind_group_layout: wgpu::BindGroupLayout,
+    apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
     coeff_ratio_bind_group_layout: wgpu::BindGroupLayout,
 
     zero_pipeline: wgpu::ComputePipeline,
-    apply_cnot_gate_pipeline: wgpu::ComputePipeline,
-    apply_h_gate_pipeline: wgpu::ComputePipeline,
-    apply_s_gate_pipeline: wgpu::ComputePipeline,
-    apply_x_gate_pipeline: wgpu::ComputePipeline,
-    apply_y_gate_pipeline: wgpu::ComputePipeline,
-    apply_z_gate_pipeline: wgpu::ComputePipeline,
+    apply_gates_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     coeff_ratio_pipeline: wgpu::ComputePipeline,
@@ -81,44 +75,27 @@ impl GpuContext {
                     },
                 ],
             });
-        let unary_gate_bind_group_layout =
+        let apply_gates_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Gate Application"),
+                label: Some("Apply Gates"),
                 entries: &[
-                    // a
+                    // gates
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
                         count: None,
                     },
-                ],
-            });
-        let binary_gate_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Gate Application"),
-                entries: &[
-                    // a
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // b
+                    // qubit_params
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -241,69 +218,18 @@ impl GpuContext {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         });
 
-        let unary_gate_pipeline_layout =
+        let apply_gates_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Gate Application"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &unary_gate_bind_group_layout],
+                label: Some("Apply Gates"),
+                bind_group_layouts: &[&tableau_bind_group_layout, &apply_gates_bind_group_layout],
                 immediate_size: 0,
             });
-        let binary_gate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Gate Application"),
-                bind_group_layouts: &[&tableau_bind_group_layout, &binary_gate_bind_group_layout],
-                immediate_size: 0,
-            });
-        let apply_cnot_gate_pipeline =
+        let apply_gates_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Cnot Gate"),
-                layout: Some(&binary_gate_pipeline_layout),
+                label: Some("Apply Gates"),
+                layout: Some(&apply_gates_pipeline_layout),
                 module: &shader_module,
-                entry_point: Some("apply_cnot_gate"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_h_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply H Gate"),
-                layout: Some(&unary_gate_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_h_gate"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_s_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply S Gate"),
-                layout: Some(&unary_gate_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_s_gate"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_x_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply X Gate"),
-                layout: Some(&unary_gate_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_x_gate"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_y_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Y Gate"),
-                layout: Some(&unary_gate_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_y_gate"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_z_gate_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Z Gate"),
-                layout: Some(&unary_gate_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_z_gate"),
+                entry_point: Some("apply_gates"),
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
@@ -356,18 +282,12 @@ impl GpuContext {
             queue,
 
             tableau_bind_group_layout,
-            unary_gate_bind_group_layout,
-            binary_gate_bind_group_layout,
+            apply_gates_bind_group_layout,
             bring_into_rref_bind_group_layout,
             coeff_ratio_bind_group_layout,
 
             zero_pipeline,
-            apply_cnot_gate_pipeline,
-            apply_h_gate_pipeline,
-            apply_s_gate_pipeline,
-            apply_x_gate_pipeline,
-            apply_y_gate_pipeline,
-            apply_z_gate_pipeline,
+            apply_gates_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             coeff_ratio_pipeline,
@@ -379,6 +299,9 @@ pub struct TableauGpu {
     n: u32,
     tableau_buf: wgpu::Buffer,
     tableau_bind_group: wgpu::BindGroup,
+
+    gates: Vec<u32>,
+    qubit_params: Vec<u32>,
 }
 impl TableauGpu {
     pub fn zero(n: usize) -> Self {
@@ -426,232 +349,102 @@ impl TableauGpu {
             n,
             tableau_buf,
             tableau_bind_group,
+
+            gates: Vec::new(),
+            qubit_params: Vec::new(),
         }
     }
 
     pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
-        let gpu = get_gpu();
-
         let a: u32 = a.try_into().expect("a does not fit into u32");
         let b: u32 = b.try_into().expect("b does not fit into u32");
+        self.gates.push(0);
+        self.qubit_params.push(a);
+        self.qubit_params.push(b);
+    }
+    pub fn apply_h_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(1);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_s_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(2);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_x_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(3);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_y_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(4);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_z_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(5);
+        self.qubit_params.push(a);
+    }
+    fn submit_gates(&mut self) {
+        if self.gates.is_empty() {
+            return;
+        }
+
+        let gpu = get_gpu();
+
+        let n = self.n;
 
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
+        let gates_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
+                label: Some("gates"),
+                contents: &self
+                    .gates
+                    .iter()
+                    .flat_map(|&g| g.to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                usage: wgpu::BufferUsages::STORAGE,
             });
-        let b_buf = gpu
+        let qubit_params_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("b"),
-                contents: &b.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
+                label: Some("qubit_params"),
+                contents: &self
+                    .qubit_params
+                    .iter()
+                    .flat_map(|&p| p.to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                usage: wgpu::BufferUsages::STORAGE,
             });
-        let apply_cnot_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Cnot Bind Group"),
-            layout: &gpu.binary_gate_bind_group_layout,
+        let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Apply Gates Bind Group"),
+            layout: &gpu.apply_gates_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: a_buf.as_entire_binding(),
+                    resource: gates_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: b_buf.as_entire_binding(),
+                    resource: qubit_params_buf.as_entire_binding(),
                 },
             ],
         });
 
         let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_cnot_gate_pipeline);
+        compute_pass.set_pipeline(&gpu.apply_gates_pipeline);
         compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_cnot_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
+        compute_pass.set_bind_group(1, &bind_group, &[]);
+        compute_pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
         drop(compute_pass);
 
         gpu.queue.submit([encoder.finish()]);
-    }
-    pub fn apply_h_gate(&mut self, a: usize) {
-        let gpu = get_gpu();
 
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let apply_h_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("H Bind Group"),
-            layout: &gpu.unary_gate_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: a_buf.as_entire_binding(),
-            }],
-        });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_h_gate_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_h_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
-        drop(compute_pass);
-
-        gpu.queue.submit([encoder.finish()]);
-    }
-    pub fn apply_s_gate(&mut self, a: usize) {
-        let gpu = get_gpu();
-
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let apply_s_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("S Bind Group"),
-            layout: &gpu.unary_gate_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: a_buf.as_entire_binding(),
-            }],
-        });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_s_gate_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_s_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
-        drop(compute_pass);
-
-        gpu.queue.submit([encoder.finish()]);
-    }
-    pub fn apply_x_gate(&mut self, a: usize) {
-        let gpu = get_gpu();
-
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let apply_x_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("X Bind Group"),
-            layout: &gpu.unary_gate_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: a_buf.as_entire_binding(),
-            }],
-        });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_x_gate_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_x_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
-        drop(compute_pass);
-
-        gpu.queue.submit([encoder.finish()]);
-    }
-    pub fn apply_y_gate(&mut self, a: usize) {
-        let gpu = get_gpu();
-
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let apply_y_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Y Bind Group"),
-            layout: &gpu.unary_gate_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: a_buf.as_entire_binding(),
-            }],
-        });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_y_gate_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_y_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
-        drop(compute_pass);
-
-        gpu.queue.submit([encoder.finish()]);
-    }
-    pub fn apply_z_gate(&mut self, a: usize) {
-        let gpu = get_gpu();
-
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let a_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a"),
-                contents: &a.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let apply_z_gate_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Z Bind Group"),
-            layout: &gpu.unary_gate_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: a_buf.as_entire_binding(),
-            }],
-        });
-
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.apply_z_gate_pipeline);
-        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &apply_z_gate_bind_group, &[]);
-        compute_pass.dispatch_workgroups(
-            column_block_length(self.n).div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
-        drop(compute_pass);
-
-        gpu.queue.submit([encoder.finish()]);
+        self.gates.clear();
+        self.qubit_params.clear();
     }
 
     pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
@@ -660,6 +453,8 @@ impl TableauGpu {
         let w2_len: u32 = w2.len().try_into().expect("w2.len() does not fit into u32");
         debug_assert_eq!(w1_len, n, "Basis state 1 must have length {n}");
         debug_assert_eq!(w2_len, n, "Basis state 2 must have length {n}");
+
+        self.submit_gates();
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();

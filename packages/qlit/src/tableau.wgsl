@@ -21,12 +21,12 @@ fn zero(
 }
 
 
-@group(1) @binding(0) var<uniform> a: u32;
-@group(1) @binding(1) var<uniform> b: u32;
+@group(1) @binding(0) var<storage, read> gates: array<u32>;
+@group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
 
 @compute
 @workgroup_size(64)
-fn apply_cnot_gate(
+fn apply_gates(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
     // Assign one thread to each row (block).
@@ -35,96 +35,73 @@ fn apply_cnot_gate(
         return;
     }
 
-    let r = r_column_block_index(block_index);
-    let xa = x_column_block_index(block_index, a);
-    let za = z_column_block_index(block_index, a);
-    let xb = x_column_block_index(block_index, b);
-    let zb = z_column_block_index(block_index, b);
-    tableau[r] ^= tableau[xa] & tableau[zb] & ~(tableau[xb] ^ tableau[za]);
-    tableau[za] ^= tableau[zb];
-    tableau[xb] ^= tableau[xa];
-}
-@compute
-@workgroup_size(64)
-fn apply_h_gate(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
+    var p: u32 = 0;
+    for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
+        switch gates[i] {
+            case 0: {
+                // CNOT
+                let a = qubit_params[p];
+                let b = qubit_params[p + 1];
+                p += 2;
+                let r = r_column_block_index(block_index);
+                let xa = x_column_block_index(block_index, a);
+                let za = z_column_block_index(block_index, a);
+                let xb = x_column_block_index(block_index, b);
+                let zb = z_column_block_index(block_index, b);
+                tableau[r] ^= tableau[xa] & tableau[zb] & ~(tableau[xb] ^ tableau[za]);
+                tableau[za] ^= tableau[zb];
+                tableau[xb] ^= tableau[xa];
+            }
+            case 1: {
+                // H
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let x = x_column_block_index(block_index, a);
+                let z = z_column_block_index(block_index, a);
+                tableau[r] ^= tableau[x] & tableau[z];
+                let temp = tableau[z];
+                tableau[z] = tableau[x];
+                tableau[x] = temp;
+            }
+            case 2: {
+                // S
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let x = x_column_block_index(block_index, a);
+                let z = z_column_block_index(block_index, a);
+                tableau[r] ^= tableau[x] & tableau[z];
+                tableau[z] ^= tableau[x];
+            }
+            case 3: {
+                // X
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let z = z_column_block_index(block_index, a);
+                tableau[r] ^= tableau[z];
+            }
+            case 4: {
+                // Y
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let x = x_column_block_index(block_index, a);
+                let z = z_column_block_index(block_index, a);
+                tableau[r] ^= tableau[x] ^ tableau[z];
+            }
+            case 5: {
+                // Z
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let x = x_column_block_index(block_index, a);
+                tableau[r] ^= tableau[x];
+            }
+            default: {}
+        }
     }
-
-    let r = r_column_block_index(block_index);
-    let x = x_column_block_index(block_index, a);
-    let z = z_column_block_index(block_index, a);
-    tableau[r] ^= tableau[x] & tableau[z];
-    let temp = tableau[z];
-    tableau[z] = tableau[x];
-    tableau[x] = temp;
-}
-@compute
-@workgroup_size(64)
-fn apply_s_gate(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
-    }
-
-    let r = r_column_block_index(block_index);
-    let x = x_column_block_index(block_index, a);
-    let z = z_column_block_index(block_index, a);
-    tableau[r] ^= tableau[x] & tableau[z];
-    tableau[z] ^= tableau[x];
-}
-@compute
-@workgroup_size(64)
-fn apply_x_gate(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
-    }
-
-    let r = r_column_block_index(block_index);
-    let z = z_column_block_index(block_index, a);
-    tableau[r] ^= tableau[z];
-}
-@compute
-@workgroup_size(64)
-fn apply_y_gate(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
-    }
-
-    let r = r_column_block_index(block_index);
-    let x = x_column_block_index(block_index, a);
-    let z = z_column_block_index(block_index, a);
-    tableau[r] ^= tableau[x] ^ tableau[z];
-}
-@compute
-@workgroup_size(64)
-fn apply_z_gate(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
-    }
-
-    let r = r_column_block_index(block_index);
-    let x = x_column_block_index(block_index, a);
-    tableau[r] ^= tableau[x];
 }
 
 
