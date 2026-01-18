@@ -373,29 +373,41 @@ impl TableauGpu {
         self.qubit_params.push(a);
         self.qubit_params.push(b);
     }
-    pub fn apply_h_gate(&mut self, a: usize) {
+    pub fn apply_cz_gate(&mut self, a: usize, b: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
+        let b: u32 = b.try_into().expect("b does not fit into u32");
         self.gates.push(1);
         self.qubit_params.push(a);
+        self.qubit_params.push(b);
     }
-    pub fn apply_s_gate(&mut self, a: usize) {
+    pub fn apply_h_gate(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
         self.gates.push(2);
         self.qubit_params.push(a);
     }
-    pub fn apply_x_gate(&mut self, a: usize) {
+    pub fn apply_s_gate(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
         self.gates.push(3);
         self.qubit_params.push(a);
     }
-    pub fn apply_y_gate(&mut self, a: usize) {
+    pub fn apply_sdg_gate(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
         self.gates.push(4);
         self.qubit_params.push(a);
     }
-    pub fn apply_z_gate(&mut self, a: usize) {
+    pub fn apply_x_gate(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
         self.gates.push(5);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_y_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(6);
+        self.qubit_params.push(a);
+    }
+    pub fn apply_z_gate(&mut self, a: usize) {
+        let a: u32 = a.try_into().expect("a does not fit into u32");
+        self.gates.push(7);
         self.qubit_params.push(a);
     }
     fn submit_gates(&mut self) {

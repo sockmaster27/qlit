@@ -53,6 +53,22 @@ fn apply_gates(
                 tableau[xb] ^= tableau[xa];
             }
             case 1: {
+                // CZ
+                let a = qubit_params[p];
+                let b = qubit_params[p + 1];
+                p += 2;
+                let r = r_column_block_index(block_index);
+                let xa = x_column_block_index(block_index, a);
+                let za = z_column_block_index(block_index, a);
+                let xb = x_column_block_index(block_index, b);
+                let zb = z_column_block_index(block_index, b);
+                tableau[r] ^= (tableau[xb] & tableau[zb])
+                    ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
+                    ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
+                tableau[za] ^= tableau[xb];
+                tableau[zb] ^= tableau[xa];
+            }
+            case 2: {
                 // H
                 let a = qubit_params[p];
                 p += 1;
@@ -64,7 +80,7 @@ fn apply_gates(
                 tableau[z] = tableau[x];
                 tableau[x] = temp;
             }
-            case 2: {
+            case 3: {
                 // S
                 let a = qubit_params[p];
                 p += 1;
@@ -74,7 +90,17 @@ fn apply_gates(
                 tableau[r] ^= tableau[x] & tableau[z];
                 tableau[z] ^= tableau[x];
             }
-            case 3: {
+            case 4: {
+                // Sdg
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(block_index);
+                let x = x_column_block_index(block_index, a);
+                let z = z_column_block_index(block_index, a);
+                tableau[z] ^= tableau[x];
+                tableau[r] ^= tableau[x] & tableau[z];
+            }
+            case 5: {
                 // X
                 let a = qubit_params[p];
                 p += 1;
@@ -82,7 +108,7 @@ fn apply_gates(
                 let z = z_column_block_index(block_index, a);
                 tableau[r] ^= tableau[z];
             }
-            case 4: {
+            case 6: {
                 // Y
                 let a = qubit_params[p];
                 p += 1;
@@ -91,7 +117,7 @@ fn apply_gates(
                 let z = z_column_block_index(block_index, a);
                 tableau[r] ^= tableau[x] ^ tableau[z];
             }
-            case 5: {
+            case 7: {
                 // Z
                 let a = qubit_params[p];
                 p += 1;

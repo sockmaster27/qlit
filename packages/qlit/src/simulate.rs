@@ -308,10 +308,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                     if x[a] == true {
                         x_coeff *= -Complex::I;
                     }
-                    // TODO: Optimize
-                    g.apply_s_gate(a);
-                    g.apply_s_gate(a);
-                    g.apply_s_gate(a);
+                    g.apply_sdg_gate(a);
                 }
                 CliffordTGate::Cnot(a, b) => {
                     x[b] ^= x[a];
@@ -321,10 +318,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                     if x[a] == true && x[b] == true {
                         x_coeff *= -Complex::ONE;
                     }
-                    // TODO: Optimize
-                    g.apply_h_gate(b);
-                    g.apply_cnot_gate(a, b);
-                    g.apply_h_gate(b);
+                    g.apply_cz_gate(a, b);
                 }
                 CliffordTGate::H(a) => {
                     let r = g.coeff_ratio_flipped_bit(&x, a);
