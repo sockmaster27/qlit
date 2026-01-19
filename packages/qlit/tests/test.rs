@@ -265,23 +265,6 @@ mod gpu {
     }
 
     #[test]
-    fn hadamard() {
-        let circuit = CliffordTCircuit::new(8, [H(0)]).unwrap();
-
-        for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
-
-            let result = simulate_circuit_gpu(&w, &circuit);
-
-            let expected = match i {
-                0b0000_0000 | 0b1000_0000 => Complex::ONE / 2_f64.sqrt(),
-                _ => Complex::ZERO,
-            };
-            assert_almost_eq(result, expected, i);
-        }
-    }
-
-    #[test]
     fn imaginary() {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 

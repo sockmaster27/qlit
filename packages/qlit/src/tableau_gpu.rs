@@ -483,7 +483,7 @@ impl TableauGpu {
         self.gates.push(7);
         self.qubit_params.push(a);
     }
-    pub fn submit_gates(&mut self) {
+    fn submit_gates(&mut self) {
         if self.gates.is_empty() {
             return;
         }
@@ -543,7 +543,7 @@ impl TableauGpu {
         self.qubit_params.clear();
     }
 
-    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> CoeffRatioFuture {
+    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
         let n = self.n;
         let w1_len: u32 = w1.len().try_into().expect("w1.len() does not fit into u32");
         let flipped_bit: u32 = flipped_bit
@@ -578,7 +578,7 @@ impl TableauGpu {
             &gpu.coeff_ratio_flipped_bit_pipeline,
         )
     }
-    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> CoeffRatioFuture {
+    pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         let w1_len: u32 = w1.len().try_into().expect("w1.len() does not fit into u32");
         let w2_len: u32 = w2.len().try_into().expect("w2.len() does not fit into u32");
@@ -620,7 +620,9 @@ impl TableauGpu {
         binding_1_buf: &wgpu::Buffer,
         bind_group_layout: &wgpu::BindGroupLayout,
         pipeline: &wgpu::ComputePipeline,
-    ) -> CoeffRatioFuture {
+    ) -> Complex<f64> {
+        self.submit_gates();
+
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
@@ -685,13 +687,22 @@ impl TableauGpu {
         encoder.copy_buffer_to_buffer(&factor_buf, 0, &factor_read_buf, 0, U32_SIZE);
         encoder.copy_buffer_to_buffer(&phase_buf, 0, &phase_read_buf, 0, U32_SIZE);
 
-        let submission_index = gpu.queue.submit([encoder.finish()]);
+        gpu.queue.submit([encoder.finish()]);
 
-        CoeffRatioFuture {
-            factor_read_buf,
-            phase_read_buf,
-            submission_index,
-        }
+        factor_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        phase_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        // TODO: To support WebGPU, we need to wait for the callbacks to be invoked.
+        // (See https://github.com/gfx-rs/wgpu/blob/993448ab2ca6155f0c859cad49624a119d8bc4b7/examples/standalone/01_hello_compute/src/main.rs)
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+
+        let factor_bytes: &[u8] = &factor_read_buf.get_mapped_range(..);
+        let phase_bytes: &[u8] = &phase_read_buf.get_mapped_range(..);
+        let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
+        let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
+
+        factor * Complex::I.powu(phase)
     }
 
     fn bring_into_rref(&mut self) {
@@ -897,37 +908,6 @@ fn tableau_block_length(n: u32) -> u32 {
     column_block_length(n) * (n + n + 1)
 }
 
-pub struct CoeffRatioFuture {
-    factor_read_buf: wgpu::Buffer,
-    phase_read_buf: wgpu::Buffer,
-    submission_index: wgpu::SubmissionIndex,
-}
-impl CoeffRatioFuture {
-    pub fn get_blocking(self) -> Complex<f64> {
-        let gpu = get_gpu();
-
-        self.factor_read_buf
-            .map_async(wgpu::MapMode::Read, .., |_| {});
-        self.phase_read_buf
-            .map_async(wgpu::MapMode::Read, .., |_| {});
-        // TODO: To support WebGPU, we need to wait for the callbacks to be invoked.
-        // (See https://github.com/gfx-rs/wgpu/blob/993448ab2ca6155f0c859cad49624a119d8bc4b7/examples/standalone/01_hello_compute/src/main.rs)
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(self.submission_index),
-                timeout: None,
-            })
-            .unwrap();
-
-        let factor_bytes: &[u8] = &self.factor_read_buf.get_mapped_range(..);
-        let phase_bytes: &[u8] = &self.phase_read_buf.get_mapped_range(..);
-        let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
-        let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
-
-        factor * Complex::I.powu(phase)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::circuit::{CliffordTCircuit, CliffordTGate::*};
@@ -945,7 +925,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
                 Complex::ONE
@@ -965,7 +945,7 @@ mod tests {
 
         let mut g = TableauGpu::zero(8);
         apply_clifford_circuit(&mut g, &circuit);
-        let result = g.coeff_ratio(&w1, &w2).get_blocking();
+        let result = g.coeff_ratio(&w1, &w2);
 
         assert_eq!(result, Complex::ONE);
     }
@@ -980,7 +960,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
                 Complex::ONE
@@ -1003,7 +983,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b0000_0000 {
                 -Complex::I
@@ -1026,7 +1006,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if i == 0b1000_0000 {
                 Complex::ONE
@@ -1047,7 +1027,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
                 Complex::ONE
@@ -1093,7 +1073,7 @@ mod tests {
 
             let mut g = TableauGpu::zero(8);
             apply_clifford_circuit(&mut g, &circuit);
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [
                 0b0000_0000,
@@ -1148,18 +1128,9 @@ mod tests {
         let mut g = TableauGpu::zero(8);
         apply_clifford_circuit(&mut g, &circuit);
 
-        assert_eq!(
-            g.coeff_ratio_flipped_bit(&w, 0).get_blocking(),
-            -Complex::ONE
-        );
-        assert_eq!(
-            g.coeff_ratio_flipped_bit(&w, 1).get_blocking(),
-            -Complex::ONE
-        );
-        assert_eq!(
-            g.coeff_ratio_flipped_bit(&w, 2).get_blocking(),
-            Complex::ZERO
-        );
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 1), -Complex::ONE);
+        assert_eq!(g.coeff_ratio_flipped_bit(&w, 2), Complex::ZERO);
     }
 
     #[test]
@@ -1198,7 +1169,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let result = g.coeff_ratio(&w1, &w2).get_blocking();
+            let result = g.coeff_ratio(&w1, &w2);
 
             let expected = if [
                 0b0000_0000,
@@ -1229,6 +1200,5 @@ mod tests {
                 _ => unreachable!(),
             }
         }
-        g.submit_gates();
     }
 }
