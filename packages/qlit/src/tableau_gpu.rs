@@ -31,12 +31,14 @@ pub struct GpuContext {
     tableau_bind_group_layout: wgpu::BindGroupLayout,
     apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
+    coeff_ratio_flipped_bit_bind_group_layout: wgpu::BindGroupLayout,
     coeff_ratio_bind_group_layout: wgpu::BindGroupLayout,
 
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
+    coeff_ratio_flipped_bit_pipeline: wgpu::ComputePipeline,
     coeff_ratio_pipeline: wgpu::ComputePipeline,
 }
 impl GpuContext {
@@ -164,9 +166,59 @@ impl GpuContext {
                     },
                 ],
             });
+        let coeff_ratio_flipped_bit_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Coeff Ratio Flipped Bit"),
+                entries: &[
+                    // w1
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // flipped_bit
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // factor
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // phase
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
         let coeff_ratio_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Bring Into RREF"),
+                label: Some("Coeff Ratio"),
                 entries: &[
                     // w1
                     wgpu::BindGroupLayoutEntry {
@@ -272,9 +324,28 @@ impl GpuContext {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         });
 
+        let coeff_ratio_flipped_bit_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Coeff Ratio Flipped Bit"),
+                bind_group_layouts: &[
+                    &tableau_bind_group_layout,
+                    &coeff_ratio_flipped_bit_bind_group_layout,
+                ],
+                immediate_size: 0,
+            });
+        let coeff_ratio_flipped_bit_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Coeff Ratio Flipped Bit"),
+                layout: Some(&coeff_ratio_flipped_bit_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("coeff_ratio_flipped_bit"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
         let coeff_ratio_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Bring Into RREF"),
+                label: Some("Coeff Ratio"),
                 bind_group_layouts: &[&tableau_bind_group_layout, &coeff_ratio_bind_group_layout],
                 immediate_size: 0,
             });
@@ -295,12 +366,14 @@ impl GpuContext {
             tableau_bind_group_layout,
             apply_gates_bind_group_layout,
             bring_into_rref_bind_group_layout,
+            coeff_ratio_flipped_bit_bind_group_layout,
             coeff_ratio_bind_group_layout,
 
             zero_pipeline,
             apply_gates_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
+            coeff_ratio_flipped_bit_pipeline,
             coeff_ratio_pipeline,
         }
     }
@@ -470,22 +543,49 @@ impl TableauGpu {
         self.qubit_params.clear();
     }
 
+    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
+        let n = self.n;
+        let w1_len: u32 = w1.len().try_into().expect("w1.len() does not fit into u32");
+        let flipped_bit: u32 = flipped_bit
+            .try_into()
+            .expect("flipped_bit does not fit into u32");
+        debug_assert_eq!(w1_len, n, "w1 must have length {n}");
+        debug_assert!(flipped_bit < n, "flipped_bit must be less than {n}");
+
+        let gpu = get_gpu();
+        let w1_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("w1"),
+                contents: &w1
+                    .iter()
+                    .flat_map(|&b| (if b { 1u32 } else { 0u32 }).to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let flipped_bit_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("flipped_bit"),
+                contents: &flipped_bit.to_ne_bytes(),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+
+        self.coeff_ratio_common(
+            &w1_buf,
+            &flipped_bit_buf,
+            &gpu.coeff_ratio_flipped_bit_bind_group_layout,
+            &gpu.coeff_ratio_flipped_bit_pipeline,
+        )
+    }
     pub fn coeff_ratio(&mut self, w1: &[bool], w2: &[bool]) -> Complex<f64> {
         let n = self.n;
         let w1_len: u32 = w1.len().try_into().expect("w1.len() does not fit into u32");
         let w2_len: u32 = w2.len().try_into().expect("w2.len() does not fit into u32");
-        debug_assert_eq!(w1_len, n, "Basis state 1 must have length {n}");
-        debug_assert_eq!(w2_len, n, "Basis state 2 must have length {n}");
+        debug_assert_eq!(w1_len, n, "w1 must have length {n}");
+        debug_assert_eq!(w2_len, n, "w2 must have length {n}");
 
-        self.submit_gates();
-
-        // Bring tableau's x part into reduced row echelon form.
-        self.bring_into_rref();
-
-        // Derive a stabilizer of the desired form.
-        // Compute the (w2, w1) entry in the stabilizer of the correct form.
         let gpu = get_gpu();
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
         let w1_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -506,6 +606,29 @@ impl TableauGpu {
                     .collect::<Vec<u8>>(),
                 usage: wgpu::BufferUsages::STORAGE,
             });
+
+        self.coeff_ratio_common(
+            &w1_buf,
+            &w2_buf,
+            &gpu.coeff_ratio_bind_group_layout,
+            &gpu.coeff_ratio_pipeline,
+        )
+    }
+    pub fn coeff_ratio_common(
+        &mut self,
+        binding_0_buf: &wgpu::Buffer,
+        binding_1_buf: &wgpu::Buffer,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        pipeline: &wgpu::ComputePipeline,
+    ) -> Complex<f64> {
+        self.submit_gates();
+
+        // Bring tableau's x part into reduced row echelon form.
+        self.bring_into_rref();
+
+        // Derive a stabilizer of the desired form.
+        // Compute the (w2, w1) entry in the stabilizer of the correct form.
+        let gpu = get_gpu();
         let factor_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("factor"),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
@@ -518,17 +641,17 @@ impl TableauGpu {
             size: U32_SIZE,
             mapped_at_creation: false,
         });
-        let coeff_ratio_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Coeff Ratio Bind Group"),
-            layout: &gpu.coeff_ratio_bind_group_layout,
+            layout: bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: w1_buf.as_entire_binding(),
+                    resource: binding_0_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: w2_buf.as_entire_binding(),
+                    resource: binding_1_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -541,10 +664,11 @@ impl TableauGpu {
             ],
         });
 
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
         let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.coeff_ratio_pipeline);
+        compute_pass.set_pipeline(pipeline);
         compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        compute_pass.set_bind_group(1, &coeff_ratio_bind_group, &[]);
+        compute_pass.set_bind_group(1, &bind_group, &[]);
         compute_pass.dispatch_workgroups(1, 1, 1);
         drop(compute_pass);
 
@@ -579,13 +703,6 @@ impl TableauGpu {
         let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
 
         factor * Complex::I.powu(phase)
-    }
-
-    pub fn coeff_ratio_flipped_bit(&mut self, w1: &[bool], flipped_bit: usize) -> Complex<f64> {
-        // TODO: Optimize (?)
-        let mut w2 = w1.to_vec();
-        w2[flipped_bit] = !w2[flipped_bit];
-        self.coeff_ratio(w1, &w2)
     }
 
     fn bring_into_rref(&mut self) {

@@ -294,14 +294,69 @@ fn swap_pass(
 
 
 @group(1) @binding(0) var<storage, read> w1: array<u32>;
-@group(1) @binding(1) var<storage, read> w2: array<u32>;
+@group(1) @binding(1) var<uniform> flipped_bit: u32;        // only used in coeff_ratio_flipped_bit
+@group(1) @binding(1) var<storage, read> w2: array<u32>;    // only used in coeff_ratio
 @group(1) @binding(2) var<storage, read_write> factor: u32;
 @group(1) @binding(3) var<storage, read_write> phase: u32;
 
 @compute
 @workgroup_size(1)
-// Compute the ratio of the coefficients of `w1` and `w2`, such that
-// coefficient_ratio(w1, w2) * coeff(w1) = coeff(w2)
+fn coeff_ratio_flipped_bit(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    // Only one thread is needed.
+    if id.x != 0 {
+        return;
+    }
+
+    // Find pivot row.
+    var row: u32 = 0;
+    for (var j: u32 = 0; j < n; j += 1) {
+        if x_bit(j, flipped_bit) {
+            row = j;
+            break;
+        }
+    }
+
+    var res_phase: u32 = 0; // i^0 = 1
+    if row_negative(row) {
+        res_phase = 2; // i^2 = -1
+    } 
+    for (var q: u32 = 0; q < n; q += 1) {
+        // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
+        if i(row, q) && (flipped_bit != q) {
+            // Multiply by 1, no phase change
+        } else if x(row, q) && (flipped_bit == q) {
+            // Multiply by 1, no phase change
+        } else if y(row, q) && (flipped_bit == q) {
+            if w1[q] == 0 {
+                // Multiply by i
+                res_phase += 1;
+            } else {
+                // Multiply by -i
+                res_phase += 3;
+            }
+        } else if z(row, q) && (flipped_bit != q) {
+            if w1[q] == 0 {
+                // Multiply by 1, no phase change
+            } else {
+                // Multiply by -1
+                res_phase += 2;
+            }
+        } else {
+            // Multiply by 0
+            factor = 0;
+            phase = 0;
+            return;
+        }
+        res_phase %= 4;
+    }
+    factor = 1;
+    phase = res_phase;
+}
+
+@compute
+@workgroup_size(1)
 fn coeff_ratio(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
