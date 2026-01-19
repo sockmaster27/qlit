@@ -260,6 +260,8 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
 pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+    use crate::tableau_gpu::CoeffRatioFuture;
+
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -271,17 +273,23 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     let mut path = vec![false; t];
     let mut coeff = Complex::ZERO;
     let mut done = false;
+    let mut pre_f: Option<(CoeffRatioFuture, Complex<f64>)> = None;
 
     while !done {
+        if let Some((f, x_coeff)) = pre_f {
+            coeff += x_coeff * f.get_blocking();
+        }
+
         let mut x = vec![false; n];
         let mut x_coeff = Complex::ONE;
         let mut g = TableauGpu::zero(n);
         let mut seen_t_gates = 0;
+        let mut tableau_gates = circuit.gates().iter().copied();
+        apply_gates_until_next_h(&mut tableau_gates, &mut g, &path, seen_t_gates);
         for &gate in circuit.gates() {
             match gate {
                 CliffordTGate::X(a) => {
                     x[a] = !x[a];
-                    g.apply_x_gate(a);
                 }
                 CliffordTGate::Y(a) => {
                     if x[a] == true {
@@ -290,38 +298,35 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                         x_coeff *= Complex::I;
                     }
                     x[a] = !x[a];
-                    g.apply_y_gate(a);
                 }
                 CliffordTGate::Z(a) => {
                     if x[a] == true {
                         x_coeff *= -Complex::ONE;
                     }
-                    g.apply_z_gate(a);
                 }
                 CliffordTGate::S(a) => {
                     if x[a] == true {
                         x_coeff *= Complex::I;
                     }
-                    g.apply_s_gate(a);
                 }
                 CliffordTGate::Sdg(a) => {
                     if x[a] == true {
                         x_coeff *= -Complex::I;
                     }
-                    g.apply_sdg_gate(a);
                 }
                 CliffordTGate::Cnot(a, b) => {
                     x[b] ^= x[a];
-                    g.apply_cnot_gate(a, b);
                 }
                 CliffordTGate::Cz(a, b) => {
                     if x[a] == true && x[b] == true {
                         x_coeff *= -Complex::ONE;
                     }
-                    g.apply_cz_gate(a, b);
                 }
                 CliffordTGate::H(a) => {
-                    let r = g.coeff_ratio_flipped_bit(&x, a);
+                    let f = g.coeff_ratio_flipped_bit(&x, a);
+                    g.apply_h_gate(a);
+                    apply_gates_until_next_h(&mut tableau_gates, &mut g, &path, seen_t_gates);
+                    let r = f.get_blocking();
                     if r != -Complex::ONE {
                         x_coeff *= (r + 1.0) / SQRT_2;
                         x[a] = false;
@@ -333,7 +338,6 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                         }
                         x[a] = true;
                     }
-                    g.apply_h_gate(a);
                 }
 
                 CliffordTGate::T(a) => {
@@ -344,7 +348,6 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                             x_coeff *= -Complex::ONE;
                         }
                         x_coeff *= C_Z;
-                        g.apply_z_gate(a);
                     }
                     seen_t_gates += 1;
                 }
@@ -356,19 +359,71 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                             x_coeff *= -Complex::ONE;
                         }
                         x_coeff *= C_Z_DG;
-                        g.apply_z_gate(a);
                     }
                     seen_t_gates += 1;
                 }
             }
         }
 
-        coeff += x_coeff * g.coeff_ratio(&x, w);
+        pre_f = Some((g.coeff_ratio(&x, w), x_coeff));
 
         done = increment_path(&mut path);
     }
 
+    if let Some((f, x_coeff)) = pre_f {
+        coeff += x_coeff * f.get_blocking();
+    }
+
     coeff
+}
+
+fn apply_gates_until_next_h(
+    gates: &mut impl Iterator<Item = CliffordTGate>,
+    g: &mut TableauGpu,
+    path: &Vec<bool>,
+    mut seen_t_gates: usize,
+) {
+    while let Some(gate) = gates.next() {
+        match gate {
+            CliffordTGate::H(_) => {
+                break;
+            }
+            CliffordTGate::X(a) => {
+                g.apply_x_gate(a);
+            }
+            CliffordTGate::Y(a) => {
+                g.apply_y_gate(a);
+            }
+            CliffordTGate::Z(a) => {
+                g.apply_z_gate(a);
+            }
+            CliffordTGate::S(a) => {
+                g.apply_s_gate(a);
+            }
+            CliffordTGate::Sdg(a) => {
+                g.apply_sdg_gate(a);
+            }
+            CliffordTGate::Cnot(a, b) => {
+                g.apply_cnot_gate(a, b);
+            }
+            CliffordTGate::Cz(a, b) => {
+                g.apply_cz_gate(a, b);
+            }
+            CliffordTGate::T(a) => {
+                if path[seen_t_gates] {
+                    g.apply_z_gate(a);
+                }
+                seen_t_gates += 1;
+            }
+            CliffordTGate::Tdg(a) => {
+                if path[seen_t_gates] {
+                    g.apply_z_gate(a);
+                }
+                seen_t_gates += 1;
+            }
+        }
+    }
+    g.submit_gates();
 }
 
 /// Mutate the given path to the next one.
