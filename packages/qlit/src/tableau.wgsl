@@ -9,15 +9,21 @@ alias BitBlock = u32;
 fn zero(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each column.
-    let i = id.x;
-    if i >= n {
+    // Assign one thread to row (block).
+    let block_index = id.x;
+    if block_index >= column_block_length() {
         return;
     }
     
-    // Assume zero-initialized.
-    let block_index = z_column_block_index(i / block_size, i);
-    tableau[block_index] = bitmask(i % block_size);
+    for (var j: u32 = 0; j < n + n + 1; j += 1) {
+        let b = column_block_index(block_index, j);
+        tableau[b] = 0;
+    }
+    
+    for (var i: u32 = 0; i < block_size; i += 1) {
+        let b = z_column_block_index(block_index, block_index * block_size + i);
+        tableau[b] = bitmask(i);
+    }
 }
 
 

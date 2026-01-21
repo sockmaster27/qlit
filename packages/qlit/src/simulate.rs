@@ -271,11 +271,12 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     let mut path = vec![false; t];
     let mut coeff = Complex::ZERO;
     let mut done = false;
+    let mut g = TableauGpu::new(n);
 
     while !done {
+        g.zero();
         let mut x = vec![false; n];
         let mut x_coeff = Complex::ONE;
-        let mut g = TableauGpu::zero(n);
         let mut seen_t_gates = 0;
         for &gate in circuit.gates() {
             match gate {

@@ -2,7 +2,7 @@ use divan::{Bencher, black_box};
 use qlit::{CliffordTCircuit, initialize_global, simulate_circuit_gpu};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 
-const DEFAULT_QUBITS: usize = 10;
+const DEFAULT_QUBITS: usize = 100;
 const DEFAULT_GATES: usize = 10;
 const DEFAULT_T_GATES: usize = 5;
 

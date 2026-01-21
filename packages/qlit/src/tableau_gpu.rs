@@ -388,7 +388,7 @@ pub struct TableauGpu {
     qubit_params: Vec<u32>,
 }
 impl TableauGpu {
-    pub fn zero(n: usize) -> Self {
+    pub fn new(n: usize) -> Self {
         let gpu = get_gpu();
 
         let n: u32 = n.try_into().expect("n does not fit into u32");
@@ -421,14 +421,6 @@ impl TableauGpu {
             ],
         });
 
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
-        compute_pass.set_pipeline(&gpu.zero_pipeline);
-        compute_pass.set_bind_group(0, &tableau_bind_group, &[]);
-        compute_pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
-        drop(compute_pass);
-        gpu.queue.submit([encoder.finish()]);
-
         TableauGpu {
             n,
             tableau_buf,
@@ -437,6 +429,24 @@ impl TableauGpu {
             gates: Vec::new(),
             qubit_params: Vec::new(),
         }
+    }
+
+    pub fn zero(&mut self) {
+        let gpu = get_gpu();
+
+        let n = self.n;
+
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.zero_pipeline);
+        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        compute_pass.dispatch_workgroups(
+            column_block_length(n + n + 1).div_ceil(WORKGROUP_SIZE),
+            1,
+            1,
+        );
+        drop(compute_pass);
+        gpu.queue.submit([encoder.finish()]);
     }
 
     pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
@@ -923,7 +933,8 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -943,7 +954,8 @@ mod tests {
         let w1 = bits_to_bools(0b0000_0000);
         let w2 = bits_to_bools(0b0100_0000);
 
-        let mut g = TableauGpu::zero(8);
+        let mut g = TableauGpu::new(8);
+        g.zero();
         apply_clifford_circuit(&mut g, &circuit);
         let result = g.coeff_ratio(&w1, &w2);
 
@@ -958,7 +970,8 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -981,7 +994,8 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -1004,7 +1018,8 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -1025,7 +1040,9 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
+            println!("{:?}", g);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -1071,7 +1088,8 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let mut g = TableauGpu::zero(8);
+            let mut g = TableauGpu::new(8);
+            g.zero();
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 
@@ -1125,7 +1143,8 @@ mod tests {
         .unwrap();
 
         let w = bits_to_bools(0b1000_0000);
-        let mut g = TableauGpu::zero(8);
+        let mut g = TableauGpu::new(8);
+        g.zero();
         apply_clifford_circuit(&mut g, &circuit);
 
         assert_eq!(g.coeff_ratio_flipped_bit(&w, 0), -Complex::ONE);
@@ -1162,7 +1181,8 @@ mod tests {
         )
         .unwrap();
 
-        let mut g = TableauGpu::zero(8);
+        let mut g = TableauGpu::new(8);
+        g.zero();
         apply_clifford_circuit(&mut g, &circuit);
 
         let w1 = bits_to_bools(0b1000_0000);
