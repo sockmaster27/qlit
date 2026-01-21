@@ -36,6 +36,7 @@ pub struct GpuContext {
 
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
+    init_bring_into_rref_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     coeff_ratio_flipped_bit_pipeline: wgpu::ComputePipeline,
@@ -114,7 +115,7 @@ impl GpuContext {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -136,7 +137,7 @@ impl GpuContext {
                         binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -306,6 +307,15 @@ impl GpuContext {
                 ],
                 immediate_size: 0,
             });
+        let init_bring_into_rref_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Init Bring Into RREF"),
+                layout: Some(&bring_into_rref_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("init_bring_into_rref"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
         let elimination_pass_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("Elimination Pass"),
@@ -371,6 +381,7 @@ impl GpuContext {
 
             zero_pipeline,
             apply_gates_pipeline,
+            init_bring_into_rref_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             coeff_ratio_flipped_bit_pipeline,
@@ -383,6 +394,15 @@ pub struct TableauGpu {
     n: u32,
     tableau_buf: wgpu::Buffer,
     tableau_bind_group: wgpu::BindGroup,
+
+    col_bufs: [wgpu::Buffer; 2],
+    a_bufs: [wgpu::Buffer; 2],
+    pivot_buf: wgpu::Buffer,
+
+    factor_buf: wgpu::Buffer,
+    phase_buf: wgpu::Buffer,
+    factor_read_buf: wgpu::Buffer,
+    phase_read_buf: wgpu::Buffer,
 
     gates: Vec<u32>,
     qubit_params: Vec<u32>,
@@ -421,10 +441,79 @@ impl TableauGpu {
             ],
         });
 
+        let col_bufs = [
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("col1"),
+                size: U32_SIZE,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("col2"),
+                size: U32_SIZE,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
+        ];
+        let a_bufs = [
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("a1"),
+                size: U32_SIZE,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("a2"),
+                size: U32_SIZE,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
+        ];
+        let pivot_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pivot"),
+            size: U32_SIZE,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        let factor_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("factor"),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let phase_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("phase"),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let factor_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("factor (Read Buffer)"),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+        let phase_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("phase (Read Buffer)"),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            size: U32_SIZE,
+            mapped_at_creation: false,
+        });
+
         TableauGpu {
             n,
             tableau_buf,
             tableau_bind_group,
+
+            col_bufs,
+            a_bufs,
+            pivot_buf,
+
+            factor_buf,
+            phase_buf,
+            factor_read_buf,
+            phase_read_buf,
 
             gates: Vec::new(),
             qubit_params: Vec::new(),
@@ -502,7 +591,6 @@ impl TableauGpu {
 
         let n = self.n;
 
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
         let gates_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -540,6 +628,7 @@ impl TableauGpu {
             ],
         });
 
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
         let mut compute_pass = encoder.begin_compute_pass(&Default::default());
         compute_pass.set_pipeline(&gpu.apply_gates_pipeline);
         compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
@@ -639,18 +728,6 @@ impl TableauGpu {
         // Derive a stabilizer of the desired form.
         // Compute the (w2, w1) entry in the stabilizer of the correct form.
         let gpu = get_gpu();
-        let factor_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("factor"),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        let phase_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("phase"),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Coeff Ratio Bind Group"),
             layout: bind_group_layout,
@@ -665,11 +742,11 @@ impl TableauGpu {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: factor_buf.as_entire_binding(),
+                    resource: self.factor_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: phase_buf.as_entire_binding(),
+                    resource: self.phase_buf.as_entire_binding(),
                 },
             ],
         });
@@ -682,35 +759,31 @@ impl TableauGpu {
         compute_pass.dispatch_workgroups(1, 1, 1);
         drop(compute_pass);
 
-        let factor_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("factor (Read Buffer)"),
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        let phase_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("phase (Read Buffer)"),
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            size: U32_SIZE,
-            mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(&factor_buf, 0, &factor_read_buf, 0, U32_SIZE);
-        encoder.copy_buffer_to_buffer(&phase_buf, 0, &phase_read_buf, 0, U32_SIZE);
+        encoder.copy_buffer_to_buffer(&self.factor_buf, 0, &self.factor_read_buf, 0, U32_SIZE);
+        encoder.copy_buffer_to_buffer(&self.phase_buf, 0, &self.phase_read_buf, 0, U32_SIZE);
 
         gpu.queue.submit([encoder.finish()]);
 
-        factor_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
-        phase_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
+        self.factor_read_buf
+            .map_async(wgpu::MapMode::Read, .., |_| {});
+        self.phase_read_buf
+            .map_async(wgpu::MapMode::Read, .., |_| {});
         // TODO: To support WebGPU, we need to wait for the callbacks to be invoked.
         // (See https://github.com/gfx-rs/wgpu/blob/993448ab2ca6155f0c859cad49624a119d8bc4b7/examples/standalone/01_hello_compute/src/main.rs)
         gpu.device
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
 
-        let factor_bytes: &[u8] = &factor_read_buf.get_mapped_range(..);
-        let phase_bytes: &[u8] = &phase_read_buf.get_mapped_range(..);
+        let factor_view = self.factor_read_buf.get_mapped_range(..);
+        let phase_view = self.phase_read_buf.get_mapped_range(..);
+        let factor_bytes: &[u8] = &factor_view;
+        let phase_bytes: &[u8] = &phase_view;
         let factor: f64 = u32::from_ne_bytes(factor_bytes.try_into().unwrap()).into();
         let phase = u32::from_ne_bytes(phase_bytes.try_into().unwrap());
+        drop(factor_view);
+        drop(phase_view);
+        self.factor_read_buf.unmap();
+        self.phase_read_buf.unmap();
 
         factor * Complex::I.powu(phase)
     }
@@ -720,42 +793,46 @@ impl TableauGpu {
 
         let n = self.n;
 
+        let mut col_in_buf = &self.col_bufs[0];
+        let mut col_out_buf = &self.col_bufs[1];
+        let mut a_in_buf = &self.a_bufs[0];
+        let mut a_out_buf = &self.a_bufs[1];
+        let init_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Bring-into-RREF Init Bind Group"),
+            layout: &gpu.bring_into_rref_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: col_in_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: col_out_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: a_in_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: a_out_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.pivot_buf.as_entire_binding(),
+                },
+            ],
+        });
+
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let mut col_in_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("col1"),
-                contents: &0u32.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let mut col_out_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("col2"),
-                contents: &0u32.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let mut a_in_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a1"),
-                contents: &0u32.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let mut a_out_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("a2"),
-                contents: &0u32.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let pivot_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("pivot"),
-                contents: &0u32.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+
+        let mut init_pass = encoder.begin_compute_pass(&Default::default());
+        init_pass.set_pipeline(&gpu.init_bring_into_rref_pipeline);
+        init_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        init_pass.set_bind_group(1, &init_bind_group, &[]);
+        init_pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
+        drop(init_pass);
+
         for _ in 0..n {
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Bring-into-RREF Pass Bind Group"),
@@ -779,7 +856,7 @@ impl TableauGpu {
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: pivot_buf.as_entire_binding(),
+                        resource: self.pivot_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -1042,7 +1119,6 @@ mod tests {
 
             let mut g = TableauGpu::new(8);
             g.zero();
-            println!("{:?}", g);
             apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratio(&w1, &w2);
 

@@ -137,11 +137,24 @@ fn apply_gates(
 }
 
 
-@group(1) @binding(0) var<storage, read> col_in: u32;
+@group(1) @binding(0) var<storage, read_write> col_in: u32;
 @group(1) @binding(1) var<storage, read_write> col_out: u32;
-@group(1) @binding(2) var<storage, read> a_in: u32;
+@group(1) @binding(2) var<storage, read_write> a_in: u32;
 @group(1) @binding(3) var<storage, read_write> a_out: u32;
 @group(1) @binding(4) var<storage, read_write> pivot_out: u32;
+
+@compute
+@workgroup_size(1)
+fn init_bring_into_rref(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    if id.x != 0 {
+        return;
+    }
+    
+    col_in = 0;
+    a_in = 0;
+}
 
 @compute
 @workgroup_size(64)
