@@ -268,108 +268,123 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
-    let mut path = vec![false; t];
-    let mut coeff = Complex::ZERO;
-    let mut done = false;
-    let mut g = TableauGpu::new(n);
+    let next_path = Mutex::new(vec![false; t]);
+    let w_coeff = Mutex::new(Complex::ZERO);
+    let done = AtomicBool::new(false);
 
-    while !done {
-        g.zero();
-        let mut x = vec![false; n];
-        let mut x_coeff = Complex::ONE;
-        let mut seen_t_gates = 0;
-        for &gate in circuit.gates() {
-            match gate {
-                CliffordTGate::X(a) => {
-                    x[a] = !x[a];
-                    g.apply_x_gate(a);
-                }
-                CliffordTGate::Y(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::I;
-                    } else {
-                        x_coeff *= Complex::I;
+    rayon::in_place_scope(|s| {
+        for _ in 0..num_cpus::get() {
+            s.spawn(|_| {
+                let mut w_coeff_local = Complex::ZERO;
+                let mut g = TableauGpu::new(n);
+                loop {
+                    let mut next_path_locked = next_path.lock().unwrap();
+                    if done.load(Ordering::SeqCst) {
+                        break;
                     }
-                    x[a] = !x[a];
-                    g.apply_y_gate(a);
-                }
-                CliffordTGate::Z(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::ONE;
-                    }
-                    g.apply_z_gate(a);
-                }
-                CliffordTGate::S(a) => {
-                    if x[a] == true {
-                        x_coeff *= Complex::I;
-                    }
-                    g.apply_s_gate(a);
-                }
-                CliffordTGate::Sdg(a) => {
-                    if x[a] == true {
-                        x_coeff *= -Complex::I;
-                    }
-                    g.apply_sdg_gate(a);
-                }
-                CliffordTGate::Cnot(a, b) => {
-                    x[b] ^= x[a];
-                    g.apply_cnot_gate(a, b);
-                }
-                CliffordTGate::Cz(a, b) => {
-                    if x[a] == true && x[b] == true {
-                        x_coeff *= -Complex::ONE;
-                    }
-                    g.apply_cz_gate(a, b);
-                }
-                CliffordTGate::H(a) => {
-                    let r = g.coeff_ratio_flipped_bit(&x, a);
-                    if r != -Complex::ONE {
-                        x_coeff *= (r + 1.0) / SQRT_2;
-                        x[a] = false;
-                    } else {
-                        if x[a] == false {
-                            x_coeff *= 2.0 / SQRT_2;
-                        } else {
-                            x_coeff *= -2.0 / SQRT_2;
-                        }
-                        x[a] = true;
-                    }
-                    g.apply_h_gate(a);
-                }
+                    let path = next_path_locked.clone();
+                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                    drop(next_path_locked);
 
-                CliffordTGate::T(a) => {
-                    if path[seen_t_gates] == false {
-                        x_coeff *= C_I;
-                    } else {
-                        if x[a] == true {
-                            x_coeff *= -Complex::ONE;
+                    g.zero();
+                    let mut x = vec![false; n];
+                    let mut x_coeff = Complex::ONE;
+                    let mut seen_t_gates = 0;
+                    for &gate in circuit.gates() {
+                        match gate {
+                            CliffordTGate::X(a) => {
+                                x[a] = !x[a];
+                                g.apply_x_gate(a);
+                            }
+                            CliffordTGate::Y(a) => {
+                                if x[a] == true {
+                                    x_coeff *= -Complex::I;
+                                } else {
+                                    x_coeff *= Complex::I;
+                                }
+                                x[a] = !x[a];
+                                g.apply_y_gate(a);
+                            }
+                            CliffordTGate::Z(a) => {
+                                if x[a] == true {
+                                    x_coeff *= -Complex::ONE;
+                                }
+                                g.apply_z_gate(a);
+                            }
+                            CliffordTGate::S(a) => {
+                                if x[a] == true {
+                                    x_coeff *= Complex::I;
+                                }
+                                g.apply_s_gate(a);
+                            }
+                            CliffordTGate::Sdg(a) => {
+                                if x[a] == true {
+                                    x_coeff *= -Complex::I;
+                                }
+                                g.apply_sdg_gate(a);
+                            }
+                            CliffordTGate::Cnot(a, b) => {
+                                x[b] ^= x[a];
+                                g.apply_cnot_gate(a, b);
+                            }
+                            CliffordTGate::Cz(a, b) => {
+                                if x[a] == true && x[b] == true {
+                                    x_coeff *= -Complex::ONE;
+                                }
+                                g.apply_cz_gate(a, b);
+                            }
+                            CliffordTGate::H(a) => {
+                                let r = g.coeff_ratio_flipped_bit(&x, a);
+                                if r != -Complex::ONE {
+                                    x_coeff *= (r + 1.0) / SQRT_2;
+                                    x[a] = false;
+                                } else {
+                                    if x[a] == false {
+                                        x_coeff *= 2.0 / SQRT_2;
+                                    } else {
+                                        x_coeff *= -2.0 / SQRT_2;
+                                    }
+                                    x[a] = true;
+                                }
+                                g.apply_h_gate(a);
+                            }
+
+                            CliffordTGate::T(a) => {
+                                if path[seen_t_gates] == false {
+                                    x_coeff *= C_I;
+                                } else {
+                                    if x[a] == true {
+                                        x_coeff *= -Complex::ONE;
+                                    }
+                                    x_coeff *= C_Z;
+                                    g.apply_z_gate(a);
+                                }
+                                seen_t_gates += 1;
+                            }
+                            CliffordTGate::Tdg(a) => {
+                                if path[seen_t_gates] == false {
+                                    x_coeff *= C_I_DG;
+                                } else {
+                                    if x[a] == true {
+                                        x_coeff *= -Complex::ONE;
+                                    }
+                                    x_coeff *= C_Z_DG;
+                                    g.apply_z_gate(a);
+                                }
+                                seen_t_gates += 1;
+                            }
                         }
-                        x_coeff *= C_Z;
-                        g.apply_z_gate(a);
                     }
-                    seen_t_gates += 1;
+
+                    w_coeff_local += x_coeff * g.coeff_ratio(&x, w);
                 }
-                CliffordTGate::Tdg(a) => {
-                    if path[seen_t_gates] == false {
-                        x_coeff *= C_I_DG;
-                    } else {
-                        if x[a] == true {
-                            x_coeff *= -Complex::ONE;
-                        }
-                        x_coeff *= C_Z_DG;
-                        g.apply_z_gate(a);
-                    }
-                    seen_t_gates += 1;
-                }
-            }
+                *w_coeff.lock().unwrap() += w_coeff_local;
+            });
         }
+    });
 
-        coeff += x_coeff * g.coeff_ratio(&x, w);
-
-        done = increment_path(&mut path);
-    }
-
-    coeff
+    let res = *w_coeff.lock().unwrap();
+    res
 }
 
 /// Mutate the given path to the next one.
