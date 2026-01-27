@@ -11,9 +11,9 @@ jobs:
     rust-bench:
         name: Run Rust benchmarks
         runs-on: ubuntu-latest
-        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
+            - uses: ./.github/actions/install-mesa
             - name: Setup rust toolchain, cache and cargo-codspeed binary
               uses: moonrepo/setup-rust@v0
               with:
@@ -31,9 +31,9 @@ jobs:
     python-bench:
         name: Run Python benchmarks
         runs-on: ubuntu-latest
-        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
+            - uses: ./.github/actions/install-mesa
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true

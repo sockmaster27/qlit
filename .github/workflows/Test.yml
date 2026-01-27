@@ -10,9 +10,9 @@ jobs:
     rust-test:
         name: Run Rust tests
         runs-on: ubuntu-latest
-        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
+            - uses: ./.github/actions/install-mesa
             - uses: moonrepo/setup-rust@v0
               with:
                   channel: stable
@@ -22,9 +22,9 @@ jobs:
     python-test:
         name: Run Python tests
         runs-on: ubuntu-latest
-        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
+            - uses: ./.github/actions/install-mesa
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true
