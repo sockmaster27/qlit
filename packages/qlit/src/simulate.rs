@@ -148,7 +148,8 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                                 g.apply_cz_gate(a, b);
                             }
                             CliffordTGate::H(a) => {
-                                let rs = g.coeff_ratio_flipped_bit(&xs, a);
+                                let rs =
+                                    g.coeff_ratios_flipped_bit(xs.iter().map(Vec::as_slice), a);
                                 for i in 0..r_cols {
                                     let r = rs[i];
                                     if r != -Complex::ONE {
@@ -238,7 +239,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                             }
                         }
                     }
-                    let rs = g.coeff_ratio(&xs, w);
+                    let rs = g.coeff_ratios(xs.iter().map(Vec::as_slice), w);
                     for i in 0..r_cols {
                         w_coeff_local += x_coeffs[i] * rs[i];
                     }
