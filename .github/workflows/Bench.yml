@@ -10,7 +10,8 @@ on:
 jobs:
     rust-bench:
         name: Run Rust benchmarks
-        runs-on: macos-latest
+        runs-on: ubuntu-latest
+        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
             - name: Setup rust toolchain, cache and cargo-codspeed binary
@@ -29,7 +30,8 @@ jobs:
 
     python-bench:
         name: Run Python benchmarks
-        runs-on: macos-latest
+        runs-on: ubuntu-latest
+        container: utensils/opengl
         steps:
             - uses: actions/checkout@v5
             - uses: astral-sh/setup-uv@v7
