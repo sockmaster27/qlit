@@ -268,6 +268,19 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
+    let threads = min(
+        num_cpus::get(),
+        2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
+    );
+    let threads_log2 = threads
+        .next_power_of_two()
+        .ilog2()
+        .try_into()
+        .unwrap_or(usize::MAX);
+
+    // Ensure that there is at least one batch per thread.
+    let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
+
     let next_path = Mutex::new(vec![false; t]);
     let w_coeff = Mutex::new(Complex::ZERO);
     let done = AtomicBool::new(false);
@@ -276,7 +289,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
         for _ in 0..num_cpus::get() {
             s.spawn(|_| {
                 let mut w_coeff_local = Complex::ZERO;
-                let mut g = TableauGpu::new(n);
+                let mut g = TableauGpu::new(n, batch_size_log2);
                 loop {
                     let mut next_path_locked = next_path.lock().unwrap();
                     if done.load(Ordering::SeqCst) {

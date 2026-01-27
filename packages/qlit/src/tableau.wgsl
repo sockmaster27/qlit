@@ -1,5 +1,7 @@
 @group(0) @binding(0) var<uniform> n: u32;
-@group(0) @binding(1) var<storage, read_write> tableau: array<u32>; 
+@group(0) @binding(1) var<uniform> max_batches: u32;
+@group(0) @binding(2) var<storage, read_write> active_batches: u32;
+@group(0) @binding(3) var<storage, read_write> tableau: array<u32>; 
 const block_size: u32 = 32;
 alias BitBlock = u32;
 
@@ -11,8 +13,12 @@ fn zero(
 ) {
     // Assign one thread to row (block).
     let block_index = id.x;
-    if block_index >= column_block_length() {
+    if block_index >= single_column_block_length() {
         return;
+    }
+
+    if id.x == 0 {
+        active_batches = 1;
     }
     
     for (var j: u32 = 0; j < n + n + 1; j += 1) {
@@ -37,7 +43,7 @@ fn apply_gates(
 ) {
     // Assign one thread to each row (block).
     let block_index = id.x;
-    if block_index >= column_block_length() {
+    if block_index >= active_column_block_length() {
         return;
     }
 
@@ -137,6 +143,37 @@ fn apply_gates(
 }
 
 
+@group(1) @binding(0) var<uniform> qubit: u32;
+
+@compute
+@workgroup_size(64)
+fn split_batches(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    // Assign one thread to each row (block).
+    let block_index = id.x;
+    if block_index >= active_column_block_length() {
+        return;
+    }
+
+    for (var q: u32 = 0u; q < n; q += 1) {
+        let x1 = x_column_block_index(block_index, q);
+        let x2 = x_column_block_index(block_index + active_column_block_length(), q);
+        tableau[x2] = tableau[x1];
+        let z1 = z_column_block_index(block_index, q);
+        let z2 = z_column_block_index(block_index + active_column_block_length(), q);
+        tableau[z2] = tableau[z1];
+    }
+    
+    let x = x_column_block_index(block_index, qubit);
+    let r1 = r_column_block_index(block_index);
+    let r2 = r_column_block_index(block_index + active_column_block_length());
+    tableau[r2] = tableau[r1] ^ tableau[x];
+
+    active_batches *= 2;
+}
+
+
 @group(1) @binding(0) var<storage, read_write> col_in: u32;
 @group(1) @binding(1) var<storage, read_write> col_out: u32;
 @group(1) @binding(2) var<storage, read_write> a_in: u32;
@@ -163,23 +200,25 @@ fn elimination_pass(
 ) {
     // Assign one thread to each row (block).
     let block_index = id.x;
-    if block_index >= column_block_length() {
+    if block_index >= active_column_block_length() {
         return;
     }
+    let batch_index = block_index / single_column_block_length();
+    let batch_start = batch_index * single_column_block_length();
 
     if id.x == 0 {
         col_out = col_in + 1;
     }
 
     let aux_row = n;
-    let aux_block_index = aux_row / block_size;
+    let aux_block_index = batch_start + (aux_row / block_size);
     let aux_bit_index = aux_row % block_size;
 
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
-    let a_block_index = a_in / block_size;
-    for (var i = a_block_index; i <  column_block_length(); i += 1) {
+    let a_block_index = batch_start + (a_in / block_size);
+    for (var i = a_block_index; i < batch_start + single_column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
@@ -211,7 +250,7 @@ fn elimination_pass(
         a_out = a_in + 1;
     }
 
-    let pivot_block_index = pivot / block_size;
+    let pivot_block_index = batch_start + (pivot / block_size);
     let pivot_bit_index = pivot % block_size;
 
     // Bitmask blocking out the pivot row.
@@ -282,32 +321,36 @@ fn elimination_pass(
 fn swap_pass(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each column.
-    let j = id.x;
-    if j >= (n + n + 1) {
+    // Assign one thread to each batch.
+    let batch_index = id.x;
+    if batch_index >= active_batches {
         return;
     }
+    let batch_start = batch_index * single_column_block_length();
 
     // Swap these two rows.
     let row1 = a_in;
     let row2 = pivot_out;
 
-    let row1_block_index = row1 / block_size;
-    let row2_block_index = row2 / block_size;
+    let row1_block_index = batch_start + (row1 / block_size);
+    let row2_block_index = batch_start + (row2 / block_size);
     let row1_bit_index = row1 % block_size;
     let row2_bit_index = row2 % block_size;
     let row1_bitmask = bitmask(row1_bit_index);
     let row2_bitmask = bitmask(row2_bit_index);
-    let block1 = column_block_index(row1_block_index, j);
-    let block2 = column_block_index(row2_block_index, j);
-    let bit1 = (tableau[block1] & row1_bitmask) != 0;
-    let bit2 = (tableau[block2] & row2_bitmask) != 0;
-    if bit1 && !bit2 {
-        tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
-        tableau[block2] = set_bit(tableau[block2], row2_bit_index);
-    } else if !bit1 && bit2 {
-        tableau[block1] = set_bit(tableau[block1], row1_bit_index);
-        tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
+
+    for (var j: u32 = 0; j < n + n + 1; j += 1) {
+        let block1 = column_block_index(row1_block_index, j);
+        let block2 = column_block_index(row2_block_index, j);
+        let bit1 = (tableau[block1] & row1_bitmask) != 0;
+        let bit2 = (tableau[block2] & row2_bitmask) != 0;
+        if bit1 && !bit2 {
+            tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
+            tableau[block2] = set_bit(tableau[block2], row2_bit_index);
+        } else if !bit1 && bit2 {
+            tableau[block1] = set_bit(tableau[block1], row1_bit_index);
+            tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
+        }
     }
 }
 
@@ -515,10 +558,20 @@ fn r_column_block_index(i: u32) -> u32 {
     return column_block_index(i, 2 * n);
 }
 
-// Get the block-length of the columns in the tableau.
-fn column_block_length() -> u32 {
+// Get the block-length of the columns in a single tableau batch.
+fn single_column_block_length() -> u32 {
     // Make room for the auxiliary row.
     return div_ceil(n + 1, block_size);
+}
+// Get the block-length of the columns of all the combined tableau batches.
+fn column_block_length() -> u32 {
+    // Make room for the auxiliary row.
+    return single_column_block_length() * max_batches;
+}
+// Get the block-length of the combined active tableau batches.
+fn active_column_block_length() -> u32 {
+    // Make room for the auxiliary row.
+    return single_column_block_length() * active_batches;
 }
 
 // Get the value of the bit corresponding to the `j`th column in the `row`th row.
