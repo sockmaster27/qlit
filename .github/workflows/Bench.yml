@@ -13,7 +13,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
-            - run: sudo apt-get install -y mesa-utils
+            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - name: Setup rust toolchain, cache and cargo-codspeed binary
               uses: moonrepo/setup-rust@v0
               with:
@@ -33,7 +33,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
-            - run: sudo apt-get install -y mesa-utils
+            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true
