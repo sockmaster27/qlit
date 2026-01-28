@@ -239,6 +239,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
                             }
                         }
                     }
+
                     let rs = g.coeff_ratios(xs.iter().map(Vec::as_slice), w);
                     for i in 0..r_cols {
                         w_coeff_local += x_coeffs[i] * rs[i];
@@ -281,7 +282,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
 
-    let next_path = Mutex::new(vec![false; t]);
+    let next_path = Mutex::new(vec![false; t - batch_size_log2]);
     let w_coeff = Mutex::new(Complex::ZERO);
     let done = AtomicBool::new(false);
 
@@ -300,96 +301,164 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
                     drop(next_path_locked);
 
                     g.zero();
-                    let mut x = vec![false; n];
-                    let mut x_coeff = Complex::ONE;
+                    let mut active_batches = 1;
+                    let mut xs = vec![vec![false; n]];
+                    let mut x_coeffs = vec![Complex::ONE];
                     let mut seen_t_gates = 0;
                     for &gate in circuit.gates() {
                         match gate {
                             CliffordTGate::X(a) => {
-                                x[a] = !x[a];
+                                for i in 0..active_batches {
+                                    xs[i][a] = !xs[i][a];
+                                }
                                 g.apply_x_gate(a);
                             }
                             CliffordTGate::Y(a) => {
-                                if x[a] == true {
-                                    x_coeff *= -Complex::I;
-                                } else {
-                                    x_coeff *= Complex::I;
+                                for i in 0..active_batches {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::I;
+                                    } else {
+                                        x_coeffs[i] *= Complex::I;
+                                    }
+                                    xs[i][a] = !xs[i][a];
                                 }
-                                x[a] = !x[a];
                                 g.apply_y_gate(a);
                             }
                             CliffordTGate::Z(a) => {
-                                if x[a] == true {
-                                    x_coeff *= -Complex::ONE;
+                                for i in 0..active_batches {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::ONE;
+                                    }
                                 }
                                 g.apply_z_gate(a);
                             }
                             CliffordTGate::S(a) => {
-                                if x[a] == true {
-                                    x_coeff *= Complex::I;
+                                for i in 0..active_batches {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= Complex::I;
+                                    }
                                 }
                                 g.apply_s_gate(a);
                             }
                             CliffordTGate::Sdg(a) => {
-                                if x[a] == true {
-                                    x_coeff *= -Complex::I;
+                                for i in 0..active_batches {
+                                    if xs[i][a] == true {
+                                        x_coeffs[i] *= -Complex::I;
+                                    }
                                 }
                                 g.apply_sdg_gate(a);
                             }
                             CliffordTGate::Cnot(a, b) => {
-                                x[b] ^= x[a];
+                                for i in 0..active_batches {
+                                    xs[i][b] ^= xs[i][a];
+                                }
                                 g.apply_cnot_gate(a, b);
                             }
                             CliffordTGate::Cz(a, b) => {
-                                if x[a] == true && x[b] == true {
-                                    x_coeff *= -Complex::ONE;
+                                for i in 0..active_batches {
+                                    if xs[i][a] == true && xs[i][b] == true {
+                                        x_coeffs[i] *= -Complex::ONE;
+                                    }
                                 }
                                 g.apply_cz_gate(a, b);
                             }
                             CliffordTGate::H(a) => {
-                                let r = g.coeff_ratio_flipped_bit(&x, a);
-                                if r != -Complex::ONE {
-                                    x_coeff *= (r + 1.0) / SQRT_2;
-                                    x[a] = false;
-                                } else {
-                                    if x[a] == false {
-                                        x_coeff *= 2.0 / SQRT_2;
+                                let rs =
+                                    g.coeff_ratios_flipped_bit(xs.iter().map(Vec::as_slice), a);
+                                for i in 0..active_batches {
+                                    let r = rs[i];
+                                    if r != -Complex::ONE {
+                                        x_coeffs[i] *= (r + 1.0) / SQRT_2;
+                                        xs[i][a] = false;
                                     } else {
-                                        x_coeff *= -2.0 / SQRT_2;
+                                        if xs[i][a] == false {
+                                            x_coeffs[i] *= 2.0 / SQRT_2;
+                                        } else {
+                                            x_coeffs[i] *= -2.0 / SQRT_2;
+                                        }
+                                        xs[i][a] = true;
                                     }
-                                    x[a] = true;
                                 }
                                 g.apply_h_gate(a);
                             }
 
                             CliffordTGate::T(a) => {
-                                if path[seen_t_gates] == false {
-                                    x_coeff *= C_I;
-                                } else {
-                                    if x[a] == true {
-                                        x_coeff *= -Complex::ONE;
+                                if seen_t_gates < path.len() {
+                                    if path[seen_t_gates] == false {
+                                        for i in 0..active_batches {
+                                            x_coeffs[i] *= C_I;
+                                        }
+                                    } else {
+                                        for i in 0..active_batches {
+                                            if xs[i][a] == true {
+                                                x_coeffs[i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[i] *= C_Z;
+                                        }
+                                        g.apply_z_gate(a);
                                     }
-                                    x_coeff *= C_Z;
-                                    g.apply_z_gate(a);
+                                } else {
+                                    for i in 0..active_batches {
+                                        let index_i = i;
+                                        let index_z = i + active_batches;
+                                        xs.push(xs[index_i].clone());
+                                        x_coeffs.push(x_coeffs[index_i]);
+
+                                        x_coeffs[index_i] *= C_I;
+
+                                        if xs[index_z][a] == true {
+                                            x_coeffs[index_z] *= -Complex::ONE;
+                                        }
+                                        x_coeffs[index_z] *= C_Z;
+                                    }
+                                    g.split_batches(a);
+                                    active_batches *= 2;
                                 }
+
                                 seen_t_gates += 1;
                             }
                             CliffordTGate::Tdg(a) => {
-                                if path[seen_t_gates] == false {
-                                    x_coeff *= C_I_DG;
-                                } else {
-                                    if x[a] == true {
-                                        x_coeff *= -Complex::ONE;
+                                if seen_t_gates < path.len() {
+                                    if path[seen_t_gates] == false {
+                                        for i in 0..active_batches {
+                                            x_coeffs[i] *= C_I_DG;
+                                        }
+                                    } else {
+                                        for i in 0..active_batches {
+                                            if xs[i][a] == true {
+                                                x_coeffs[i] *= -Complex::ONE;
+                                            }
+                                            x_coeffs[i] *= C_Z_DG;
+                                        }
+                                        g.apply_z_gate(a);
                                     }
-                                    x_coeff *= C_Z_DG;
-                                    g.apply_z_gate(a);
+                                } else {
+                                    for i in 0..active_batches {
+                                        let index_i = i;
+                                        let index_z = i + active_batches;
+                                        xs.push(xs[index_i].clone());
+                                        x_coeffs.push(x_coeffs[index_i]);
+
+                                        x_coeffs[index_i] *= C_I_DG;
+
+                                        if xs[index_z][a] == true {
+                                            x_coeffs[index_z] *= -Complex::ONE;
+                                        }
+                                        x_coeffs[index_z] *= C_Z_DG;
+                                    }
+                                    g.split_batches(a);
+                                    active_batches *= 2;
                                 }
+
                                 seen_t_gates += 1;
                             }
                         }
                     }
 
-                    w_coeff_local += x_coeff * g.coeff_ratio(&x, w);
+                    let rs = g.coeff_ratios(xs.iter().map(Vec::as_slice), w);
+                    for i in 0..active_batches {
+                        w_coeff_local += x_coeffs[i] * rs[i];
+                    }
                 }
                 *w_coeff.lock().unwrap() += w_coeff_local;
             });

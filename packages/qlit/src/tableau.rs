@@ -39,7 +39,7 @@ pub struct ExtendedTableau {
     /// ```
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     tableau: Vec<BitBlock>,
-    /// Buffer used to store the output of [`Self::coeff_ratio`] and [`Self::coeff_ratio_flipped_bit`].
+    /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
     /// Must have length of at least `r_cols` at all times.
     output: Vec<Complex<f64>>,
 }

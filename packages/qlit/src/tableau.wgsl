@@ -204,21 +204,22 @@ fn elimination_pass(
         return;
     }
     let batch_index = block_index / single_column_block_length();
-    let batch_start = batch_index * single_column_block_length();
+    let batch_start_block = batch_index * single_column_block_length();
+    let batch_start_row = batch_start_block * block_size;
 
     if id.x == 0 {
         col_out = col_in + 1;
     }
 
-    let aux_row = n;
-    let aux_block_index = batch_start + (aux_row / block_size);
+    let aux_row = batch_start_row + n;
+    let aux_block_index = aux_row / block_size;
     let aux_bit_index = aux_row % block_size;
 
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
-    let a_block_index = batch_start + (a_in / block_size);
-    for (var i = a_block_index; i < batch_start + single_column_block_length(); i += 1) {
+    let a_block_index = batch_start_block + (a_in / block_size);
+    for (var i = a_block_index; i < batch_start_block + single_column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
@@ -250,7 +251,7 @@ fn elimination_pass(
         a_out = a_in + 1;
     }
 
-    let pivot_block_index = batch_start + (pivot / block_size);
+    let pivot_block_index = pivot / block_size;
     let pivot_bit_index = pivot % block_size;
 
     // Bitmask blocking out the pivot row.
@@ -326,14 +327,14 @@ fn swap_pass(
     if batch_index >= active_batches {
         return;
     }
-    let batch_start = batch_index * single_column_block_length();
+    let batch_start_block = batch_index * single_column_block_length();
 
     // Swap these two rows.
     let row1 = a_in;
     let row2 = pivot_out;
 
-    let row1_block_index = batch_start + (row1 / block_size);
-    let row2_block_index = batch_start + (row2 / block_size);
+    let row1_block_index = batch_start_block + (row1 / block_size);
+    let row2_block_index = batch_start_block + (row2 / block_size);
     let row1_bit_index = row1 % block_size;
     let row2_bit_index = row2 % block_size;
     let row1_bitmask = bitmask(row1_bit_index);
@@ -355,27 +356,33 @@ fn swap_pass(
 }
 
 
-@group(1) @binding(0) var<storage, read> w1: array<u32>;
+@group(1) @binding(0) var<storage, read> w1s: array<u32>;
 @group(1) @binding(1) var<uniform> flipped_bit: u32;        // only used in coeff_ratio_flipped_bit
 @group(1) @binding(1) var<storage, read> w2: array<u32>;    // only used in coeff_ratio
-@group(1) @binding(2) var<storage, read_write> factor: u32;
-@group(1) @binding(3) var<storage, read_write> phase: u32;
+@group(1) @binding(2) var<storage, read_write> factors: array<u32>;
+@group(1) @binding(3) var<storage, read_write> phases: array<u32>;
+
+fn w1(batch_index: u32, q: u32) -> u32 {
+    return w1s[batch_index * n + q];
+}
 
 @compute
 @workgroup_size(1)
-fn coeff_ratio_flipped_bit(
+fn coeff_ratios_flipped_bit(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Only one thread is needed.
-    if id.x != 0 {
+    // Assign one thread to each batch.
+    let batch_index = id.x;
+    if batch_index >= active_batches {
         return;
     }
+    let batch_start_row = batch_index * single_column_block_length() * block_size;
 
     // Find pivot row.
     var row: u32 = 0;
     for (var j: u32 = 0; j < n; j += 1) {
-        if x_bit(j, flipped_bit) {
-            row = j;
+        if x_bit(batch_start_row + j, flipped_bit) {
+            row = batch_start_row + j;
             break;
         }
     }
@@ -391,7 +398,7 @@ fn coeff_ratio_flipped_bit(
         } else if x(row, q) && (flipped_bit == q) {
             // Multiply by 1, no phase change
         } else if y(row, q) && (flipped_bit == q) {
-            if w1[q] == 0 {
+            if w1(batch_index, q) == 0 {
                 // Multiply by i
                 res_phase += 1;
             } else {
@@ -399,7 +406,7 @@ fn coeff_ratio_flipped_bit(
                 res_phase += 3;
             }
         } else if z(row, q) && (flipped_bit != q) {
-            if w1[q] == 0 {
+            if w1(batch_index, q) == 0 {
                 // Multiply by 1, no phase change
             } else {
                 // Multiply by -1
@@ -407,27 +414,29 @@ fn coeff_ratio_flipped_bit(
             }
         } else {
             // Multiply by 0
-            factor = 0;
-            phase = 0;
+            factors[batch_index] = 0;
+            phases[batch_index] = 0;
             return;
         }
         res_phase %= 4;
     }
-    factor = 1;
-    phase = res_phase;
+    factors[batch_index] = 1;
+    phases[batch_index] = res_phase;
 }
 
 @compute
 @workgroup_size(1)
-fn coeff_ratio(
+fn coeff_ratios(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // TODO: Use more threads.
-    if id.x != 0 {
+    // Assign one thread to each batch.
+    let batch_index = id.x;
+    if batch_index >= active_batches {
         return;
     }
+    let batch_start_row = batch_index * single_column_block_length() * block_size;
 
-    let aux_row = n;
+    let aux_row = batch_start_row + n;
     let aux_block_index = aux_row / block_size;
     let aux_bit_index = aux_row % block_size;
     let aux_bitmask = bitmask(aux_bit_index);
@@ -437,10 +446,10 @@ fn coeff_ratio(
         tableau[column_block_index(aux_block_index, r)] &= ~aux_bitmask;
     }
     // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
-    var row: u32 = 0;
+    var row: u32 = batch_start_row;
     for (var q: u32 = 0; q < n; q += 1) {
         if x_bit(row, q) {
-            if w1[q] != w2[q] {
+            if w1(batch_index, q) != w2[q] {
                 multiply_rows_into(row, aux_row);
             }
             row += 1;
@@ -453,20 +462,20 @@ fn coeff_ratio(
     } 
     for (var q: u32 = 0; q < n; q += 1) {
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        if i(aux_row, q) && (w1[q] == w2[q]) {
+        if i(aux_row, q) && (w1(batch_index, q) == w2[q]) {
             // Multiply by 1, no phase change
-        } else if x(aux_row, q) && (w1[q] != w2[q]) {
+        } else if x(aux_row, q) && (w1(batch_index, q) != w2[q]) {
             // Multiply by 1, no phase change
-        } else if y(aux_row, q) && (w1[q] != w2[q]) {
-            if w1[q] == 0 {
+        } else if y(aux_row, q) && (w1(batch_index, q) != w2[q]) {
+            if w1(batch_index, q) == 0 {
                 // Multiply by i
                 res_phase += 1;
             } else {
                 // Multiply by -i
                 res_phase += 3;
             }
-        } else if z(aux_row, q) && (w1[q] == w2[q]) {
-            if w1[q] == 0 {
+        } else if z(aux_row, q) && (w1(batch_index, q) == w2[q]) {
+            if w1(batch_index, q) == 0 {
                 // Multiply by 1, no phase change
             } else {
                 // Multiply by -1
@@ -474,14 +483,14 @@ fn coeff_ratio(
             }
         } else {
             // Multiply by 0
-            factor = 0;
-            phase = 0;
+            factors[batch_index] = 0;
+            phases[batch_index] = 0;
             return;
         }
         res_phase %= 4;
     }
-    factor = 1;
-    phase = res_phase;
+    factors[batch_index] = 1;
+    phases[batch_index] = res_phase;
 }
 
 // Set row with index `dst` to be the product of the `src` and `dst` rows.
