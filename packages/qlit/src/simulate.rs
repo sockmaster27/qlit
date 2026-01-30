@@ -287,7 +287,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        for _ in 0..num_cpus::get() {
+        for _ in 0..threads {
             s.spawn(|_| {
                 let mut w_coeff_local = Complex::ZERO;
                 let mut g = TableauGpu::new(n, batch_size_log2);
