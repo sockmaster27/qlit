@@ -452,6 +452,7 @@ impl GpuContext {
 pub struct TableauGpu {
     n: u32,
     active_batches: u32,
+    active_batches_buf: wgpu::Buffer,
     tableau_buf: wgpu::Buffer,
     tableau_bind_group: wgpu::BindGroup,
 
@@ -475,9 +476,10 @@ impl TableauGpu {
     pub fn new(n: usize, batch_size_log2: usize) -> Self {
         let gpu = get_gpu();
 
-        let max_batches: u32 = 1 << batch_size_log2;
-
         let n: u32 = n.try_into().expect("n does not fit into u32");
+        let max_batches: u32 = 1 << batch_size_log2;
+        let active_batches = 1;
+
         let n_buf = gpu
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -495,7 +497,7 @@ impl TableauGpu {
         let active_batches_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("active_batches"),
             size: U32_SIZE,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -590,7 +592,8 @@ impl TableauGpu {
 
         TableauGpu {
             n,
-            active_batches: 1,
+            active_batches,
+            active_batches_buf,
             tableau_buf,
             tableau_bind_group,
 
@@ -778,9 +781,14 @@ impl TableauGpu {
         );
         drop(split_batches_pass);
 
-        gpu.queue.submit([encoder.finish()]);
-
         self.active_batches *= 2;
+        gpu.queue.write_buffer(
+            &self.active_batches_buf,
+            0,
+            &self.active_batches.to_ne_bytes(),
+        );
+
+        gpu.queue.submit([encoder.finish()]);
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that
@@ -918,7 +926,7 @@ impl TableauGpu {
         compute_pass.set_pipeline(pipeline);
         compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
         compute_pass.set_bind_group(1, &bind_group, &[]);
-        compute_pass.dispatch_workgroups(1, 1, 1);
+        compute_pass.dispatch_workgroups(active_batches.div_ceil(WORKGROUP_SIZE), 1, 1);
         drop(compute_pass);
 
         encoder.copy_buffer_to_buffer(&self.factors_buf, 0, &self.factors_read_buf, 0, U32_SIZE);
@@ -958,6 +966,7 @@ impl TableauGpu {
         let gpu = get_gpu();
 
         let n = self.n;
+        let active_batches = self.active_batches;
 
         let mut col_in_buf = &self.col_bufs[0];
         let mut col_out_buf = &self.col_bufs[1];
@@ -996,11 +1005,7 @@ impl TableauGpu {
         init_pass.set_pipeline(&gpu.init_bring_into_rref_pipeline);
         init_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
         init_pass.set_bind_group(1, &init_bind_group, &[]);
-        init_pass.dispatch_workgroups(
-            self.active_column_block_length().div_ceil(WORKGROUP_SIZE),
-            1,
-            1,
-        );
+        init_pass.dispatch_workgroups(1, 1, 1);
         drop(init_pass);
 
         for _ in 0..n {
@@ -1046,7 +1051,7 @@ impl TableauGpu {
             swap_pass.set_pipeline(&gpu.swap_pass_pipeline);
             swap_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
             swap_pass.set_bind_group(1, &bind_group, &[]);
-            swap_pass.dispatch_workgroups(self.active_batches.div_ceil(WORKGROUP_SIZE), 1, 1);
+            swap_pass.dispatch_workgroups(active_batches.div_ceil(WORKGROUP_SIZE), 1, 1);
             drop(swap_pass);
 
             (col_in_buf, col_out_buf) = (col_out_buf, col_in_buf);

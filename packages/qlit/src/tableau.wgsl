@@ -169,8 +169,6 @@ fn split_batches(
     let r1 = r_column_block_index(block_index);
     let r2 = r_column_block_index(block_index + active_column_block_length());
     tableau[r2] = tableau[r1] ^ tableau[x];
-
-    active_batches *= 2;
 }
 
 
@@ -185,6 +183,7 @@ fn split_batches(
 fn init_bring_into_rref(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
+    // Only one thread is needed.
     if id.x != 0 {
         return;
     }
