@@ -17,7 +17,7 @@ jobs:
               with:
                   channel: stable
             - name: Test
-              run: cargo test
+              run: cargo test -- --show-output
 
     python-test:
         name: Run Python tests
