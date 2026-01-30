@@ -366,7 +366,7 @@ fn w1(batch_index: u32, q: u32) -> u32 {
 }
 
 @compute
-@workgroup_size(1)
+@workgroup_size(64)
 fn coeff_ratios_flipped_bit(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
@@ -424,7 +424,7 @@ fn coeff_ratios_flipped_bit(
 }
 
 @compute
-@workgroup_size(1)
+@workgroup_size(64)
 fn coeff_ratios(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
@@ -441,8 +441,8 @@ fn coeff_ratios(
     let aux_bitmask = bitmask(aux_bit_index);
 
     // Reset the auxiliary row.
-    for (var r: u32 = 0; r < n + n + 1; r += 1) {
-        tableau[column_block_index(aux_block_index, r)] &= ~aux_bitmask;
+    for (var j: u32 = 0; j < n + n + 1; j += 1) {
+        tableau[column_block_index(aux_block_index, j)] &= ~aux_bitmask;
     }
     // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
     var row: u32 = batch_start_row;

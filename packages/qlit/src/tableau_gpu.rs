@@ -470,7 +470,7 @@ pub struct TableauGpu {
     qubit_params: Vec<u32>,
 
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
-    /// Must have length of at least `r_cols` at all times.
+    /// Must have length of at least `active_batches` at all times.
     output: Vec<Complex<f64>>,
 }
 impl TableauGpu {
@@ -771,16 +771,18 @@ impl TableauGpu {
         });
 
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let mut split_batches_pass = encoder.begin_compute_pass(&Default::default());
-        split_batches_pass.set_pipeline(&gpu.split_batches_pipeline);
-        split_batches_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        split_batches_pass.set_bind_group(1, &bind_group, &[]);
-        split_batches_pass.dispatch_workgroups(
+        let mut compute_pass = encoder.begin_compute_pass(&Default::default());
+        compute_pass.set_pipeline(&gpu.split_batches_pipeline);
+        compute_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
+        compute_pass.set_bind_group(1, &bind_group, &[]);
+        compute_pass.dispatch_workgroups(
             self.active_column_block_length().div_ceil(WORKGROUP_SIZE),
             1,
             1,
         );
-        drop(split_batches_pass);
+        drop(compute_pass);
+
+        gpu.queue.submit([encoder.finish()]);
 
         self.active_batches *= 2;
         gpu.queue.write_buffer(
@@ -788,8 +790,6 @@ impl TableauGpu {
             0,
             &self.active_batches.to_ne_bytes(),
         );
-
-        gpu.queue.submit([encoder.finish()]);
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that
@@ -930,8 +930,8 @@ impl TableauGpu {
         compute_pass.dispatch_workgroups(active_batches.div_ceil(WORKGROUP_SIZE), 1, 1);
         drop(compute_pass);
 
-        encoder.copy_buffer_to_buffer(&self.factors_buf, 0, &self.factors_read_buf, 0, U32_SIZE);
-        encoder.copy_buffer_to_buffer(&self.phases_buf, 0, &self.phases_read_buf, 0, U32_SIZE);
+        encoder.copy_buffer_to_buffer(&self.factors_buf, 0, &self.factors_read_buf, 0, None);
+        encoder.copy_buffer_to_buffer(&self.phases_buf, 0, &self.phases_read_buf, 0, None);
 
         gpu.queue.submit([encoder.finish()]);
 
@@ -1082,13 +1082,7 @@ impl Debug for TableauGpu {
             mapped_at_creation: false,
         });
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        encoder.copy_buffer_to_buffer(
-            &self.tableau_buf,
-            0,
-            &tableau_read_buf,
-            0,
-            tableau_byte_length,
-        );
+        encoder.copy_buffer_to_buffer(&self.tableau_buf, 0, &tableau_read_buf, 0, None);
         gpu.queue.submit([encoder.finish()]);
 
         tableau_read_buf.map_async(wgpu::MapMode::Read, .., |_| {});
@@ -1316,6 +1310,29 @@ mod tests {
                 Complex::ZERO
             };
             assert_eq!(result, [expected], "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn split() {
+        let mut g = TableauGpu::new(8, 1);
+        g.zero();
+        for _ in 0..1 {
+            g.split_batches(0);
+        }
+
+        let w1: &[bool] = &bits_to_bools(0b0000_0000);
+        let w1s = vec![w1; 2];
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+            let result = g.coeff_ratios(w1s.clone(), &w2);
+
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_eq!(result, [expected; 2], "{i:008b}");
         }
     }
 
