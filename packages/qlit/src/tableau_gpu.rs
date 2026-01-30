@@ -752,6 +752,8 @@ impl TableauGpu {
     pub fn split_batches(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
 
+        self.submit_gates();
+
         let gpu = get_gpu();
 
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1315,14 +1317,14 @@ mod tests {
 
     #[test]
     fn split() {
-        let mut g = TableauGpu::new(8, 1);
+        let mut g = TableauGpu::new(8, 5);
         g.zero();
-        for _ in 0..1 {
+        for _ in 0..5 {
             g.split_batches(0);
         }
 
         let w1: &[bool] = &bits_to_bools(0b0000_0000);
-        let w1s = vec![w1; 2];
+        let w1s = [w1; 32];
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
@@ -1332,7 +1334,31 @@ mod tests {
                 0b0000_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result, [expected; 2], "{i:008b}");
+            assert_eq!(result, [expected; 32], "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn split_h() {
+        let mut g = TableauGpu::new(8, 1);
+        g.zero();
+        g.apply_h_gate(0);
+        g.split_batches(0);
+
+        let w11: &[bool] = &bits_to_bools(0b0000_0000);
+        let w12: &[bool] = &bits_to_bools(0b1000_0000);
+        let w1s = [w11, w12];
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+            let result = g.coeff_ratios(w1s.clone(), &w2);
+
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, -Complex::ONE],
+                0b1000_0000 => [Complex::ONE, Complex::ONE],
+                _ => [Complex::ZERO, Complex::ZERO],
+            };
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
