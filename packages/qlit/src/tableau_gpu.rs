@@ -452,6 +452,7 @@ impl GpuContext {
 
 pub struct TableauGpu {
     n: u32,
+    max_batches: u32,
     active_batches: u32,
     active_batches_buf: wgpu::Buffer,
     tableau_buf: wgpu::Buffer,
@@ -504,7 +505,7 @@ impl TableauGpu {
 
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Tableau"),
-            size: tableau_block_length(n) as u64 * max_batches as u64 * BLOCK_SIZE_BYTES,
+            size: tableau_block_length(n, max_batches) as u64 * BLOCK_SIZE_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -593,6 +594,7 @@ impl TableauGpu {
 
         TableauGpu {
             n,
+            max_batches,
             active_batches,
             active_batches_buf,
             tableau_buf,
@@ -637,6 +639,8 @@ impl TableauGpu {
         gpu.queue.submit([encoder.finish()]);
 
         self.active_batches = 1;
+        self.gates.clear();
+        self.qubit_params.clear();
     }
 
     pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
@@ -751,6 +755,10 @@ impl TableauGpu {
     /// while the second half will be those where the Z(a) gate is applied.
     pub fn split_batches(&mut self, a: usize) {
         let a: u32 = a.try_into().expect("a does not fit into u32");
+        debug_assert!(
+            self.active_batches * 2 <= self.max_batches,
+            "Cannot split batches beyond max_batches"
+        );
 
         self.submit_gates();
 
@@ -1073,8 +1081,9 @@ impl Debug for TableauGpu {
         let gpu = get_gpu();
 
         let n = self.n;
+        let max_batches = self.max_batches;
 
-        let tableau_block_length: u64 = tableau_block_length(n).into();
+        let tableau_block_length: u64 = tableau_block_length(n, max_batches).into();
         let tableau_byte_length: u64 = tableau_block_length * BLOCK_SIZE_BYTES;
 
         let tableau_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1093,83 +1102,129 @@ impl Debug for TableauGpu {
             .unwrap();
         let tableau_bytes: &[u8] = &tableau_read_buf.get_mapped_range(..);
 
-        let (chunks, chunk_remainder) = tableau_bytes.as_chunks::<4>();
-        assert_eq!(chunks.len(), tableau_block_length as usize);
-        assert_eq!(chunk_remainder.len(), 0);
-
-        let tableau: Vec<u32> = chunks.iter().map(|&c| u32::from_ne_bytes(c)).collect();
+        let tableau: Vec<u32> = bytes_to_u32(tableau_bytes).collect();
         writeln!(f, "TableauGpu(n = {})", n)?;
-        for row in 0..n as usize {
-            for col in 0..n as usize {
-                write!(
-                    f,
-                    " {:?} ",
-                    if x_bit(n as usize, &tableau, row, col) {
-                        1
-                    } else {
-                        0
-                    }
-                )?;
-            }
-            write!(f, " | ")?;
-            for col in 0..n as usize {
-                write!(
-                    f,
-                    " {:?} ",
-                    if z_bit(n as usize, &tableau, row, col) {
-                        1
-                    } else {
-                        0
-                    }
-                )?;
-            }
-            write!(f, " | ")?;
-            write!(
-                f,
-                " {:?} \n",
-                if r_bit(n as usize, &tableau, row) {
-                    1
-                } else {
-                    0
+        for batch in 0..max_batches {
+            writeln!(f, "--- Batch ---")?;
+            for row in 0..n as usize {
+                for col in 0..n as usize {
+                    write!(
+                        f,
+                        " {:?} ",
+                        if x_bit(
+                            n as usize,
+                            max_batches as usize,
+                            &tableau,
+                            batch as usize,
+                            row,
+                            col
+                        ) {
+                            1
+                        } else {
+                            0
+                        }
+                    )?;
                 }
-            )?;
+                write!(f, " | ")?;
+                for col in 0..n as usize {
+                    write!(
+                        f,
+                        " {:?} ",
+                        if z_bit(
+                            n as usize,
+                            max_batches as usize,
+                            &tableau,
+                            batch as usize,
+                            row,
+                            col
+                        ) {
+                            1
+                        } else {
+                            0
+                        }
+                    )?;
+                }
+                write!(f, " | ")?;
+                write!(
+                    f,
+                    " {:?} \n",
+                    if r_bit(
+                        n as usize,
+                        max_batches as usize,
+                        &tableau,
+                        batch as usize,
+                        row
+                    ) {
+                        1
+                    } else {
+                        0
+                    }
+                )?;
+            }
         }
 
         Ok(())
     }
 }
-
-fn bit(n: usize, tableau: &Vec<u32>, row: usize, j: usize) -> bool {
+fn bit(
+    n: usize,
+    max_batches: usize,
+    tableau: &Vec<u32>,
+    batch_index: usize,
+    row: usize,
+    j: usize,
+) -> bool {
+    let batch_start_block = batch_index * single_column_block_length(n as u32) as usize;
     let row_block_index = row / 32;
     let row_bit_index = row % 32;
     let row_bitmask = bitmask(row_bit_index);
-    tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+    tableau[column_block_index(n, max_batches, batch_start_block + row_block_index, j)]
+        & row_bitmask
+        != 0
 }
-fn x_bit(n: usize, tableau: &Vec<u32>, row: usize, q: usize) -> bool {
-    bit(n, tableau, row, 2 * q)
+fn x_bit(
+    n: usize,
+    max_batches: usize,
+    tableau: &Vec<u32>,
+    batch_index: usize,
+    row: usize,
+    q: usize,
+) -> bool {
+    bit(n, max_batches, tableau, batch_index, row, 2 * q)
 }
-fn z_bit(n: usize, tableau: &Vec<u32>, row: usize, q: usize) -> bool {
-    bit(n, tableau, row, 2 * q + 1)
+fn z_bit(
+    n: usize,
+    max_batches: usize,
+    tableau: &Vec<u32>,
+    batch_index: usize,
+    row: usize,
+    q: usize,
+) -> bool {
+    bit(n, max_batches, tableau, batch_index, row, 2 * q + 1)
 }
-fn r_bit(n: usize, tableau: &Vec<u32>, row: usize) -> bool {
-    bit(n, tableau, row, 2 * n)
+fn r_bit(n: usize, max_batches: usize, tableau: &Vec<u32>, batch_index: usize, row: usize) -> bool {
+    bit(n, max_batches, tableau, batch_index, row, 2 * n)
 }
 fn bitmask(i: usize) -> BitBlock {
     debug_assert!(i < 32);
     1 << (32 - 1 - i)
 }
-fn column_block_index(n: usize, i: usize, j: usize) -> usize {
-    j * single_column_block_length(n as u32) as usize + i
+fn column_block_index(n: usize, max_batches: usize, i: usize, j: usize) -> usize {
+    j * column_block_length(n as u32, max_batches as u32) as usize + i
 }
 
-/// Get the block-length of the columns in the tableau.
+// Get the block-length of the columns in a single tableau batch.
 fn single_column_block_length(n: u32) -> u32 {
     // Make room for the auxiliary row.
     (n + 1).div_ceil(BLOCK_SIZE)
 }
+// Get the block-length of the columns of all the combined tableau batches.
+fn column_block_length(n: u32, max_batches: u32) -> u32 {
+    single_column_block_length(n) * max_batches
+}
 /// Get the length of the tableau in blocks.
-fn tableau_block_length(n: u32) -> u32 {
-    single_column_block_length(n) * (n + n + 1)
+fn tableau_block_length(n: u32, max_batches: u32) -> u32 {
+    column_block_length(n, max_batches) * (n + n + 1)
 }
 
 /// Convert the contents of a slice of bytes into an iterator over u32s using native endianness.
@@ -1339,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    fn split_h() {
+    fn split_after_h() {
         let mut g = TableauGpu::new(8, 1);
         g.zero();
         g.apply_h_gate(0);
@@ -1363,7 +1418,7 @@ mod tests {
     }
 
     #[test]
-    fn split_repeated() {
+    fn split_before() {
         let mut g = TableauGpu::new(8, 1);
         g.zero();
         g.split_batches(0);
@@ -1372,14 +1427,41 @@ mod tests {
         g.apply_cnot_gate(1, 0);
         g.apply_cnot_gate(2, 1);
 
-        let w1: &[bool] = &bits_to_bools(0b0000_0000);
-        let w1s = [w1; 2];
+        let w11: &[bool] = &bits_to_bools(0b0000_0000);
+        let w12: &[bool] = &bits_to_bools(0b1100_0000);
+        let w1s = [w11, w12];
+
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
             let result = g.coeff_ratios(w1s.clone(), &w2);
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 | 0b1010_0000 | 0b0110_0000 => [Complex::ONE; 2],
+                _ => [Complex::ZERO; 2],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn split_after() {
+        let mut g = TableauGpu::new(8, 1);
+        g.zero();
+        g.apply_h_gate(0);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(1, 0);
+        g.split_batches(0);
+
+        let w1: &[bool] = &bits_to_bools(0b0000_0000);
+        let w1s = [w1; 2];
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+            let result = g.coeff_ratios(w1s.clone(), &w2);
+
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 => [Complex::ONE, Complex::ONE],
+                0b1000_0000 | 0b1100_0000 => [Complex::ONE, -Complex::ONE],
                 _ => [Complex::ZERO; 2],
             };
             assert_eq!(result, expected, "{i:008b}");
