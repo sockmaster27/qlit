@@ -378,7 +378,7 @@ fn coeff_ratios_flipped_bit(
     // Find pivot row.
     var row: u32 = 0;
     for (var j: u32 = 0; j < n; j += 1) {
-        if x_bit(batch_index, row, flipped_bit) {
+        if x_bit(batch_index, j, flipped_bit) {
             row = j;
             break;
         }
