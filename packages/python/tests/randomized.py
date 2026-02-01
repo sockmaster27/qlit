@@ -55,7 +55,7 @@ class QlitRandomizedTests(unittest.TestCase):
             self.assertAlmostEqual(
                 w_coeff_qlit,
                 w_coeff_qiskit,
-                msg=f"\n{w=} \n{state.data=} \n{qiskit_circuit.draw()}",
+                msg=f"\n{w=} \n{state.data=} \n{qiskit_circuit} \n{circuit.gates=}",
             )
             print("✅", end="", flush=True)
 
