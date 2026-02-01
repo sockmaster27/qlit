@@ -204,27 +204,26 @@ fn elimination_pass(
     }
     let batch_index = block_index / single_column_block_length();
     let batch_start_block = batch_index * single_column_block_length();
-    let batch_start_row = batch_start_block * block_size;
 
     if id.x == 0 {
         col_out = col_in + 1;
     }
 
-    let aux_row = batch_start_row + n;
+    let aux_row = n;
     let aux_block_index = aux_row / block_size;
     let aux_bit_index = aux_row % block_size;
 
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
-    let a_block_index = batch_start_block + (a_in / block_size);
-    for (var i = a_block_index; i < batch_start_block + single_column_block_length(); i += 1) {
+    let a_block_index = a_in / block_size;
+    for (var i = a_block_index; i < single_column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
             aux_mask = ~bitmask(aux_bit_index);
         }
-        let block = tableau[x_column_block_index(i, col_in)] & aux_mask;
+        let block = tableau[x_column_block_index(batch_start_block + i, col_in)] & aux_mask;
         if block != 0 {
             let row = block_size * i + lsb_index(block);
             if row >= a_in {
@@ -255,7 +254,7 @@ fn elimination_pass(
 
     // Bitmask blocking out the pivot row.
     var pivot_mask: BitBlock = ~0u;
-    if block_index == pivot_block_index {
+    if block_index == batch_start_block + pivot_block_index {
         pivot_mask = ~bitmask(pivot_bit_index);
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
@@ -332,16 +331,16 @@ fn swap_pass(
     let row1 = a_in;
     let row2 = pivot_out;
 
-    let row1_block_index = batch_start_block + (row1 / block_size);
-    let row2_block_index = batch_start_block + (row2 / block_size);
+    let row1_block_index = row1 / block_size;
+    let row2_block_index = row2 / block_size;
     let row1_bit_index = row1 % block_size;
     let row2_bit_index = row2 % block_size;
     let row1_bitmask = bitmask(row1_bit_index);
     let row2_bitmask = bitmask(row2_bit_index);
 
     for (var j: u32 = 0; j < n + n + 1; j += 1) {
-        let block1 = column_block_index(row1_block_index, j);
-        let block2 = column_block_index(row2_block_index, j);
+        let block1 = column_block_index(batch_start_block + row1_block_index, j);
+        let block2 = column_block_index(batch_start_block + row2_block_index, j);
         let bit1 = (tableau[block1] & row1_bitmask) != 0;
         let bit2 = (tableau[block2] & row2_bitmask) != 0;
         if bit1 && !bit2 {

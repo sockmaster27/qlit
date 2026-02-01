@@ -1363,6 +1363,30 @@ mod tests {
     }
 
     #[test]
+    fn split_repeated() {
+        let mut g = TableauGpu::new(8, 1);
+        g.zero();
+        g.split_batches(0);
+        g.apply_h_gate(1);
+        g.apply_h_gate(2);
+        g.apply_cnot_gate(1, 0);
+        g.apply_cnot_gate(2, 1);
+
+        let w1: &[bool] = &bits_to_bools(0b0000_0000);
+        let w1s = [w1; 2];
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+            let result = g.coeff_ratios(w1s.clone(), &w2);
+
+            let expected = match i {
+                0b0000_0000 | 0b1100_0000 | 0b1010_0000 | 0b0110_0000 => [Complex::ONE; 2],
+                _ => [Complex::ZERO; 2],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
     fn larger_circuit() {
         let circuit = CliffordTCircuit::new(
             8,
