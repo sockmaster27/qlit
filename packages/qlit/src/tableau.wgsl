@@ -1,9 +1,10 @@
+const block_size: u32 = 32;
+alias BitBlock = u32;
+
 @group(0) @binding(0) var<uniform> n: u32;
 @group(0) @binding(1) var<uniform> max_batches: u32;
 @group(0) @binding(2) var<storage, read_write> active_batches: u32;
-@group(0) @binding(3) var<storage, read_write> tableau: array<u32>; 
-const block_size: u32 = 32;
-alias BitBlock = u32;
+@group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>; 
 
 
 @compute
@@ -607,7 +608,7 @@ fn y_block(x: BitBlock, z: BitBlock) -> BitBlock {
 // bitmask(0) -> 10000000
 // bitmask(1) -> 01000000
 // bitmask(6) -> 00000010
-fn bitmask(i: u32) -> u32 {
+fn bitmask(i: u32) -> BitBlock {
     return 1u << (block_size - 1u - i);
 }
 
