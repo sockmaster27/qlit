@@ -549,7 +549,7 @@ fn row_negative(batch_index: u32, row: u32) -> bool {
 // Get the index of the i'th block of the `j`th column.
 fn column_block_index(batch_index: u32, i: u32, j: u32) -> u32 {
     let batch_start_block = batch_index * single_column_block_length();
-    return j * column_block_length() + batch_start_block + i;
+    return (batch_start_block + i) * (n + n + 1) + j;
 }
 // Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
 fn x_column_block_index(batch_index: u32, i: u32, q: u32) -> u32 {
