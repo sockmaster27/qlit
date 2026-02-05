@@ -38,7 +38,6 @@ pub struct GpuContext {
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
     split_batches_pipeline: wgpu::ComputePipeline,
-    init_bring_into_rref_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     coeff_ratios_flipped_bit_pipeline: wgpu::ComputePipeline,
@@ -157,7 +156,7 @@ impl GpuContext {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -179,7 +178,7 @@ impl GpuContext {
                         binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -365,15 +364,6 @@ impl GpuContext {
                 ],
                 immediate_size: 0,
             });
-        let init_bring_into_rref_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Init Bring Into RREF"),
-                layout: Some(&bring_into_rref_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("init_bring_into_rref"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
         let elimination_pass_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("Elimination Pass"),
@@ -441,7 +431,6 @@ impl GpuContext {
             zero_pipeline,
             apply_gates_pipeline,
             split_batches_pipeline,
-            init_bring_into_rref_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             coeff_ratios_flipped_bit_pipeline: coeff_ratios_flipped_bit_pipeline,
@@ -536,7 +525,7 @@ impl TableauGpu {
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("col1"),
                 size: U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -550,7 +539,7 @@ impl TableauGpu {
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("a1"),
                 size: U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -983,41 +972,11 @@ impl TableauGpu {
         let mut col_out_buf = &self.col_bufs[1];
         let mut a_in_buf = &self.a_bufs[0];
         let mut a_out_buf = &self.a_bufs[1];
-        let init_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Bring-into-RREF Init Bind Group"),
-            layout: &gpu.bring_into_rref_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: col_in_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: col_out_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: a_in_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: a_out_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: self.pivot_buf.as_entire_binding(),
-                },
-            ],
-        });
 
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
 
-        let mut init_pass = encoder.begin_compute_pass(&Default::default());
-        init_pass.set_pipeline(&gpu.init_bring_into_rref_pipeline);
-        init_pass.set_bind_group(0, &self.tableau_bind_group, &[]);
-        init_pass.set_bind_group(1, &init_bind_group, &[]);
-        init_pass.dispatch_workgroups(1, 1, 1);
-        drop(init_pass);
+        encoder.clear_buffer(col_in_buf, 0, None);
+        encoder.clear_buffer(a_in_buf, 0, None);
 
         for _ in 0..n {
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
