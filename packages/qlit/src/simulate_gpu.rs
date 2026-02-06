@@ -508,7 +508,7 @@ impl<'a> GpuSimulator<'a> {
         let ws_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ws"),
             size: U32_SIZE * n as u64 * max_batches as u64,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let w_coeffs_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -753,6 +753,7 @@ impl<'a> GpuSimulator<'a> {
 
         self.encoder.clear_buffer(&self.tableau_buf, 0, None);
         self.encoder.clear_buffer(&self.seen_t_gates_buf, 0, None);
+        self.encoder.clear_buffer(&self.ws_buf, 0, None);
 
         self.active_batches = 1;
         self.seen_t_gates = 0;
