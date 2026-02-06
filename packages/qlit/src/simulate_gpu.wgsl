@@ -1,4 +1,4 @@
-const block_size: u32 = 32;
+const BLOCK_SIZE: u32 = 32;
 alias BitBlock = u32;
 
 // T = C_I*I + C_Z*Z
@@ -55,8 +55,8 @@ fn zero(
         w_coeffs[0] = Complex(1.0, 0.0);
     }
     
-    for (var i: u32 = 0; i < block_size; i += 1) {
-        let b = z_column_block_index(0, block_index, block_index * block_size + i);
+    for (var i: u32 = 0; i < BLOCK_SIZE; i += 1) {
+        let b = z_column_block_index(0, block_index, block_index * BLOCK_SIZE + i);
         tableau[b] = bitmask(i);
     }
 }
@@ -325,13 +325,13 @@ fn elimination_pass(
     }
 
     let aux_row = n;
-    let aux_block_index = aux_row / block_size;
-    let aux_bit_index = aux_row % block_size;
+    let aux_block_index = aux_row / BLOCK_SIZE;
+    let aux_bit_index = aux_row % BLOCK_SIZE;
 
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
-    let a_block_index = a_in / block_size;
+    let a_block_index = a_in / BLOCK_SIZE;
     for (var i = a_block_index; i < single_column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
@@ -340,7 +340,7 @@ fn elimination_pass(
         }
         let block = tableau[x_column_block_index(batch_index, i, col_in)] & aux_mask;
         if block != 0 {
-            let row = block_size * i + lsb_index(block);
+            let row = BLOCK_SIZE * i + lsb_index(block);
             if row >= a_in {
                 pivot = row;
                 pivot_found = true;
@@ -364,8 +364,8 @@ fn elimination_pass(
         a_out = a_in + 1;
     }
 
-    let pivot_block_index = pivot / block_size;
-    let pivot_bit_index = pivot % block_size;
+    let pivot_block_index = pivot / BLOCK_SIZE;
+    let pivot_bit_index = pivot % BLOCK_SIZE;
 
     // Bitmask blocking out the pivot row.
     var pivot_mask: BitBlock = ~0u;
@@ -445,10 +445,10 @@ fn swap_pass(
     let row1 = a_in;
     let row2 = pivot_out;
 
-    let row1_block_index = row1 / block_size;
-    let row2_block_index = row2 / block_size;
-    let row1_bit_index = row1 % block_size;
-    let row2_bit_index = row2 % block_size;
+    let row1_block_index = row1 / BLOCK_SIZE;
+    let row2_block_index = row2 / BLOCK_SIZE;
+    let row1_bit_index = row1 % BLOCK_SIZE;
+    let row2_bit_index = row2 % BLOCK_SIZE;
     let row1_bitmask = bitmask(row1_bit_index);
     let row2_bitmask = bitmask(row2_bit_index);
 
@@ -559,8 +559,8 @@ fn coeff_ratio_flipped_bit(batch_index: u32) -> Complex {
 // Assume tableau in RREF.
 fn coeff_ratio(batch_index: u32) -> Complex {
     let aux_row = n;
-    let aux_block_index = aux_row / block_size;
-    let aux_bit_index = aux_row % block_size;
+    let aux_block_index = aux_row / BLOCK_SIZE;
+    let aux_bit_index = aux_row % BLOCK_SIZE;
     let aux_bitmask = bitmask(aux_bit_index);
 
     // Reset the auxiliary row.
@@ -612,10 +612,10 @@ fn coeff_ratio(batch_index: u32) -> Complex {
 //
 // NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
 fn multiply_rows_into(batch_index: u32, src: u32, dst: u32) {
-    let src_block_index = src / block_size;
-    let dst_block_index = dst / block_size;
-    let src_bit_index = src % block_size;
-    let dst_bit_index = dst % block_size;
+    let src_block_index = src / BLOCK_SIZE;
+    let dst_block_index = dst / BLOCK_SIZE;
+    let src_bit_index = src % BLOCK_SIZE;
+    let dst_bit_index = dst % BLOCK_SIZE;
     let src_bitmask = bitmask(src_bit_index);
     let dst_bitmask = bitmask(dst_bit_index);
 
@@ -659,8 +659,8 @@ fn multiply_rows_into(batch_index: u32, src: u32, dst: u32) {
 
 // Get whether the given row is negative or not, i.e. the contents of the sign bit.
 fn row_negative(batch_index: u32, row: u32) -> bool {
-    let row_block_index = row / block_size;
-    let row_bit_index = row % block_size;
+    let row_block_index = row / BLOCK_SIZE;
+    let row_bit_index = row % BLOCK_SIZE;
     let row_bitmask = bitmask(row_bit_index);
     return (tableau[r_column_block_index(batch_index, row_block_index)] & row_bitmask) != 0;
 }
@@ -686,7 +686,7 @@ fn r_column_block_index(batch_index: u32, i: u32) -> u32 {
 // Get the block-length of the columns in a single tableau batch.
 fn single_column_block_length() -> u32 {
     // Make room for the auxiliary row.
-    return div_ceil(n + 1, block_size);
+    return div_ceil(n + 1, BLOCK_SIZE);
 }
 // Get the block-length of the combined active tableau batches.
 fn active_column_block_length() -> u32 {
@@ -695,8 +695,8 @@ fn active_column_block_length() -> u32 {
 
 // Get the value of the bit corresponding to the `j`th column in the `row`th row.
 fn bit(batch_index: u32, row: u32, j: u32) -> bool {
-    let row_block_index = row / block_size;
-    let row_bit_index = row % block_size;
+    let row_block_index = row / BLOCK_SIZE;
+    let row_bit_index = row % BLOCK_SIZE;
     let row_bitmask = bitmask(row_bit_index);
     return (tableau[column_block_index(batch_index, row_block_index, j)] & row_bitmask) != 0u;
 }
@@ -737,7 +737,7 @@ fn y_block(x: BitBlock, z: BitBlock) -> BitBlock {
 // bitmask(1) -> 01000000
 // bitmask(6) -> 00000010
 fn bitmask(i: u32) -> BitBlock {
-    return 1u << (block_size - 1u - i);
+    return 1u << (BLOCK_SIZE - 1u - i);
 }
 
 // Bit-shift the given block such that the `src`th bit is moved to the `dst`th position.
@@ -758,7 +758,7 @@ fn align_bit_to(block: BitBlock, src: u32, dst: u32) -> BitBlock {
 //              ^3
 fn lsb_index(block: BitBlock) -> u32 {
     let trailing_zeros = countTrailingZeros(block);
-    return block_size - 1u - trailing_zeros;
+    return BLOCK_SIZE - 1u - trailing_zeros;
 }
 
 // Set the i'th bit of the given block, i.e. set the bit to 1.
