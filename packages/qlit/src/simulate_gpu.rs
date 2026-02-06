@@ -426,13 +426,11 @@ pub struct GpuSimulator<'a> {
     gpu: &'static GpuContext,
     encoder: wgpu::CommandEncoder,
 
-    gates: Vec<u32>,
-    qubit_params: Vec<u32>,
-
     n: u32,
     max_batches: u32,
     active_batches: u32,
     seen_t_gates: u32,
+    path_length: u32,
 
     n_buf: wgpu::Buffer,
     max_batches_buf: wgpu::Buffer,
@@ -443,6 +441,9 @@ pub struct GpuSimulator<'a> {
     ws_buf: wgpu::Buffer,
     w_coeffs_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
+
+    apply_gates_bind_group_index: usize,
+    apply_gates_bind_groups: Vec<Option<wgpu::BindGroup>>,
 
     col_bufs: [wgpu::Buffer; 2],
     a_bufs: [wgpu::Buffer; 2],
@@ -457,7 +458,7 @@ impl<'a> GpuSimulator<'a> {
         let gpu = get_gpu();
 
         let n = circuit.qubits();
-        let path_length = circuit.t_gates() - batch_size_log2;
+        let path_length = (circuit.t_gates() - batch_size_log2) as u32;
 
         let n: u32 = n.try_into().expect("n does not fit into u32");
         let max_batches: u32 = 1 << batch_size_log2;
@@ -517,7 +518,6 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-
         let global_bind_group = Self::new_global_bind_group(
             gpu,
             &n_buf,
@@ -529,6 +529,8 @@ impl<'a> GpuSimulator<'a> {
             &ws_buf,
             &w_coeffs_buf,
         );
+
+        let apply_gates_bind_groups = Self::apply_gates_bind_groups(gpu, circuit, path_length);
 
         let col_bufs = [
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -605,13 +607,11 @@ impl<'a> GpuSimulator<'a> {
             gpu,
             encoder,
 
-            gates: Vec::new(),
-            qubit_params: Vec::new(),
-
             n,
             max_batches,
             active_batches,
             seen_t_gates,
+            path_length,
 
             n_buf,
             max_batches_buf,
@@ -623,6 +623,9 @@ impl<'a> GpuSimulator<'a> {
             w_coeffs_buf,
             global_bind_group,
 
+            apply_gates_bind_group_index: 0,
+            apply_gates_bind_groups,
+
             col_bufs,
             a_bufs,
             pivot_buf,
@@ -631,70 +634,6 @@ impl<'a> GpuSimulator<'a> {
             output_read_buf,
             compute_output_bind_group,
         }
-    }
-
-    pub fn run(&mut self, path: &[bool]) -> Complex<f64> {
-        let t_gates = self.circuit.t_gates() as u32;
-        let path_length = t_gates - self.max_batches.ilog2();
-        self.gpu
-            .queue
-            .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
-        self.zero();
-        for &gate in self.circuit.gates() {
-            match gate {
-                CliffordTGate::Cnot(a, b) => self.apply_cnot_gate(a, b),
-                CliffordTGate::Cz(a, b) => self.apply_cz_gate(a, b),
-                CliffordTGate::X(a) => self.apply_x_gate(a),
-                CliffordTGate::Y(a) => self.apply_y_gate(a),
-                CliffordTGate::Z(a) => self.apply_z_gate(a),
-                CliffordTGate::S(a) => self.apply_s_gate(a),
-                CliffordTGate::Sdg(a) => self.apply_sdg_gate(a),
-                CliffordTGate::H(a) => {
-                    self.submit_gates();
-                    self.bring_into_rref();
-                    self.update_before_h(a);
-                    self.apply_h_gate(a);
-                }
-                CliffordTGate::T(a) => {
-                    if self.seen_t_gates < path_length {
-                        self.apply_t_gate_branch(a);
-                    } else {
-                        self.submit_gates();
-                        self.apply_t_gate_parallel(a);
-                    }
-                }
-                CliffordTGate::Tdg(a) => {
-                    if self.seen_t_gates < path_length {
-                        self.apply_tdg_gate_branch(a);
-                    } else {
-                        self.submit_gates();
-                        self.apply_tdg_gate_parallel(a);
-                    }
-                }
-            }
-        }
-        self.submit_gates();
-        self.bring_into_rref();
-        self.compute_output();
-
-        let new_encoder = self.gpu.device.create_command_encoder(&Default::default());
-        let encoder = mem::replace(&mut self.encoder, new_encoder);
-        self.gpu.queue.submit([encoder.finish()]);
-
-        self.output_read_buf
-            .map_async(wgpu::MapMode::Read, .., |_| {});
-        self.gpu
-            .device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-
-        let res = {
-            let output_data = &self.output_read_buf.get_mapped_range(..);
-            bytes_to_complex(output_data).sum()
-        };
-        self.output_read_buf.unmap();
-
-        res
     }
 
     fn new_global_bind_group(
@@ -748,6 +687,196 @@ impl<'a> GpuSimulator<'a> {
         })
     }
 
+    fn apply_gates_bind_groups(
+        gpu: &GpuContext,
+        circuit: &CliffordTCircuit,
+        path_length: u32,
+    ) -> Vec<Option<wgpu::BindGroup>> {
+        let mut bind_groups = Vec::new();
+
+        let mut gates = Vec::new();
+        let mut qubit_params = Vec::new();
+
+        fn commit_buffer(
+            gpu: &GpuContext,
+            gates: &mut Vec<u32>,
+            qubit_params: &mut Vec<u32>,
+            bind_groups: &mut Vec<Option<wgpu::BindGroup>>,
+        ) {
+            if gates.is_empty() {
+                bind_groups.push(None);
+                return;
+            }
+
+            let gates_buf = gpu
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("gates"),
+                    contents: &gates
+                        .iter()
+                        .flat_map(|&g| g.to_ne_bytes())
+                        .collect::<Vec<u8>>(),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
+            let qubit_params_buf =
+                gpu.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("qubit_params"),
+                        contents: &qubit_params
+                            .iter()
+                            .flat_map(|&q| q.to_ne_bytes())
+                            .collect::<Vec<u8>>(),
+                        usage: wgpu::BufferUsages::STORAGE,
+                    });
+            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Apply Gates"),
+                layout: &gpu.apply_gates_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: gates_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: qubit_params_buf.as_entire_binding(),
+                    },
+                ],
+            });
+            bind_groups.push(Some(bind_group));
+            gates.clear();
+            qubit_params.clear();
+        }
+
+        let mut seen_t_gates = 0;
+        for &gate in circuit.gates() {
+            match gate {
+                CliffordTGate::Cnot(a, b) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    let b: u32 = b.try_into().expect("b does not fit into u32");
+                    gates.push(0);
+                    qubit_params.push(a);
+                    qubit_params.push(b);
+                }
+                CliffordTGate::Cz(a, b) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    let b: u32 = b.try_into().expect("b does not fit into u32");
+                    gates.push(1);
+                    qubit_params.push(a);
+                    qubit_params.push(b);
+                }
+                CliffordTGate::X(a) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(2);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::Y(a) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(3);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::Z(a) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(4);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::S(a) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(5);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::Sdg(a) => {
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(6);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::H(a) => {
+                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+
+                    let a: u32 = a.try_into().expect("a does not fit into u32");
+                    gates.push(7);
+                    qubit_params.push(a);
+                }
+                CliffordTGate::T(a) => {
+                    if seen_t_gates < path_length {
+                        let a: u32 = a.try_into().expect("a does not fit into u32");
+                        gates.push(8);
+                        qubit_params.push(a);
+                        seen_t_gates += 1;
+                    }
+
+                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+                }
+                CliffordTGate::Tdg(a) => {
+                    if seen_t_gates < path_length {
+                        let a: u32 = a.try_into().expect("a does not fit into u32");
+                        gates.push(9);
+                        qubit_params.push(a);
+                        seen_t_gates += 1;
+                    }
+
+                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+                }
+            }
+        }
+        commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+        bind_groups
+    }
+
+    pub fn run(&mut self, path: &[bool]) -> Complex<f64> {
+        self.gpu
+            .queue
+            .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
+        self.zero();
+        for &gate in self.circuit.gates() {
+            match gate {
+                CliffordTGate::H(a) => {
+                    self.submit_gates();
+                    self.bring_into_rref();
+                    self.update_before_h(a);
+                }
+                CliffordTGate::T(a) => {
+                    self.submit_gates();
+                    if self.seen_t_gates < self.path_length {
+                        self.incr_seen_t_gates();
+                    } else {
+                        self.apply_t_gate_parallel(a);
+                    }
+                }
+                CliffordTGate::Tdg(a) => {
+                    self.submit_gates();
+                    if self.seen_t_gates < self.path_length {
+                        self.incr_seen_t_gates();
+                    } else {
+                        self.apply_tdg_gate_parallel(a);
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.submit_gates();
+        self.bring_into_rref();
+        self.compute_output();
+
+        let new_encoder = self.gpu.device.create_command_encoder(&Default::default());
+        let encoder = mem::replace(&mut self.encoder, new_encoder);
+        self.gpu.queue.submit([encoder.finish()]);
+
+        self.output_read_buf
+            .map_async(wgpu::MapMode::Read, .., |_| {});
+        self.gpu
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+
+        let res = {
+            let output_data = &self.output_read_buf.get_mapped_range(..);
+            bytes_to_complex(output_data).sum()
+        };
+        self.output_read_buf.unmap();
+
+        res
+    }
+
     fn zero(&mut self) {
         let n = self.n;
 
@@ -757,6 +886,7 @@ impl<'a> GpuSimulator<'a> {
 
         self.active_batches = 1;
         self.seen_t_gates = 0;
+        self.apply_gates_bind_group_index = 0;
 
         let workgroups = single_column_block_length(n).div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
@@ -766,62 +896,7 @@ impl<'a> GpuSimulator<'a> {
         drop(pass);
     }
 
-    fn apply_cnot_gate(&mut self, a: usize, b: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        let b: u32 = b.try_into().expect("b does not fit into u32");
-        self.gates.push(0);
-        self.qubit_params.push(a);
-        self.qubit_params.push(b);
-    }
-    fn apply_cz_gate(&mut self, a: usize, b: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        let b: u32 = b.try_into().expect("b does not fit into u32");
-        self.gates.push(1);
-        self.qubit_params.push(a);
-        self.qubit_params.push(b);
-    }
-    fn apply_h_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(2);
-        self.qubit_params.push(a);
-    }
-    fn apply_s_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(3);
-        self.qubit_params.push(a);
-    }
-    fn apply_sdg_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(4);
-        self.qubit_params.push(a);
-    }
-    fn apply_x_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(5);
-        self.qubit_params.push(a);
-    }
-    fn apply_y_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(6);
-        self.qubit_params.push(a);
-    }
-    fn apply_z_gate(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(7);
-        self.qubit_params.push(a);
-    }
-    fn apply_t_gate_branch(&mut self, a: usize) {
-        self.apply_gate_branch(8, a);
-    }
-    fn apply_tdg_gate_branch(&mut self, a: usize) {
-        self.apply_gate_branch(9, a);
-    }
-    fn apply_gate_branch(&mut self, gate_encoding: u32, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-        self.gates.push(gate_encoding);
-        self.qubit_params.push(a);
-
-        self.submit_gates();
+    fn incr_seen_t_gates(&mut self) {
         self.seen_t_gates += 1;
         self.seen_t_gates_buf =
             self.gpu
@@ -843,62 +918,22 @@ impl<'a> GpuSimulator<'a> {
             &self.w_coeffs_buf,
         );
     }
+
     fn submit_gates(&mut self) {
-        if self.gates.is_empty() {
-            return;
+        match &self.apply_gates_bind_groups[self.apply_gates_bind_group_index] {
+            Some(bind_group) => {
+                let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
+                let mut pass = self.encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(&self.gpu.apply_gates_pipeline);
+                pass.set_bind_group(0, &self.global_bind_group, &[]);
+                pass.set_bind_group(1, bind_group, &[]);
+                pass.dispatch_workgroups(workgroups, 1, 1);
+            }
+            None => {
+                // No gates to apply - dispatching an empty buffer will fail.
+            }
         }
-
-        let gates_buf = self
-            .gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("gates"),
-                contents: &self
-                    .gates
-                    .iter()
-                    .flat_map(|&g| g.to_ne_bytes())
-                    .collect::<Vec<u8>>(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let qubit_params_buf =
-            self.gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("qubit_params"),
-                    contents: &self
-                        .qubit_params
-                        .iter()
-                        .flat_map(|&p| p.to_ne_bytes())
-                        .collect::<Vec<u8>>(),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
-        let bind_group = self
-            .gpu
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Apply Gates Bind Group"),
-                layout: &self.gpu.apply_gates_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: gates_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: qubit_params_buf.as_entire_binding(),
-                    },
-                ],
-            });
-
-        let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
-        let mut pass = self.encoder.begin_compute_pass(&Default::default());
-        pass.set_pipeline(&self.gpu.apply_gates_pipeline);
-        pass.set_bind_group(0, &self.global_bind_group, &[]);
-        pass.set_bind_group(1, &bind_group, &[]);
-        pass.dispatch_workgroups(workgroups, 1, 1);
-
-        self.gates.clear();
-        self.qubit_params.clear();
+        self.apply_gates_bind_group_index += 1;
     }
 
     fn apply_t_gate_parallel(&mut self, a: usize) {

@@ -119,49 +119,6 @@ fn apply_gates(
                 }
             }
             case 2: {
-                // H
-                // Updates to ws and w_coeffs are handled by update_before_h.
-                let a = qubit_params[p];
-                p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x] & tableau[z];
-                let temp = tableau[z];
-                tableau[z] = tableau[x];
-                tableau[x] = temp;
-            }
-            case 3: {
-                // S
-                let a = qubit_params[p];
-                p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x] & tableau[z];
-                tableau[z] ^= tableau[x];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
-                    }
-                }
-            }
-            case 4: {
-                // Sdg
-                let a = qubit_params[p];
-                p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[z] ^= tableau[x];
-                tableau[r] ^= tableau[x] & tableau[z];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_minus_i(w_coeffs[batch_index]);
-                    }
-                }
-            }
-            case 5: {
                 // X
                 let a = qubit_params[p];
                 p += 1;
@@ -173,7 +130,7 @@ fn apply_gates(
                     ws[w_bit_index(batch_index, a)] ^= 1u;
                 }
             }
-            case 6: {
+            case 3: {
                 // Y
                 let a = qubit_params[p];
                 p += 1;
@@ -190,7 +147,7 @@ fn apply_gates(
                     ws[w_bit_index(batch_index, a)] ^= 1u;
                 }
             }
-            case 7: {
+            case 4: {
                 // Z
                 let a = qubit_params[p];
                 p += 1;
@@ -202,6 +159,49 @@ fn apply_gates(
                         w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
                     }
                 }
+            }
+            case 5: {
+                // S
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(batch_index, block_index);
+                let x = x_column_block_index(batch_index, block_index, a);
+                let z = z_column_block_index(batch_index, block_index, a);
+                tableau[r] ^= tableau[x] & tableau[z];
+                tableau[z] ^= tableau[x];
+                if block_index == 0 {
+                    if ws[w_bit_index(batch_index, a)] == 1u {
+                        w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
+                    }
+                }
+            }
+            case 6: {
+                // Sdg
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(batch_index, block_index);
+                let x = x_column_block_index(batch_index, block_index, a);
+                let z = z_column_block_index(batch_index, block_index, a);
+                tableau[z] ^= tableau[x];
+                tableau[r] ^= tableau[x] & tableau[z];
+                if block_index == 0 {
+                    if ws[w_bit_index(batch_index, a)] == 1u {
+                        w_coeffs[batch_index] = mul_minus_i(w_coeffs[batch_index]);
+                    }
+                }
+            }
+            case 7: {
+                // H
+                // Updates to ws and w_coeffs are handled by update_before_h.
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(batch_index, block_index);
+                let x = x_column_block_index(batch_index, block_index, a);
+                let z = z_column_block_index(batch_index, block_index, a);
+                tableau[r] ^= tableau[x] & tableau[z];
+                let temp = tableau[z];
+                tableau[z] = tableau[x];
+                tableau[x] = temp;
             }
             case 8: {
                 // T branch
