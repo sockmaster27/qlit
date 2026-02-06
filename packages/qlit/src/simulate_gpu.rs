@@ -484,7 +484,7 @@ impl<'a> GpuSimulator<'a> {
             label: Some("path"),
             // Buffers must not be zero-sized, so we allocate at least 1 block even if path_length is 0.
             size: U32_SIZE * max(1, path_length as u64),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -828,7 +828,7 @@ impl<'a> GpuSimulator<'a> {
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("seen_t_gates"),
                     contents: &self.seen_t_gates.to_ne_bytes(),
-                    usage: wgpu::BufferUsages::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
         self.global_bind_group = Self::new_global_bind_group(
             &self.gpu,
