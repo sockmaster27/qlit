@@ -157,7 +157,7 @@ fn apply_gates(
                 tableau[r] ^= tableau[x] & tableau[z];
                 if block_index == 0 {
                     if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
+                        w_coeffs[batch_index] = mul_minus_i(w_coeffs[batch_index]);
                     }
                 }
             }
@@ -579,11 +579,10 @@ fn coeff_ratio(batch_index: u32) -> Complex {
     }
 
     var res = Complex(1.0, 0.0);
-    if row_negative(batch_index, row) {
+    if row_negative(batch_index, aux_row) {
         res = Complex(-1.0, 0.0);
     } 
     for (var q: u32 = 0; q < n; q += 1) {
-        // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
         if i(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] == w_target[q]) {
             // Multiply by 1
         } else if x(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] != w_target[q]) {
