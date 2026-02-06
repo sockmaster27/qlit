@@ -1,8 +1,8 @@
 mod circuit;
 mod simulate;
-mod tableau;
 #[cfg(feature = "gpu")]
-mod tableau_gpu;
+mod simulate_gpu;
+mod tableau;
 mod utils;
 
 pub use circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate};
@@ -17,5 +17,5 @@ pub use simulate::simulate_circuit_gpu;
 /// but this can be called to pre-empt that work at a more appropriate time.
 pub fn initialize_global() {
     #[cfg(feature = "gpu")]
-    tableau_gpu::initialize_gpu();
+    simulate_gpu::initialize_gpu();
 }
