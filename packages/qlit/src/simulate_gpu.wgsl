@@ -187,6 +187,7 @@ fn apply_gates(
                     } else {
                         w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
                     }
+                    ws[w_bit_index(batch_index, a)] ^= 1u;
                 }
             }
             case 7: {

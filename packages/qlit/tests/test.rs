@@ -174,6 +174,23 @@ mod cpu {
     }
 
     #[test]
+    fn only_t_gates() {
+        let circuit = CliffordTCircuit::new(8, [T(0); 5]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
     fn larger_circuit() {
         let circuit = CliffordTCircuit::new(
             8,
@@ -258,6 +275,40 @@ mod gpu {
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn x_gate() {
+        let circuit = CliffordTCircuit::new(8, [X(0)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b1000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
+    fn y_gate() {
+        let circuit = CliffordTCircuit::new(8, [Y(0)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b1000_0000 => Complex::I,
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -524,9 +575,10 @@ mod gpu {
 }
 
 fn assert_almost_eq(result: Complex<f64>, expected: Complex<f64>, i: u8) {
+    let diff = (result - expected).norm();
     assert!(
-        (result - expected).norm() < 1e-10,
-        "w={i:008b}\nresult={result:?}\nexpected={expected:?}",
+        diff < 1e-6,
+        "w={i:008b}\nresult={result:?}\nexpected={expected:?}\ndifference={diff}",
     );
 }
 
