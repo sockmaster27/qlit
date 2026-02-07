@@ -50,7 +50,17 @@ impl GpuContext {
     async fn new() -> GpuContext {
         let instance = wgpu::Instance::new(&Default::default());
         let adapter = instance.request_adapter(&Default::default()).await.unwrap();
-        let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: Default::default(),
+                required_limits: adapter.limits(),
+                experimental_features: Default::default(),
+                memory_hints: Default::default(),
+                trace: Default::default(),
+            })
+            .await
+            .unwrap();
         println!("Using WGPU adapter: {:?}", adapter.get_info());
 
         let shader_module = device.create_shader_module(wgpu::include_wgsl!("simulate_gpu.wgsl"));
