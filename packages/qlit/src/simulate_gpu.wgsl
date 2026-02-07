@@ -26,9 +26,8 @@ const C_Z_DG: Complex = Complex(
 @group(0) @binding(2) var<storage, read> path: array<u32>;
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
 @group(0) @binding(4) var<storage, read_write> active_batches: u32;
-@group(0) @binding(5) var<uniform> seen_t_gates: u32;
-@group(0) @binding(6) var<storage, read_write> ws: array<u32>;
-@group(0) @binding(7) var<storage, read_write> w_coeffs: array<Complex>;
+@group(0) @binding(5) var<storage, read_write> ws: array<u32>;
+@group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 
 fn w_bit_index(batch_index: u32, q: u32) -> u32 {
     return batch_index * n + q;
@@ -64,6 +63,7 @@ fn zero(
 
 @group(1) @binding(0) var<storage, read> gates: array<u32>;
 @group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
+@group(1) @binding(2) var<uniform> initial_seen_t_gates: u32;
 
 @compute
 @workgroup_size(64)
@@ -78,6 +78,7 @@ fn apply_gates(
     let block_index = id.x % single_column_block_length();
 
     var p: u32 = 0;
+    var seen_t_gates = initial_seen_t_gates;
     for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
         switch gates[i] {
             case 0: {
@@ -222,6 +223,7 @@ fn apply_gates(
                     }
                 }
                 p += 1;
+                seen_t_gates += 1;
             }
             case 9: {
                 // Tdg branch
@@ -242,6 +244,7 @@ fn apply_gates(
                     }
                 }
                 p += 1;
+                seen_t_gates += 1;
             }
             default: {}
         }

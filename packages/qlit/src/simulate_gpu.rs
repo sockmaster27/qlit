@@ -114,20 +114,9 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // seen_t_gates
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 5,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
                     // ws
                     wgpu::BindGroupLayoutEntry {
-                        binding: 6,
+                        binding: 5,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -138,7 +127,7 @@ impl GpuContext {
                     },
                     // w_coeffs
                     wgpu::BindGroupLayoutEntry {
-                        binding: 7,
+                        binding: 6,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -187,6 +176,17 @@ impl GpuContext {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // initial_seen_t_gates
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -429,7 +429,6 @@ pub struct GpuSimulator<'a> {
     n: u32,
     max_batches: u32,
     active_batches: u32,
-    seen_t_gates: u32,
     path_length: u32,
 
     n_buf: wgpu::Buffer,
@@ -463,7 +462,6 @@ impl<'a> GpuSimulator<'a> {
         let n: u32 = n.try_into().expect("n does not fit into u32");
         let max_batches: u32 = 1 << batch_size_log2;
         let active_batches = 1;
-        let seen_t_gates = 0;
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
@@ -525,7 +523,6 @@ impl<'a> GpuSimulator<'a> {
             &path_buf,
             &tableau_buf,
             &active_batches_buf,
-            &seen_t_gates_buf,
             &ws_buf,
             &w_coeffs_buf,
         );
@@ -610,7 +607,6 @@ impl<'a> GpuSimulator<'a> {
             n,
             max_batches,
             active_batches,
-            seen_t_gates,
             path_length,
 
             n_buf,
@@ -643,7 +639,6 @@ impl<'a> GpuSimulator<'a> {
         path_buf: &wgpu::Buffer,
         tableau_buf: &wgpu::Buffer,
         active_batches_buf: &wgpu::Buffer,
-        seen_t_gates_buf: &wgpu::Buffer,
         ws_buf: &wgpu::Buffer,
         w_coeffs_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
@@ -673,14 +668,10 @@ impl<'a> GpuSimulator<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: seen_t_gates_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
                     resource: ws_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 7,
+                    binding: 6,
                     resource: w_coeffs_buf.as_entire_binding(),
                 },
             ],
@@ -701,6 +692,7 @@ impl<'a> GpuSimulator<'a> {
             gpu: &GpuContext,
             gates: &mut Vec<u32>,
             qubit_params: &mut Vec<u32>,
+            initial_seen_t_gates: u32,
             bind_groups: &mut Vec<Option<wgpu::BindGroup>>,
         ) {
             if gates.is_empty() {
@@ -728,6 +720,13 @@ impl<'a> GpuSimulator<'a> {
                             .collect::<Vec<u8>>(),
                         usage: wgpu::BufferUsages::STORAGE,
                     });
+            let initial_seen_t_gates_buf =
+                gpu.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("initial_seen_t_gates"),
+                        contents: &initial_seen_t_gates.to_ne_bytes(),
+                        usage: wgpu::BufferUsages::UNIFORM,
+                    });
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Apply Gates"),
                 layout: &gpu.apply_gates_bind_group_layout,
@@ -740,6 +739,10 @@ impl<'a> GpuSimulator<'a> {
                         binding: 1,
                         resource: qubit_params_buf.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: initial_seen_t_gates_buf.as_entire_binding(),
+                    },
                 ],
             });
             bind_groups.push(Some(bind_group));
@@ -747,6 +750,7 @@ impl<'a> GpuSimulator<'a> {
             qubit_params.clear();
         }
 
+        let mut initial_seen_t_gates = 0;
         let mut seen_t_gates = 0;
         for &gate in circuit.gates() {
             match gate {
@@ -790,7 +794,14 @@ impl<'a> GpuSimulator<'a> {
                     qubit_params.push(a);
                 }
                 CliffordTGate::H(a) => {
-                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+                    commit_buffer(
+                        gpu,
+                        &mut gates,
+                        &mut qubit_params,
+                        initial_seen_t_gates,
+                        &mut bind_groups,
+                    );
+                    initial_seen_t_gates = seen_t_gates;
 
                     let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(7);
@@ -802,9 +813,16 @@ impl<'a> GpuSimulator<'a> {
                         gates.push(8);
                         qubit_params.push(a);
                         seen_t_gates += 1;
+                    } else {
+                        commit_buffer(
+                            gpu,
+                            &mut gates,
+                            &mut qubit_params,
+                            initial_seen_t_gates,
+                            &mut bind_groups,
+                        );
+                        initial_seen_t_gates = seen_t_gates;
                     }
-
-                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
                 }
                 CliffordTGate::Tdg(a) => {
                     if seen_t_gates < path_length {
@@ -812,13 +830,26 @@ impl<'a> GpuSimulator<'a> {
                         gates.push(9);
                         qubit_params.push(a);
                         seen_t_gates += 1;
+                    } else {
+                        commit_buffer(
+                            gpu,
+                            &mut gates,
+                            &mut qubit_params,
+                            initial_seen_t_gates,
+                            &mut bind_groups,
+                        );
+                        initial_seen_t_gates = seen_t_gates;
                     }
-
-                    commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
                 }
             }
         }
-        commit_buffer(gpu, &mut gates, &mut qubit_params, &mut bind_groups);
+        commit_buffer(
+            gpu,
+            &mut gates,
+            &mut qubit_params,
+            initial_seen_t_gates,
+            &mut bind_groups,
+        );
         bind_groups
     }
 
@@ -827,6 +858,7 @@ impl<'a> GpuSimulator<'a> {
             .queue
             .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
         self.zero();
+        let mut seen_t_gates = 0;
         for &gate in self.circuit.gates() {
             match gate {
                 CliffordTGate::H(a) => {
@@ -835,18 +867,18 @@ impl<'a> GpuSimulator<'a> {
                     self.update_before_h(a);
                 }
                 CliffordTGate::T(a) => {
-                    self.submit_gates();
-                    if self.seen_t_gates < self.path_length {
-                        self.incr_seen_t_gates();
+                    if seen_t_gates < self.path_length {
+                        seen_t_gates += 1;
                     } else {
+                        self.submit_gates();
                         self.apply_t_gate_parallel(a);
                     }
                 }
                 CliffordTGate::Tdg(a) => {
-                    self.submit_gates();
-                    if self.seen_t_gates < self.path_length {
-                        self.incr_seen_t_gates();
+                    if seen_t_gates < self.path_length {
+                        seen_t_gates += 1;
                     } else {
+                        self.submit_gates();
                         self.apply_tdg_gate_parallel(a);
                     }
                 }
@@ -885,7 +917,6 @@ impl<'a> GpuSimulator<'a> {
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
 
         self.active_batches = 1;
-        self.seen_t_gates = 0;
         self.apply_gates_bind_group_index = 0;
 
         let workgroups = single_column_block_length(n).div_ceil(WORKGROUP_SIZE);
@@ -894,29 +925,6 @@ impl<'a> GpuSimulator<'a> {
         pass.set_bind_group(0, &self.global_bind_group, &[]);
         pass.dispatch_workgroups(workgroups, 1, 1);
         drop(pass);
-    }
-
-    fn incr_seen_t_gates(&mut self) {
-        self.seen_t_gates += 1;
-        self.seen_t_gates_buf =
-            self.gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("seen_t_gates"),
-                    contents: &self.seen_t_gates.to_ne_bytes(),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
-        self.global_bind_group = Self::new_global_bind_group(
-            &self.gpu,
-            &self.n_buf,
-            &self.max_batches_buf,
-            &self.path_buf,
-            &self.tableau_buf,
-            &self.active_batches_buf,
-            &self.seen_t_gates_buf,
-            &self.ws_buf,
-            &self.w_coeffs_buf,
-        );
     }
 
     fn submit_gates(&mut self) {
@@ -992,7 +1000,6 @@ impl<'a> GpuSimulator<'a> {
             &self.path_buf,
             &self.tableau_buf,
             &self.active_batches_buf,
-            &self.seen_t_gates_buf,
             &self.ws_buf,
             &self.w_coeffs_buf,
         )

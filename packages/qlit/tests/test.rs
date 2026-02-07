@@ -429,6 +429,23 @@ mod gpu {
     }
 
     #[test]
+    fn only_tdg_gates() {
+        let circuit = CliffordTCircuit::new(8, [Tdg(0); 5]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = bits_to_bools(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, i);
+        }
+    }
+
+    #[test]
     fn smaller_circuit_1() {
         let circuit = CliffordTCircuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
