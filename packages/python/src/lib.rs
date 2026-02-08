@@ -2,6 +2,7 @@ use num_complex::Complex;
 use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
 use qlit::{
     CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit, simulate_circuit_gpu,
+    simulate_circuit_hybrid,
 };
 use rayon::ThreadPoolBuilder;
 
@@ -176,6 +177,18 @@ fn py_simulate_circuit_gpu(
     ))
 }
 
+#[pyfunction]
+#[pyo3(name = "simulate_circuit_hybrid")]
+fn py_simulate_circuit_hybrid(
+    w: &Bound<PyString>,
+    circuit: &PyCliffordTCircuit,
+) -> PyResult<Complex<f64>> {
+    Ok(simulate_circuit_hybrid(
+        &parse_basis_state(w, circuit.qubits())?,
+        &circuit.0,
+    ))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ThreadPoolBuilder::new().build_global().unwrap();
@@ -185,5 +198,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCliffordTCircuit>()?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit_gpu, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simulate_circuit_hybrid, m)?)?;
     Ok(())
 }

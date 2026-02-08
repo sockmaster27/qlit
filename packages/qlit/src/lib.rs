@@ -6,10 +6,12 @@ mod tableau;
 mod utils;
 
 pub use circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate};
-pub use simulate::simulate_circuit;
 
+pub use simulate::simulate_circuit;
 #[cfg(feature = "gpu")]
 pub use simulate::simulate_circuit_gpu;
+#[cfg(feature = "gpu")]
+pub use simulate::simulate_circuit_hybrid;
 
 /// Initialization all global resources.
 ///
