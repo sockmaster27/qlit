@@ -10,6 +10,7 @@ use std::{
 
 use num_complex::Complex;
 
+#[cfg(feature = "gpu")]
 use crate::simulate_gpu::GpuSimulator;
 
 use crate::{
