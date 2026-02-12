@@ -35,7 +35,7 @@ mod cpu {
         bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench(args = [0, 5, 10])]
+    #[divan::bench(args = [0, 5, 17])]
     fn t_gates(bencher: Bencher, t_gates: usize) {
         let (w, circuit) = setup(DEFAULT_QUBITS, DEFAULT_GATES, t_gates);
         bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
@@ -58,7 +58,7 @@ mod gpu {
         bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench(args = [0, 5, 10])]
+    #[divan::bench(args = [0, 5, 17])]
     fn t_gates(bencher: Bencher, t_gates: usize) {
         let (w, circuit) = setup(DEFAULT_QUBITS, DEFAULT_GATES, t_gates);
         bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
@@ -81,7 +81,7 @@ mod hybrid {
         bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench(args = [0, 5, 10])]
+    #[divan::bench(args = [0, 5, 17])]
     fn t_gates(bencher: Bencher, t_gates: usize) {
         let (w, circuit) = setup(DEFAULT_QUBITS, DEFAULT_GATES, t_gates);
         bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));
