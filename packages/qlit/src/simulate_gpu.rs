@@ -61,7 +61,6 @@ impl GpuContext {
             })
             .await
             .unwrap();
-        println!("Using WGPU adapter: {:?}", adapter.get_info());
 
         let shader_module = device.create_shader_module(wgpu::include_wgsl!("simulate_gpu.wgsl"));
 
