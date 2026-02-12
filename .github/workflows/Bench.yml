@@ -11,6 +11,9 @@ jobs:
     rust-bench:
         name: Run Rust benchmarks
         runs-on: ubuntu-latest
+        env:
+            DIVAN_MAX_TIME: 10
+            DIVAN_SKIP_EXT_TIME: true
         steps:
             - uses: actions/checkout@v5
             - run: sudo apt-get update && sudo apt-get install -y mesa-utils
