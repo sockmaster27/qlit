@@ -13,10 +13,6 @@ from qlit import (
     simulate_circuit_hybrid,
 )
 
-DEFAULT_QUBITS = 100
-DEFAULT_GATES = 100
-DEFAULT_T_GATES = 5
-
 
 def setup(qubits, gates, t_gates):
     seed = 123
@@ -30,17 +26,10 @@ def setup(qubits, gates, t_gates):
     "implementation", [simulate_circuit, simulate_circuit_gpu, simulate_circuit_hybrid]
 )
 class TestPython:
-    @pytest.mark.parametrize("qubits", [10, 100, 1000])
-    def test_qubits(self, benchmark, qubits, implementation):
-        w, circuit = setup(qubits, DEFAULT_GATES, DEFAULT_T_GATES)
+    def test_small(self, benchmark, implementation):
+        w, circuit = setup(8, 64, 5)
         benchmark(implementation, w, circuit)
 
-    @pytest.mark.parametrize("gates", [10, 100, 1000])
-    def test_gates(self, benchmark, gates, implementation):
-        w, circuit = setup(DEFAULT_QUBITS, gates, DEFAULT_T_GATES)
-        benchmark(implementation, w, circuit)
-
-    @pytest.mark.parametrize("t_gates", [0, 5, 10])
-    def test_t_gates(self, benchmark, t_gates, implementation):
-        w, circuit = setup(DEFAULT_QUBITS, DEFAULT_GATES, t_gates)
+    def test_large(self, benchmark, implementation):
+        w, circuit = setup(32, 512, 17)
         benchmark(implementation, w, circuit)
