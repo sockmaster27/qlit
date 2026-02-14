@@ -12,17 +12,19 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
+            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: moonrepo/setup-rust@v0
               with:
                   channel: stable
             - name: Test
-              run: cargo test
+              run: cargo test -- --show-output
 
     python-test:
         name: Run Python tests
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
+            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true

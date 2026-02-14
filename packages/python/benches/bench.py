@@ -3,9 +3,17 @@
 #    uv run pytest packages/python/benches/bench.py --codspeed
 #
 
-import pytest
 import random
-from qlit import CliffordTCircuit, simulate_circuit
+import os
+
+import pytest
+from qlit import (
+    CliffordTCircuit,
+    simulate_circuit,
+    simulate_circuit_gpu,
+    simulate_circuit_hybrid,
+)
+
 
 def setup(qubits, gates, t_gates):
     seed = 123
@@ -14,23 +22,17 @@ def setup(qubits, gates, t_gates):
     circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
     return w, circuit
 
-@pytest.mark.parametrize("qubits", [10, 100, 1000])
-def test_qubits(benchmark, qubits):
-    gates = 1000
-    t_gates = 5
-    w, circuit = setup(qubits, gates, t_gates)
-    benchmark(simulate_circuit, w, circuit)
 
-@pytest.mark.parametrize("gates", [100, 1000, 10_000])
-def test_gates(benchmark, gates):
-    qubits = 100
-    t_gates = 5
-    w, circuit = setup(qubits, gates, t_gates)
-    benchmark(simulate_circuit, w, circuit)
+@pytest.mark.parametrize(
+    "implementation", [simulate_circuit, simulate_circuit_gpu, simulate_circuit_hybrid]
+)
+class TestPython:
+    def test_small(self, benchmark, implementation):
+        w, circuit = setup(8, 64, 5)
+        benchmark(implementation, w, circuit)
 
-@pytest.mark.parametrize("t_gates", [0, 5, 10])
-def test_t_gates(benchmark, t_gates):
-    qubits = 100
-    gates = 1000
-    w, circuit = setup(qubits, gates, t_gates)
-    benchmark(simulate_circuit, w, circuit)
+
+    @pytest.mark.skipif(condition="CI" in os.environ, reason="Too slow for CI")
+    def test_large(self, benchmark, implementation):
+        w, circuit = setup(32, 512, 17)
+        benchmark(implementation, w, circuit)
