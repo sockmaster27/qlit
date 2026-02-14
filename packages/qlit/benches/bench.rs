@@ -25,7 +25,7 @@ mod cpu {
         bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench]
+    #[divan::bench(ignore = std::env::var("CI").is_ok())]
     fn cpu_large(bencher: Bencher) {
         let (w, circuit) = setup(32, 512, 17);
         bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
@@ -42,7 +42,7 @@ mod gpu {
         bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench]
+    #[divan::bench(ignore = std::env::var("CI").is_ok())]
     fn gpu_large(bencher: Bencher) {
         let (w, circuit) = setup(32, 512, 17);
         bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
@@ -59,7 +59,7 @@ mod hybrid {
         bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));
     }
 
-    #[divan::bench]
+    #[divan::bench(ignore = std::env::var("CI").is_ok())]
     fn hybrid_large(bencher: Bencher) {
         let (w, circuit) = setup(32, 512, 17);
         bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));

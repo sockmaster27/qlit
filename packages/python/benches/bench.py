@@ -4,6 +4,7 @@
 #
 
 import random
+import os
 
 import pytest
 from qlit import (
@@ -30,6 +31,8 @@ class TestPython:
         w, circuit = setup(8, 64, 5)
         benchmark(implementation, w, circuit)
 
+
+    @pytest.mark.skipif(condition="CI" in os.environ, reason="Too slow for CI")
     def test_large(self, benchmark, implementation):
         w, circuit = setup(32, 512, 17)
         benchmark(implementation, w, circuit)
