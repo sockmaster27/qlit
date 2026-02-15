@@ -14,16 +14,16 @@ use pyo3::conversion::FromPyObject;
 // For now, we unfortunately have to duplicate this
 // See https://github.com/PyO3/pyo3/discussions/3368
 enum PyCliffordTGate {
-    X(usize),
-    Y(usize),
-    Z(usize),
-    S(usize),
-    Sdg(usize),
-    H(usize),
-    Cnot(usize, usize),
-    Cz(usize, usize),
-    T(usize),
-    Tdg(usize),
+    X(u32),
+    Y(u32),
+    Z(u32),
+    S(u32),
+    Sdg(u32),
+    H(u32),
+    Cnot(u32, u32),
+    Cz(u32, u32),
+    T(u32),
+    Tdg(u32),
 }
 #[pymethods]
 impl PyCliffordTGate {
@@ -84,7 +84,7 @@ struct PyCliffordTCircuit(CliffordTCircuit);
 #[pymethods]
 impl PyCliffordTCircuit {
     #[new]
-    fn new(qubits: usize, gates: Bound<'_, PyAny>) -> PyResult<Self> {
+    fn new(qubits: u32, gates: Bound<'_, PyAny>) -> PyResult<Self> {
         let gates: PyResult<Vec<CliffordTGate>> = gates
             .try_iter()?
             .flat_map(|r| {
@@ -104,13 +104,13 @@ impl PyCliffordTCircuit {
 
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[staticmethod]
-    fn random(qubits: usize, gates: usize, t_gates: usize, seed: u64) -> Self {
+    fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
         PyCliffordTCircuit(CliffordTCircuit::random(qubits, gates, t_gates, seed))
     }
 
     /// The number of qubits in the circuit.
     #[getter]
-    fn qubits(&self) -> usize {
+    fn qubits(&self) -> u32 {
         self.0.qubits()
     }
 
@@ -132,10 +132,10 @@ impl PyCliffordTCircuit {
     }
 }
 
-fn parse_basis_state(w: &Bound<PyString>, n: usize) -> PyResult<Vec<bool>> {
+fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<Vec<bool>> {
     let w_str = w.to_cow()?;
     let w_len = w_str.len();
-    if w_len != n {
+    if w_len.try_into() != Ok(n) {
         return Err(PyErr::new::<PyValueError, _>(format!(
             "Basis state with length {w_len} does not match circuit with {n} qubits"
         )));

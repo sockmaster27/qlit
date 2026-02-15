@@ -465,12 +465,17 @@ impl<'a> GpuSimulator<'a> {
     pub fn new(circuit: &'a CliffordTCircuit, w: &[bool], batch_size_log2: usize) -> Self {
         let gpu = get_gpu();
 
-        let n = circuit.qubits();
-        let path_length = (circuit.t_gates() - batch_size_log2) as u32;
-
-        let n: u32 = n.try_into().expect("n does not fit into u32");
+        let n: u32 = circuit.qubits();
+        let path_length: u32 = (circuit.t_gates() - batch_size_log2)
+            .try_into()
+            .expect("Number of T gates exceeds maximum supported by GPU simulator");
+        debug_assert!(
+            batch_size_log2 < 32,
+            "batch_size_log2 must be less strictly less than 32 to avoid overflow in max_batches"
+        );
         let max_batches: u32 = 1 << batch_size_log2;
-        let active_batches = 1;
+        let max_batches_u64: u64 = max_batches.into();
+        let active_batches: u32 = 1;
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
@@ -491,13 +496,13 @@ impl<'a> GpuSimulator<'a> {
         let path_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("path"),
             // Buffers must not be zero-sized, so we allocate at least 1 block even if path_length is 0.
-            size: U32_SIZE * max(1, path_length as u64),
+            size: U32_SIZE * max(1, path_length.into()),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tableau"),
-            size: tableau_block_length(n, max_batches) as u64 * BLOCK_SIZE_BYTES,
+            size: u64::from(tableau_block_length(n, max_batches)) * BLOCK_SIZE_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -515,13 +520,13 @@ impl<'a> GpuSimulator<'a> {
         });
         let ws_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ws"),
-            size: U32_SIZE * n as u64 * max_batches as u64,
+            size: U32_SIZE * u64::from(n) * max_batches_u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let w_coeffs_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("w_coeffs"),
-            size: COMPLEX_SIZE * max_batches as u64,
+            size: COMPLEX_SIZE * max_batches_u64,
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
@@ -582,13 +587,13 @@ impl<'a> GpuSimulator<'a> {
             });
         let output_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("output"),
-            size: COMPLEX_SIZE * max_batches as u64,
+            size: COMPLEX_SIZE * max_batches_u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let output_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("output (Read)"),
-            size: COMPLEX_SIZE * max_batches as u64,
+            size: COMPLEX_SIZE * max_batches_u64,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -760,45 +765,36 @@ impl<'a> GpuSimulator<'a> {
         }
 
         let mut initial_seen_t_gates = 0;
-        let mut seen_t_gates = 0;
+        let mut seen_t_gates: u32 = 0;
         for &gate in circuit.gates() {
             match gate {
                 CliffordTGate::Cnot(a, b) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
-                    let b: u32 = b.try_into().expect("b does not fit into u32");
                     gates.push(0);
                     qubit_params.push(a);
                     qubit_params.push(b);
                 }
                 CliffordTGate::Cz(a, b) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
-                    let b: u32 = b.try_into().expect("b does not fit into u32");
                     gates.push(1);
                     qubit_params.push(a);
                     qubit_params.push(b);
                 }
                 CliffordTGate::X(a) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(2);
                     qubit_params.push(a);
                 }
                 CliffordTGate::Y(a) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(3);
                     qubit_params.push(a);
                 }
                 CliffordTGate::Z(a) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(4);
                     qubit_params.push(a);
                 }
                 CliffordTGate::S(a) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(5);
                     qubit_params.push(a);
                 }
                 CliffordTGate::Sdg(a) => {
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(6);
                     qubit_params.push(a);
                 }
@@ -812,13 +808,11 @@ impl<'a> GpuSimulator<'a> {
                     );
                     initial_seen_t_gates = seen_t_gates;
 
-                    let a: u32 = a.try_into().expect("a does not fit into u32");
                     gates.push(7);
                     qubit_params.push(a);
                 }
                 CliffordTGate::T(a) => {
                     if seen_t_gates < path_length {
-                        let a: u32 = a.try_into().expect("a does not fit into u32");
                         gates.push(8);
                         qubit_params.push(a);
                         seen_t_gates += 1;
@@ -835,7 +829,6 @@ impl<'a> GpuSimulator<'a> {
                 }
                 CliffordTGate::Tdg(a) => {
                     if seen_t_gates < path_length {
-                        let a: u32 = a.try_into().expect("a does not fit into u32");
                         gates.push(9);
                         qubit_params.push(a);
                         seen_t_gates += 1;
@@ -953,14 +946,13 @@ impl<'a> GpuSimulator<'a> {
         self.apply_gates_bind_group_index += 1;
     }
 
-    fn apply_t_gate_parallel(&mut self, a: usize) {
+    fn apply_t_gate_parallel(&mut self, a: u32) {
         self.apply_gate_parallel(a, &self.gpu.apply_t_gate_parallel_pipeline);
     }
-    fn apply_tdg_gate_parallel(&mut self, a: usize) {
+    fn apply_tdg_gate_parallel(&mut self, a: u32) {
         self.apply_gate_parallel(a, &self.gpu.apply_tdg_gate_parallel_pipeline);
     }
-    fn apply_gate_parallel(&mut self, a: usize, pipeline: &wgpu::ComputePipeline) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
+    fn apply_gate_parallel(&mut self, a: u32, pipeline: &wgpu::ComputePipeline) {
         debug_assert!(
             self.active_batches * 2 <= self.max_batches,
             "Cannot split batches beyond max_batches"
@@ -1078,9 +1070,7 @@ impl<'a> GpuSimulator<'a> {
         }
     }
 
-    fn update_before_h(&mut self, a: usize) {
-        let a: u32 = a.try_into().expect("a does not fit into u32");
-
+    fn update_before_h(&mut self, a: u32) {
         let bind_group = self
             .gpu
             .device
