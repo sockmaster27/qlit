@@ -3,6 +3,7 @@ use qlit::{CliffordTCircuit, initialize_global};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 fn main() {
+    rayon::ThreadPoolBuilder::new().build_global().unwrap();
     initialize_global();
     divan::main();
 }
