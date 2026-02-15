@@ -6,8 +6,6 @@ use qlit::{
 };
 use rayon::ThreadPoolBuilder;
 
-use pyo3::conversion::FromPyObject;
-
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[pyo3(name = "CliffordTGate")]
@@ -89,7 +87,7 @@ impl PyCliffordTCircuit {
             .try_iter()?
             .flat_map(|r| {
                 r.map(|obj| {
-                    PyCliffordTGate::extract((&obj).into())
+                    obj.extract::<PyCliffordTGate>()
                         .map(Into::into)
                         .map_err(Into::into)
                 })
