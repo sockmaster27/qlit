@@ -7,10 +7,13 @@ fn main() {
     divan::main();
 }
 
-fn setup(qubits: usize, gates: usize, t_gates: usize) -> (Vec<bool>, CliffordTCircuit) {
+fn setup(qubits: u32, gates: usize, t_gates: usize) -> (Vec<bool>, CliffordTCircuit) {
     let seed = 123;
     let rng = SmallRng::seed_from_u64(seed);
-    let w = rng.random_iter().take(qubits).collect();
+    let w = rng
+        .random_iter()
+        .take(usize::try_from(qubits).unwrap())
+        .collect();
     let circuit = CliffordTCircuit::random(qubits, gates, t_gates, seed);
     (w, circuit)
 }

@@ -4,28 +4,28 @@ use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
-    X(usize),
-    Y(usize),
-    Z(usize),
+    X(u32),
+    Y(u32),
+    Z(u32),
 
-    S(usize),
+    S(u32),
     /// The inverse of the S gate.
-    Sdg(usize),
+    Sdg(u32),
 
-    H(usize),
+    H(u32),
 
-    Cnot(usize, usize),
-    Cz(usize, usize),
+    Cnot(u32, u32),
+    Cz(u32, u32),
 
-    T(usize),
+    T(u32),
     /// The inverse of the T gate.
-    Tdg(usize),
+    Tdg(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliffordTCircuit {
     /// The number of qubits in the circuit.
-    qubits: usize,
+    qubits: u32,
     /// The number of `T` and `Tdg` gates in the circuit.
     t_gates: usize,
     /// The ordered list of gates in the circuit.
@@ -33,7 +33,7 @@ pub struct CliffordTCircuit {
 }
 impl CliffordTCircuit {
     pub fn new(
-        qubits: usize,
+        qubits: u32,
         gates: impl IntoIterator<Item = CliffordTGate>,
     ) -> Result<Self, CircuitCreationError> {
         let gates: Vec<CliffordTGate> = gates.into_iter().collect();
@@ -78,7 +78,7 @@ impl CliffordTCircuit {
     }
 
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    pub fn random(qubits: usize, gates: usize, t_gates: usize, seed: u64) -> Self {
+    pub fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
@@ -134,7 +134,7 @@ impl CliffordTCircuit {
     }
 
     /// The number of qubits in the circuit.
-    pub fn qubits(&self) -> usize {
+    pub fn qubits(&self) -> u32 {
         self.qubits
     }
 
@@ -151,7 +151,7 @@ impl CliffordTCircuit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitCreationError {
-    InvalidQubitIndex { index: usize, qubits: usize },
+    InvalidQubitIndex { index: u32, qubits: u32 },
 }
 impl Display for CircuitCreationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

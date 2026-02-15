@@ -682,21 +682,17 @@ fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::circuit::{CliffordTCircuit, CliffordTGate::*};
     use crate::utils::bits_to_bools;
 
     use super::*;
 
     #[test]
     fn zero() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
-
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -710,14 +706,13 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
-
         let w1 = bits_to_bools(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
+            g.apply_h_gate(0);
+            g.apply_s_gate(0);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -733,14 +728,13 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
-
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
+            g.apply_h_gate(0);
+            g.apply_s_gate(0);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if i == 0b0000_0000 {
@@ -756,14 +750,15 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
-
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
+            g.apply_h_gate(0);
+            g.apply_s_gate(0);
+            g.apply_s_gate(0);
+            g.apply_h_gate(0);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if i == 0b1000_0000 {
@@ -777,14 +772,13 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
-
         let w1 = bits_to_bools(0b1100_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
+            g.apply_h_gate(0);
+            g.apply_cnot_gate(0, 1);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
@@ -798,39 +792,31 @@ mod tests {
 
     #[test]
     fn larger_circuit() {
-        let circuit = CliffordTCircuit::new(
-            8,
-            [
-                H(0),
-                H(1),
-                S(2),
-                H(3),
-                S(1),
-                S(0),
-                Cnot(2, 3),
-                S(1),
-                H(0),
-                S(3),
-                Cnot(1, 0),
-                S(3),
-                H(1),
-                S(3),
-                S(1),
-                S(3),
-                H(1),
-                Cnot(3, 2),
-                H(1),
-                Cnot(3, 1),
-            ],
-        )
-        .unwrap();
-
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            apply_clifford_circuit(&mut g, &circuit);
+            g.apply_h_gate(0);
+            g.apply_h_gate(1);
+            g.apply_s_gate(2);
+            g.apply_h_gate(3);
+            g.apply_s_gate(1);
+            g.apply_s_gate(0);
+            g.apply_cnot_gate(2, 3);
+            g.apply_s_gate(1);
+            g.apply_h_gate(0);
+            g.apply_s_gate(3);
+            g.apply_cnot_gate(1, 0);
+            g.apply_s_gate(3);
+            g.apply_h_gate(1);
+            g.apply_s_gate(3);
+            g.apply_s_gate(1);
+            g.apply_s_gate(3);
+            g.apply_h_gate(1);
+            g.apply_cnot_gate(3, 2);
+            g.apply_h_gate(1);
+            g.apply_cnot_gate(3, 1);
             let result = g.coeff_ratios([w1.as_slice()], &w2);
 
             let expected = if [
@@ -855,36 +841,28 @@ mod tests {
 
     #[test]
     fn bitflip_ratio() {
-        let circuit = CliffordTCircuit::new(
-            8,
-            [
-                H(0),
-                H(1),
-                S(2),
-                H(3),
-                S(1),
-                S(0),
-                Cnot(2, 3),
-                S(1),
-                H(0),
-                S(3),
-                Cnot(1, 0),
-                S(3),
-                H(1),
-                S(3),
-                S(1),
-                S(3),
-                H(1),
-                Cnot(3, 2),
-                H(1),
-                Cnot(3, 1),
-            ],
-        )
-        .unwrap();
-
         let w1 = bits_to_bools(0b1000_0000);
         let mut g = ExtendedTableau::zero(8, 0);
-        apply_clifford_circuit(&mut g, &circuit);
+        g.apply_h_gate(0);
+        g.apply_h_gate(1);
+        g.apply_s_gate(2);
+        g.apply_h_gate(3);
+        g.apply_s_gate(1);
+        g.apply_s_gate(0);
+        g.apply_cnot_gate(2, 3);
+        g.apply_s_gate(1);
+        g.apply_h_gate(0);
+        g.apply_s_gate(3);
+        g.apply_cnot_gate(1, 0);
+        g.apply_s_gate(3);
+        g.apply_h_gate(1);
+        g.apply_s_gate(3);
+        g.apply_s_gate(1);
+        g.apply_s_gate(3);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(3, 2);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(3, 1);
 
         assert_eq!(
             g.coeff_ratios_flipped_bit([w1.as_slice()], 0),
@@ -902,35 +880,27 @@ mod tests {
 
     #[test]
     fn repeated_reading() {
-        let circuit = CliffordTCircuit::new(
-            8,
-            [
-                H(0),
-                H(1),
-                S(2),
-                H(3),
-                S(1),
-                S(0),
-                Cnot(2, 3),
-                S(1),
-                H(0),
-                S(3),
-                Cnot(1, 0),
-                S(3),
-                H(1),
-                S(3),
-                S(1),
-                S(3),
-                H(1),
-                Cnot(3, 2),
-                H(1),
-                Cnot(3, 1),
-            ],
-        )
-        .unwrap();
-
         let mut g = ExtendedTableau::zero(8, 0);
-        apply_clifford_circuit(&mut g, &circuit);
+        g.apply_h_gate(0);
+        g.apply_h_gate(1);
+        g.apply_s_gate(2);
+        g.apply_h_gate(3);
+        g.apply_s_gate(1);
+        g.apply_s_gate(0);
+        g.apply_cnot_gate(2, 3);
+        g.apply_s_gate(1);
+        g.apply_h_gate(0);
+        g.apply_s_gate(3);
+        g.apply_cnot_gate(1, 0);
+        g.apply_s_gate(3);
+        g.apply_h_gate(1);
+        g.apply_s_gate(3);
+        g.apply_s_gate(1);
+        g.apply_s_gate(3);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(3, 2);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(3, 1);
 
         let w1 = bits_to_bools(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -955,17 +925,6 @@ mod tests {
                 Complex::ZERO
             };
             assert_eq!(result[0], expected, "{i:008b}");
-        }
-    }
-
-    fn apply_clifford_circuit(g: &mut ExtendedTableau, circuit: &CliffordTCircuit) {
-        for &gate in circuit.gates() {
-            match gate {
-                S(a) => g.apply_s_gate(a),
-                H(a) => g.apply_h_gate(a),
-                Cnot(a, b) => g.apply_cnot_gate(a, b),
-                _ => unreachable!(),
-            }
         }
     }
 }

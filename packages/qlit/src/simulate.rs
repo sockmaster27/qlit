@@ -18,6 +18,9 @@ use crate::{
     tableau::ExtendedTableau,
 };
 
+const N_TOO_LARGE: &str = "Number of qubits too large";
+const INDEX_TOO_LARGE: &str = "Qubit index too large";
+
 // T = C_I*I + C_Z*Z
 const C_I: Complex<f64> = Complex {
     re: 0.5 + 0.5 * FRAC_1_SQRT_2,
@@ -53,7 +56,8 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     let n = circuit.qubits();
     let t = circuit.t_gates();
     assert_eq!(
-        w_len, n,
+        n.try_into(),
+        Ok(w_len),
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
@@ -111,7 +115,8 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
     let n = circuit.qubits();
     let t = circuit.t_gates();
     assert_eq!(
-        w_len, n,
+        n.try_into(),
+        Ok(w_len),
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
@@ -140,7 +145,8 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
     let n = circuit.qubits();
     let t = circuit.t_gates();
     assert_eq!(
-        w_len, n,
+        n.try_into(),
+        Ok(w_len),
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
@@ -206,7 +212,7 @@ fn run_cpu(
     path: &[bool],
     batch_size_log2: usize,
 ) -> Complex<f64> {
-    let n = circuit.qubits();
+    let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let mut r_cols = 1;
     let mut xs = vec![vec![false; n]];
     let mut x_coeffs = vec![Complex::ONE];
@@ -215,12 +221,14 @@ fn run_cpu(
     for &gate in circuit.gates() {
         match gate {
             CliffordTGate::X(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     xs[i][a] = !xs[i][a];
                 }
                 g.apply_x_gate(a);
             }
             CliffordTGate::Y(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     if xs[i][a] == true {
                         x_coeffs[i] *= -Complex::I;
@@ -232,6 +240,7 @@ fn run_cpu(
                 g.apply_y_gate(a);
             }
             CliffordTGate::Z(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     if xs[i][a] == true {
                         x_coeffs[i] *= -Complex::ONE;
@@ -240,6 +249,7 @@ fn run_cpu(
                 g.apply_z_gate(a);
             }
             CliffordTGate::S(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     if xs[i][a] == true {
                         x_coeffs[i] *= Complex::I;
@@ -248,6 +258,7 @@ fn run_cpu(
                 g.apply_s_gate(a);
             }
             CliffordTGate::Sdg(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     if xs[i][a] == true {
                         x_coeffs[i] *= -Complex::I;
@@ -256,12 +267,16 @@ fn run_cpu(
                 g.apply_sdg_gate(a);
             }
             CliffordTGate::Cnot(a, b) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     xs[i][b] ^= xs[i][a];
                 }
                 g.apply_cnot_gate(a, b);
             }
             CliffordTGate::Cz(a, b) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..r_cols {
                     if xs[i][a] == true && xs[i][b] == true {
                         x_coeffs[i] *= -Complex::ONE;
@@ -270,6 +285,7 @@ fn run_cpu(
                 g.apply_cz_gate(a, b);
             }
             CliffordTGate::H(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let rs = g.coeff_ratios_flipped_bit(xs.iter().map(Vec::as_slice), a);
                 for i in 0..r_cols {
                     let r = rs[i];
@@ -289,6 +305,7 @@ fn run_cpu(
             }
 
             CliffordTGate::T(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
                     if path[seen_t_gates] == false {
                         for i in 0..r_cols {
@@ -324,6 +341,7 @@ fn run_cpu(
                 seen_t_gates += 1;
             }
             CliffordTGate::Tdg(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
                     if path[seen_t_gates] == false {
                         for i in 0..r_cols {
