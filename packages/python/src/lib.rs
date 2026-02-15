@@ -8,7 +8,7 @@ use rayon::ThreadPoolBuilder;
 
 use pyo3::conversion::FromPyObject;
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[pyo3(name = "CliffordTGate")]
 // For now, we unfortunately have to duplicate this
@@ -77,7 +77,7 @@ impl From<CliffordTGate> for PyCliffordTGate {
     }
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[pyo3(name = "CliffordTCircuit")]
 struct PyCliffordTCircuit(CliffordTCircuit);
