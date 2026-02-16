@@ -62,7 +62,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     );
 
     let threads = min(
-        num_cpus::get(),
+        rayon::current_num_threads(),
         2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
     );
     let threads_log2 = threads
@@ -79,24 +79,22 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        for _ in 0..threads {
-            s.spawn(|_| {
-                let mut w_coeff_local = Complex::ZERO;
-                loop {
-                    let mut next_path_locked = next_path.lock().unwrap();
-                    if done.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let path = next_path_locked.clone();
-                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
-                    drop(next_path_locked);
-
-                    w_coeff_local += run_cpu(w, circuit, &path, batch_size_log2);
+        s.spawn_broadcast(|_, _| {
+            let mut w_coeff_local = Complex::ZERO;
+            loop {
+                let mut next_path_locked = next_path.lock().unwrap();
+                if done.load(Ordering::SeqCst) {
+                    break;
                 }
+                let path = next_path_locked.clone();
+                done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                drop(next_path_locked);
 
-                *w_coeff.lock().unwrap() += w_coeff_local;
-            });
-        }
+                w_coeff_local += run_cpu(w, circuit, &path, batch_size_log2);
+            }
+
+            *w_coeff.lock().unwrap() += w_coeff_local;
+        });
     });
 
     w_coeff.into_inner().unwrap()
@@ -151,7 +149,7 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
     );
 
     let threads = min(
-        num_cpus::get(),
+        rayon::current_num_threads(),
         2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
     );
     let threads_log2 = threads
@@ -171,24 +169,22 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
-        for _ in 0..(threads - 1) {
-            s.spawn(|_| {
-                let mut w_coeff_local = Complex::ZERO;
-                loop {
-                    let mut next_path_locked = next_path.lock().unwrap();
-                    if done.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let path = next_path_locked.clone();
-                    done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
-                    drop(next_path_locked);
-
-                    w_coeff_local += run_cpu(w, circuit, &path, batch_size_log2);
+        s.spawn_broadcast(|_, _| {
+            let mut w_coeff_local = Complex::ZERO;
+            loop {
+                let mut next_path_locked = next_path.lock().unwrap();
+                if done.load(Ordering::SeqCst) {
+                    break;
                 }
+                let path = next_path_locked.clone();
+                done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
+                drop(next_path_locked);
 
-                *w_coeff.lock().unwrap() += w_coeff_local;
-            });
-        }
+                w_coeff_local += run_cpu(w, circuit, &path, batch_size_log2);
+            }
+
+            *w_coeff.lock().unwrap() += w_coeff_local;
+        });
 
         loop {
             let mut next_path_locked = next_path.lock().unwrap();
