@@ -11,6 +11,8 @@ jobs:
     rust-bench:
         name: Run Rust benchmarks
         runs-on: self-hosted
+        container:
+            image: ubuntu:latest
         env:
             DIVAN_MAX_TIME: 10
             DIVAN_SKIP_EXT_TIME: true
@@ -33,6 +35,8 @@ jobs:
     python-bench:
         name: Run Python benchmarks
         runs-on: self-hosted
+        container:
+            image: ubuntu:latest
         steps:
             - uses: actions/checkout@v5
             - uses: astral-sh/setup-uv@v7
