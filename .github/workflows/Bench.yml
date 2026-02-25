@@ -25,7 +25,7 @@ jobs:
             - name: Benchmark
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: walltime
+                  mode: simulation
                   run: cargo codspeed run
 
     python-bench:
@@ -43,5 +43,5 @@ jobs:
             - name: Benchmark
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: walltime
+                  mode: simulation
                   run: uv run pytest packages/python/benches/bench.py --codspeed
