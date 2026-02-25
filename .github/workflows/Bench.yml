@@ -10,13 +10,12 @@ on:
 jobs:
     rust-bench:
         name: Run Rust benchmarks
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         env:
             DIVAN_MAX_TIME: 10
             DIVAN_SKIP_EXT_TIME: true
         steps:
             - uses: actions/checkout@v5
-            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - name: Setup rust toolchain, cache and cargo-codspeed binary
               uses: moonrepo/setup-rust@v0
               with:
@@ -28,15 +27,14 @@ jobs:
             - name: Benchmark
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: simulation
+                  mode: walltime
                   run: cargo codspeed run
 
     python-bench:
         name: Run Python benchmarks
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         steps:
             - uses: actions/checkout@v5
-            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: astral-sh/setup-uv@v7
               with:
                   enable-cache: true
@@ -45,5 +43,5 @@ jobs:
             - name: Benchmark
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: simulation
+                  mode: wwalltimel
                   run: uv run pytest packages/python/benches/bench.py --codspeed
