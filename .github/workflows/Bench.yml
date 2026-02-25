@@ -43,5 +43,5 @@ jobs:
             - name: Benchmark
               uses: CodSpeedHQ/action@v4
               with:
-                  mode: wwalltimel
+                  mode: walltime
                   run: uv run pytest packages/python/benches/bench.py --codspeed
