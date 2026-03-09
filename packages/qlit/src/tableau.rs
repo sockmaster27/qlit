@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cmp::max;
 use std::fmt::Debug;
 use std::mem;
 
@@ -39,6 +40,7 @@ pub struct ExtendedTableau {
     /// ```
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     tableau: Vec<BitBlock>,
+    row_pivots: Vec<Option<usize>>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
     /// Must have length of at least `r_cols` at all times.
     output: Vec<Complex<f64>>,
@@ -57,6 +59,7 @@ impl ExtendedTableau {
             n,
             r_cols: 1,
             tableau,
+            row_pivots: vec![None; n],
             output: vec![Complex::ZERO; r_cols_capacity],
         }
     }
@@ -226,13 +229,11 @@ impl ExtendedTableau {
                 self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
             }
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
-            let mut row = 0;
-            for q in 0..n {
-                if self.x_bit(row, q) == true {
-                    if w1[q] != w2[q] {
-                        self.multiply_rows_into(row, aux_row);
-                    }
-                    row += 1;
+            for row in 0..n {
+                if let Some(q) = self.row_pivots[row]
+                    && w1[q] != w2[q]
+                {
+                    self.multiply_rows_into(row, aux_row);
                 }
             }
 
@@ -297,31 +298,37 @@ impl ExtendedTableau {
         let aux_block_index = aux_row / BLOCK_SIZE;
         let aux_bit_index = aux_row % BLOCK_SIZE;
 
-        let mut a = 0;
+        // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
+        let mut pivot_mask: Vec<BitBlock> = vec![!0; n.div_ceil(BLOCK_SIZE)];
+
         for col in 0..n {
             // Find pivot row.
             let mut pivot = None;
-            let a_block_index = a / BLOCK_SIZE;
-            for i in (a_block_index..column_block_length(n)).rev() {
+            let mut m = None;
+            for block_index in 0..column_block_length(n) {
                 // Bitmask blocking out the auxiliary row.
-                let aux_mask = if i == aux_block_index {
+                let aux_mask = if block_index == aux_block_index {
                     !bitmask(aux_bit_index)
                 } else {
                     !0
                 };
-                let block = self.tableau[x_column_block_index(n, i, col)] & aux_mask;
-                if block != 0 {
-                    let row = BLOCK_SIZE * i + lsb_index(block);
-                    if row >= a {
+                let mask = pivot_mask[block_index] | aux_mask;
+                let block = self.tableau[x_column_block_index(n, block_index, col)] & mask;
+                for bit_index in set_bit_indices(block) {
+                    let row = BLOCK_SIZE * block_index + bit_index;
+                    if m <= self.row_pivots[row] {
                         pivot = Some(row);
-                        break;
+                        m = self.row_pivots[row]
                     }
+                    self.row_pivots[row] = Some(col);
                 }
             }
 
             if let Some(pivot) = pivot {
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
+                unset_bit(&mut pivot_mask[pivot_block_index], pivot_bit_index);
+
                 for i in 0..=pivot_block_index {
                     // Bitmask blocking out the pivot row.
                     let pivot_mask = if i == pivot_block_index {
@@ -393,10 +400,14 @@ impl ExtendedTableau {
                         }
                     }
                 }
+            }
+        }
 
-                // Swap rows.
-                self.swap_rows(a, pivot);
-                a += 1;
+        // Reset the pivots of all-zero rows
+        for (block_index, &block) in pivot_mask.iter().enumerate() {
+            for bit_index in set_bit_indices(block) {
+                let row = BLOCK_SIZE * block_index + bit_index;
+                self.row_pivots[row] = None;
             }
         }
     }
@@ -502,39 +513,6 @@ impl ExtendedTableau {
         }
     }
 
-    fn swap_rows(&mut self, row1: usize, row2: usize) {
-        if row1 == row2 {
-            return;
-        }
-
-        let n = self.n;
-        let r_cols = self.r_cols;
-
-        let row1_block_index = row1 / BLOCK_SIZE;
-        let row2_block_index = row2 / BLOCK_SIZE;
-        let row1_bit_index = row1 % BLOCK_SIZE;
-        let row2_bit_index = row2 % BLOCK_SIZE;
-        let row1_bitmask = bitmask(row1_bit_index);
-        let row2_bitmask = bitmask(row2_bit_index);
-        for j in 0..(n + n + r_cols) {
-            let block1 = column_block_index(n, row1_block_index, j);
-            let block2 = column_block_index(n, row2_block_index, j);
-            let bit1 = self.tableau[block1] & row1_bitmask != 0;
-            let bit2 = self.tableau[block2] & row2_bitmask != 0;
-            match (bit1, bit2) {
-                (true, false) => {
-                    unset_bit(&mut self.tableau[block1], row1_bit_index);
-                    set_bit(&mut self.tableau[block2], row2_bit_index);
-                }
-                (false, true) => {
-                    set_bit(&mut self.tableau[block1], row1_bit_index);
-                    unset_bit(&mut self.tableau[block2], row2_bit_index);
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
     /// This will respect the sign of the `i`th column.
@@ -582,22 +560,25 @@ impl ExtendedTableau {
     }
 }
 
-/// Get the index of the least significant (right-most) bit in the given block, e.g.
-/// ```text
-/// lsb_index(10000000)
-///           ^0
-/// lsb_index(01000000)
-///            ^1
-/// lsb_index(11010000)
-///              ^3
-/// ```
-///
-/// # Panics
-/// If `block` is zero in debug mode.
-fn lsb_index(block: BitBlock) -> usize {
-    debug_assert!(block != 0);
-    let trailing_zeros: usize = block.trailing_zeros().try_into().unwrap();
-    BLOCK_SIZE - 1 - trailing_zeros
+struct SetBitIndexIterator {
+    block: BitBlock,
+    offset: usize,
+}
+impl Iterator for SetBitIndexIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.block == 0 {
+            return None;
+        }
+        let leading_zeros: usize = self.block.leading_zeros().try_into().unwrap();
+        self.block = self.block << (leading_zeros + 1);
+        self.offset += leading_zeros;
+        Some(self.offset)
+    }
+}
+fn set_bit_indices(block: BitBlock) -> impl Iterator<Item = usize> {
+    SetBitIndexIterator { block, offset: 0 }
 }
 
 /// Get the bitmask for the i'th bit, e.g.
