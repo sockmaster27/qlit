@@ -306,11 +306,13 @@ fn apply_gate_parallel(id: u32, c_i: Complex, c_z: Complex) {
 }
 
 
-@group(1) @binding(0) var<storage, read> col_in: u32;
-@group(1) @binding(1) var<storage, read_write> col_out: u32;
-@group(1) @binding(2) var<storage, read> a_in: u32;
-@group(1) @binding(3) var<storage, read_write> a_out: u32;
-@group(1) @binding(4) var<storage, read_write> pivot_out: u32;
+struct PassInput {
+    col: u32,
+    a: u32,
+}
+@group(1) @binding(0) var<storage, read> input: PassInput;
+@group(1) @binding(1) var<storage, read_write> input_next: PassInput;
+@group(1) @binding(2) var<storage, read_write> pivot_out: u32;
 
 @compute
 @workgroup_size(64)
@@ -325,7 +327,7 @@ fn elimination_pass(
     let block_index = id.x % single_column_block_length();
 
     if id.x == 0 {
-        col_out = col_in + 1;
+        input_next.col = input.col + 1;
     }
 
     let aux_row = n;
@@ -335,17 +337,17 @@ fn elimination_pass(
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
-    let a_block_index = a_in / BLOCK_SIZE;
+    let a_block_index = input.a / BLOCK_SIZE;
     for (var i = a_block_index; i < single_column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
             aux_mask = ~bitmask(aux_bit_index);
         }
-        let block = tableau[x_column_block_index(batch_index, i, col_in)] & aux_mask;
+        let block = tableau[x_column_block_index(batch_index, i, input.col)] & aux_mask;
         if block != 0 {
             let row = BLOCK_SIZE * i + lsb_index(block);
-            if row >= a_in {
+            if row >= input.a {
                 pivot = row;
                 pivot_found = true;
                 // Continue to search for the bottom-most one
@@ -357,15 +359,15 @@ fn elimination_pass(
         if id.x == 0 {
             // Since we use the pivot_out variable to swap the pivot and a rows,
             // we set it to a here so the swap operation is a no-op.
-            pivot_out = a_in;
-            a_out = a_in;
+            pivot_out = input.a;
+            input_next.a = input.a;
         }
         return;
     }
 
     if id.x == 0 {
         pivot_out = pivot;
-        a_out = a_in + 1;
+        input_next.a = input.a + 1;
     }
 
     let pivot_block_index = pivot / BLOCK_SIZE;
@@ -377,7 +379,7 @@ fn elimination_pass(
         pivot_mask = ~bitmask(pivot_bit_index);
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-    let mask = tableau[x_column_block_index(batch_index, block_index, col_in)] & pivot_mask;
+    let mask = tableau[x_column_block_index(batch_index, block_index, input.col)] & pivot_mask;
     if mask == 0 {
         return;
     }
@@ -446,7 +448,7 @@ fn swap_pass(
     }
 
     // Swap these two rows.
-    let row1 = a_in;
+    let row1 = input.a;
     let row2 = pivot_out;
 
     let row1_block_index = row1 / BLOCK_SIZE;
