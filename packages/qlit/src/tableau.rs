@@ -596,7 +596,7 @@ impl Debug for ExtendedTableau {
     }
 }
 
-/// Get in iterator over the indices of the set bits in the given block, e.g.
+/// Get an iterator over the indices of the set bits in the given block, e.g.
 /// ```text
 /// bit_indices(10000000) -> [0]
 ///             ^
