@@ -207,7 +207,7 @@ impl GpuContext {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Bring Into RREF"),
                 entries: &[
-                    // col_in
+                    // input
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -218,7 +218,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // col_out
+                    // input_next
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -229,31 +229,9 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // a_in
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // a_out
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
                     // pivot_out
                     wgpu::BindGroupLayoutEntry {
-                        binding: 4,
+                        binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -453,8 +431,7 @@ pub struct GpuSimulator<'a> {
     apply_gates_bind_group_index: usize,
     apply_gates_bind_groups: Vec<Option<wgpu::BindGroup>>,
 
-    col_bufs: [wgpu::Buffer; 2],
-    a_bufs: [wgpu::Buffer; 2],
+    rref_input_bufs: [wgpu::Buffer; 2],
     pivot_buf: wgpu::Buffer,
 
     output_buf: wgpu::Buffer,
@@ -543,30 +520,16 @@ impl<'a> GpuSimulator<'a> {
 
         let apply_gates_bind_groups = Self::apply_gates_bind_groups(gpu, circuit, path_length);
 
-        let col_bufs = [
+        let rref_input_bufs = [
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("col1"),
-                size: U32_SIZE,
+                label: Some("RREF Pass Input 1"),
+                size: 2 * U32_SIZE,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("col2"),
-                size: U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            }),
-        ];
-        let a_bufs = [
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("a1"),
-                size: U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("a2"),
-                size: U32_SIZE,
+                label: Some("RREF Pass Input 2"),
+                size: 2 * U32_SIZE,
                 usage: wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             }),
@@ -636,8 +599,7 @@ impl<'a> GpuSimulator<'a> {
             apply_gates_bind_group_index: 0,
             apply_gates_bind_groups,
 
-            col_bufs,
-            a_bufs,
+            rref_input_bufs,
             pivot_buf,
 
             output_buf,
@@ -1010,13 +972,10 @@ impl<'a> GpuSimulator<'a> {
         let n = self.n;
         let active_batches = self.active_batches;
 
-        let mut col_in_buf = &self.col_bufs[0];
-        let mut col_out_buf = &self.col_bufs[1];
-        let mut a_in_buf = &self.a_bufs[0];
-        let mut a_out_buf = &self.a_bufs[1];
+        let mut input_buf = &self.rref_input_bufs[0];
+        let mut input_next_buf = &self.rref_input_bufs[1];
 
-        self.encoder.clear_buffer(col_in_buf, 0, None);
-        self.encoder.clear_buffer(a_in_buf, 0, None);
+        self.encoder.clear_buffer(input_buf, 0, None);
 
         for _ in 0..n {
             let bind_group = self
@@ -1028,22 +987,14 @@ impl<'a> GpuSimulator<'a> {
                     entries: &[
                         wgpu::BindGroupEntry {
                             binding: 0,
-                            resource: col_in_buf.as_entire_binding(),
+                            resource: input_buf.as_entire_binding(),
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
-                            resource: col_out_buf.as_entire_binding(),
+                            resource: input_next_buf.as_entire_binding(),
                         },
                         wgpu::BindGroupEntry {
                             binding: 2,
-                            resource: a_in_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: a_out_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
                             resource: self.pivot_buf.as_entire_binding(),
                         },
                     ],
@@ -1065,8 +1016,7 @@ impl<'a> GpuSimulator<'a> {
             swap_pass.dispatch_workgroups(workgroups, 1, 1);
             drop(swap_pass);
 
-            (col_in_buf, col_out_buf) = (col_out_buf, col_in_buf);
-            (a_in_buf, a_out_buf) = (a_out_buf, a_in_buf);
+            (input_buf, input_next_buf) = (input_next_buf, input_buf);
         }
     }
 
