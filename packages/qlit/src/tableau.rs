@@ -315,10 +315,6 @@ impl ExtendedTableau {
                 let block = self.tableau[x_column_block_index(n, block_index, col)] & mask;
                 for bit_index in bit_indices(block) {
                     let row = BLOCK_SIZE * block_index + bit_index;
-                    if row >= n {
-                        println!("{row} >= {n}, {block:064b}");
-                        continue;
-                    }
                     if m <= self.row_pivots[row] {
                         pivot = Some(row);
                         m = self.row_pivots[row]
