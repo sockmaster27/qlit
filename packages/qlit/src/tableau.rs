@@ -299,7 +299,7 @@ impl ExtendedTableau {
         let aux_bit_index = aux_row % BLOCK_SIZE;
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
-        let mut pivot_mask: Vec<BitBlock> = vec![!0; n.div_ceil(BLOCK_SIZE)];
+        let mut pivot_mask: Vec<BitBlock> = vec![!0; column_block_length(n)];
 
         for col in 0..n {
             // Find pivot row.
@@ -312,9 +312,9 @@ impl ExtendedTableau {
                 } else {
                     !0
                 };
-                let mask = pivot_mask[block_index] | aux_mask;
+                let mask = pivot_mask[block_index] & aux_mask;
                 let block = self.tableau[x_column_block_index(n, block_index, col)] & mask;
-                for bit_index in set_bit_indices(block) {
+                for bit_index in bit_indices(block) {
                     let row = BLOCK_SIZE * block_index + bit_index;
                     if m <= self.row_pivots[row] {
                         pivot = Some(row);
@@ -328,8 +328,9 @@ impl ExtendedTableau {
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
                 unset_bit(&mut pivot_mask[pivot_block_index], pivot_bit_index);
+                self.row_pivots[pivot] = Some(col);
 
-                for i in 0..=pivot_block_index {
+                for i in 0..column_block_length(n) {
                     // Bitmask blocking out the pivot row.
                     let pivot_mask = if i == pivot_block_index {
                         !bitmask(pivot_bit_index)
@@ -405,8 +406,11 @@ impl ExtendedTableau {
 
         // Reset the pivots of all-zero rows
         for (block_index, &block) in pivot_mask.iter().enumerate() {
-            for bit_index in set_bit_indices(block) {
+            for bit_index in bit_indices(block) {
                 let row = BLOCK_SIZE * block_index + bit_index;
+                if row >= n {
+                    return;
+                }
                 self.row_pivots[row] = None;
             }
         }
@@ -558,8 +562,50 @@ impl ExtendedTableau {
     fn z_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q + 1)
     }
+    /// Get the value of the r bit corresponding to the `j`th column in the `row`th row.
+    fn r_bit(&self, row: usize, j: usize) -> bool {
+        let n = self.n;
+        self.bit(row, 2 * n + j)
+    }
+}
+impl Debug for ExtendedTableau {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.n;
+        let r_cols = self.r_cols;
+        for row in 0..n {
+            write!(
+                f,
+                "\n\t{} -> ",
+                self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
+            )?;
+            for q in 0..n {
+                write!(f, "{} ", if self.x_bit(row, q) { "1" } else { "0" })?;
+            }
+            write!(f, "| ")?;
+            for q in 0..n {
+                write!(f, "{} ", if self.z_bit(row, q) { "1" } else { "0" })?;
+            }
+            write!(f, "| ")?;
+            for j in 0..r_cols {
+                write!(f, "{} ", if self.r_bit(row, j) { "1" } else { "0" })?;
+            }
+        }
+        Ok(())
+    }
 }
 
+/// Get an iterator over the indices of the set bits in the given block, e.g.
+/// ```text
+/// bit_indices(10000000) -> [0]
+///             ^
+/// bit_indices(00000001) -> [7]
+///                    ^
+/// bit_indices(01101000) -> [1, 2, 4]
+///              ^^ ^
+/// ```
+fn bit_indices(block: BitBlock) -> impl Iterator<Item = usize> {
+    SetBitIndexIterator { block, offset: 0 }
+}
 struct SetBitIndexIterator {
     block: BitBlock,
     offset: usize,
@@ -572,13 +618,11 @@ impl Iterator for SetBitIndexIterator {
             return None;
         }
         let leading_zeros: usize = self.block.leading_zeros().try_into().unwrap();
-        self.block = self.block << (leading_zeros + 1);
-        self.offset += leading_zeros;
-        Some(self.offset)
+        self.block <<= leading_zeros;
+        self.block <<= 1;
+        self.offset += leading_zeros + 1;
+        Some(self.offset - 1)
     }
-}
-fn set_bit_indices(block: BitBlock) -> impl Iterator<Item = usize> {
-    SetBitIndexIterator { block, offset: 0 }
 }
 
 /// Get the bitmask for the i'th bit, e.g.
@@ -595,19 +639,6 @@ fn bitmask(i: usize) -> BitBlock {
     1 << (BLOCK_SIZE - 1 - i)
 }
 
-/// Set the i'th bit of the given block, i.e. set the bit to 1.
-/// ```text
-/// set_bit(00000000, 0) -> 10000000
-/// set_bit(10001000, 1) -> 11001000
-/// set_bit(10011000, 6) -> 10011010
-/// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
-fn set_bit(block: &mut BitBlock, i: usize) {
-    debug_assert!(i < BLOCK_SIZE);
-    *block |= bitmask(i);
-}
 /// Unset the i'th bit of the given block, i.e. set the bit to 0.
 /// ```text
 /// set_bit(11111111, 0) -> 01111111
@@ -907,5 +938,20 @@ mod tests {
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
+    }
+
+    #[test]
+    fn test_bit_indices() {
+        let block =
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
+        let indices: Vec<usize> = bit_indices(block).collect();
+        assert_eq!(indices, vec![0, 2, 4, 32, 34, 36]);
+    }
+    #[test]
+    fn test_bit_indices2() {
+        let block =
+            0b0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0001;
+        let indices: Vec<usize> = bit_indices(block).collect();
+        assert_eq!(indices, vec![63]);
     }
 }
