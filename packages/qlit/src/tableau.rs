@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::cmp::max;
 use std::fmt::Debug;
 use std::mem;
 
@@ -39,6 +38,7 @@ pub struct ExtendedTableau {
     /// (E -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t)
     /// ```
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
+    /// This auxiliary row is assumed to be kept zeroed.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
@@ -224,10 +224,6 @@ impl ExtendedTableau {
             let w1 = w1s.next().expect("w1s must have length equal to r_cols");
             debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
 
-            // Reset the auxiliary row.
-            for r in 0..(n + n + r_cols) {
-                self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
-            }
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
@@ -239,6 +235,11 @@ impl ExtendedTableau {
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
             self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1, w2);
+
+            // Reset the auxiliary row.
+            for r in 0..(n + n + r_cols) {
+                self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
+            }
         }
         &self.output[..r_cols]
     }
@@ -294,10 +295,6 @@ impl ExtendedTableau {
         let n = self.n;
         let r_cols = self.r_cols;
 
-        let aux_row = n;
-        let aux_block_index = aux_row / BLOCK_SIZE;
-        let aux_bit_index = aux_row % BLOCK_SIZE;
-
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
         let mut pivot_mask: Vec<BitBlock> = vec![!0; column_block_length(n)];
 
@@ -306,14 +303,8 @@ impl ExtendedTableau {
             let mut pivot = None;
             let mut m = None;
             for block_index in 0..column_block_length(n) {
-                // Bitmask blocking out the auxiliary row.
-                let aux_mask = if block_index == aux_block_index {
-                    !bitmask(aux_bit_index)
-                } else {
-                    !0
-                };
-                let mask = pivot_mask[block_index] & aux_mask;
-                let block = self.tableau[x_column_block_index(n, block_index, col)] & mask;
+                let block = self.tableau[x_column_block_index(n, block_index, col)]
+                    & pivot_mask[block_index];
                 for bit_index in bit_indices(block) {
                     let row = BLOCK_SIZE * block_index + bit_index;
                     if m <= self.row_pivots[row] {
