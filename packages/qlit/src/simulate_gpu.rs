@@ -1,7 +1,10 @@
 use std::{
     cmp::max,
     mem,
-    sync::{Arc, OnceLock, atomic::AtomicBool},
+    sync::{
+        Arc, OnceLock,
+        atomic::{self, AtomicBool},
+    },
     thread,
 };
 
@@ -882,7 +885,7 @@ impl<'a> GpuSimulator<'a> {
             .map_async(wgpu::MapMode::Read, .., move |r| {
                 r.expect("Failed to get output from GPU");
 
-                done1.store(true, std::sync::atomic::Ordering::Relaxed);
+                done1.store(true, atomic::Ordering::Relaxed);
                 handle.unpark();
             });
         self.gpu
@@ -890,7 +893,7 @@ impl<'a> GpuSimulator<'a> {
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
 
-        while !done2.load(std::sync::atomic::Ordering::Acquire) {
+        while !done2.load(atomic::Ordering::Acquire) {
             thread::park();
         }
 
