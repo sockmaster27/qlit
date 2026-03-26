@@ -1,4 +1,12 @@
-use std::{cmp::max, mem, sync::OnceLock};
+use std::{
+    cmp::max,
+    mem,
+    sync::{
+        Arc, OnceLock,
+        atomic::{self, AtomicBool},
+    },
+    thread,
+};
 
 use num_complex::Complex;
 use wgpu::util::DeviceExt;
@@ -869,12 +877,25 @@ impl<'a> GpuSimulator<'a> {
         let encoder = mem::replace(&mut self.encoder, new_encoder);
         self.gpu.queue.submit([encoder.finish()]);
 
+        let done1 = Arc::new(AtomicBool::new(false));
+        let done2 = Arc::clone(&done1);
+        let handle = thread::current();
+
         self.output_read_buf
-            .map_async(wgpu::MapMode::Read, .., |_| {});
+            .map_async(wgpu::MapMode::Read, .., move |r| {
+                r.expect("Failed to get output from GPU");
+
+                done1.store(true, atomic::Ordering::Relaxed);
+                handle.unpark();
+            });
         self.gpu
             .device
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
+
+        while !done2.load(atomic::Ordering::Acquire) {
+            thread::park();
+        }
 
         let res = {
             let output_data = &self.output_read_buf.get_mapped_range(..);
