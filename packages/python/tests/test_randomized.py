@@ -1,5 +1,5 @@
 import random
-import unittest
+import pytest
 
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
@@ -12,7 +12,7 @@ from qlit import (
 )
 
 
-class QlitRandomizedTests(unittest.TestCase):
+class TestQlitRandomized:
     def setup(
         self, qubits, gates, t_gates, seed
     ) -> tuple[CliffordTCircuit, QuantumCircuit, str]:
@@ -63,21 +63,9 @@ class QlitRandomizedTests(unittest.TestCase):
             w_be = w[::-1]
             w_coeff_qiskit = state.data[int(w_be, 2)]
 
-            self.assertAlmostEqual(
-                simulate_circuit(w, circuit),
-                w_coeff_qiskit,
-                msg=f"\nCPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}",
-            )
-            self.assertAlmostEqual(
-                simulate_circuit_gpu(w, circuit),
-                w_coeff_qiskit,
-                msg=f"\nGPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}",
-            )
-            self.assertAlmostEqual(
-                simulate_circuit_hybrid(w, circuit),
-                w_coeff_qiskit,
-                msg=f"\nHybrid: {w=} \n{qiskit_circuit} \n{circuit.gates=}",
-            )
+            assert simulate_circuit(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nCPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}"
+            assert simulate_circuit_gpu(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nGPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}"
+            assert simulate_circuit_hybrid(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nHybrid: {w=} \n{qiskit_circuit} \n{circuit.gates=}"
             print("✅", end="", flush=True)
 
     def test_implementations_against_eachother(self):
@@ -94,18 +82,6 @@ class QlitRandomizedTests(unittest.TestCase):
             simulate_circuit_gpu_res = simulate_circuit_gpu(w, circuit)
             simulate_circuit_hybrid_res = simulate_circuit_hybrid(w, circuit)
 
-            self.assertAlmostEqual(
-                simulate_circuit_res,
-                simulate_circuit_gpu_res,
-                msg=f"\nCPU/GPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}",
-            )
-            self.assertAlmostEqual(
-                simulate_circuit_gpu_res,
-                simulate_circuit_hybrid_res,
-                msg=f"\nCPU/Hybrid: {w=} \n{qiskit_circuit} \n{circuit.gates=}",
-            )
+            assert simulate_circuit_res == pytest.approx(simulate_circuit_gpu_res), f"\nCPU/GPU: {w=} \n{qiskit_circuit} \n{circuit.gates=}"
+            assert simulate_circuit_gpu_res == pytest.approx(simulate_circuit_hybrid_res), f"\nGPU/Hybrid: {w=} \n{qiskit_circuit} \n{circuit.gates=}"
             print("✅", end="", flush=True)
-
-
-if __name__ == "__main__":
-    unittest.main(exit=False)
