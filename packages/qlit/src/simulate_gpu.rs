@@ -48,7 +48,7 @@ struct GpuContext {
 }
 impl GpuContext {
     async fn new() -> GpuContext {
-        let instance = wgpu::Instance::new(&Default::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance.request_adapter(&Default::default()).await.unwrap();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -273,7 +273,7 @@ impl GpuContext {
 
         let zero_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Zero Tableau"),
-            bind_group_layouts: &[&global_bind_group_layout],
+            bind_group_layouts: &[Some(&global_bind_group_layout)],
             immediate_size: 0,
         });
         let zero_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -288,7 +288,10 @@ impl GpuContext {
         let apply_gates_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply Gates"),
-                bind_group_layouts: &[&global_bind_group_layout, &apply_gates_bind_group_layout],
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&apply_gates_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let apply_gates_pipeline =
@@ -304,7 +307,10 @@ impl GpuContext {
         let apply_gate_parallel_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Apply T(dg) Gate in Parallel"),
-                bind_group_layouts: &[&global_bind_group_layout, &single_qubit_bind_group_layout],
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&single_qubit_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let apply_t_gate_parallel_pipeline =
@@ -330,8 +336,8 @@ impl GpuContext {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Bring Into RREF"),
                 bind_group_layouts: &[
-                    &global_bind_group_layout,
-                    &bring_into_rref_bind_group_layout,
+                    Some(&global_bind_group_layout),
+                    Some(&bring_into_rref_bind_group_layout),
                 ],
                 immediate_size: 0,
             });
@@ -356,7 +362,10 @@ impl GpuContext {
         let update_before_h_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Update Before H"),
-                bind_group_layouts: &[&global_bind_group_layout, &single_qubit_bind_group_layout],
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&single_qubit_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let update_before_h_pipeline =
@@ -372,7 +381,10 @@ impl GpuContext {
         let compute_output_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Output"),
-                bind_group_layouts: &[&global_bind_group_layout, &compute_output_bind_group_layout],
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&compute_output_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let compute_output_pipeline =
