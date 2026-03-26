@@ -1,4 +1,4 @@
-import unittest
+import pytest
 from math import sqrt
 
 from qlit import (
@@ -12,33 +12,48 @@ from qlit import (
 DELTA = 1e-6
 
 
-class CircuitTests(unittest.TestCase):
+class TestCircuit:
     def test_invalid_qubit_index(self):
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.X(165)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.X(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Y(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Z(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.H(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.S(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Sdg(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.T(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Tdg(8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cnot(8, 4)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cnot(4, 8)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cz(8, 4)])
-        self.assertRaises(ValueError, CliffordTCircuit, 8, [CliffordTGate.Cz(4, 8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.X(165)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.X(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Y(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Z(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.H(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.S(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Sdg(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.T(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Tdg(8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Cnot(8, 4)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Cnot(4, 8)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Cz(8, 4)])
+        with pytest.raises(ValueError):
+            CliffordTCircuit(8, [CliffordTGate.Cz(4, 8)])
 
 
-class CpuTests(unittest.TestCase):
+class TestCpu:
     def test_mismatched_qubit_number(self):
         circuit = CliffordTCircuit(8, [])
         w = "000000000"
-        self.assertRaises(ValueError, simulate_circuit, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit(w, circuit)
 
     def test_invalid_basis_state(self):
         circuit = CliffordTCircuit(8, [])
         w = "010a0100"
-        self.assertRaises(ValueError, simulate_circuit, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit(w, circuit)
 
     def test_zero(self):
         circuit = CliffordTCircuit(8, [])
@@ -50,7 +65,7 @@ class CpuTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_imaginary(self):
         circuit = CliffordTCircuit(
@@ -71,7 +86,7 @@ class CpuTests(unittest.TestCase):
                     expected = 1j / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_flipped(self):
         circuit = CliffordTCircuit(
@@ -92,7 +107,7 @@ class CpuTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_bell_state(self):
         circuit = CliffordTCircuit(
@@ -111,7 +126,7 @@ class CpuTests(unittest.TestCase):
                     expected = 1 / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_clifford_circuit(self):
         circuit = CliffordTCircuit(
@@ -157,7 +172,7 @@ class CpuTests(unittest.TestCase):
                     expected = -1j / sqrt(8)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_circuit(self):
         circuit = CliffordTCircuit(
@@ -199,19 +214,21 @@ class CpuTests(unittest.TestCase):
                     expected = -sqrt(0.125) * 1j
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
 
-class GpuTests(unittest.TestCase):
+class TestGpu:
     def test_mismatched_qubit_number(self):
         circuit = CliffordTCircuit(8, [])
         w = "000000000"
-        self.assertRaises(ValueError, simulate_circuit_gpu, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit_gpu(w, circuit)
 
     def test_invalid_basis_state(self):
         circuit = CliffordTCircuit(8, [])
         w = "010a0100"
-        self.assertRaises(ValueError, simulate_circuit_gpu, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit_gpu(w, circuit)
 
     def test_zero(self):
         circuit = CliffordTCircuit(8, [])
@@ -223,7 +240,7 @@ class GpuTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_imaginary(self):
         circuit = CliffordTCircuit(
@@ -244,7 +261,7 @@ class GpuTests(unittest.TestCase):
                     expected = 1j / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_flipped(self):
         circuit = CliffordTCircuit(
@@ -265,7 +282,7 @@ class GpuTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_bell_state(self):
         circuit = CliffordTCircuit(
@@ -284,7 +301,7 @@ class GpuTests(unittest.TestCase):
                     expected = 1 / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_clifford_circuit(self):
         circuit = CliffordTCircuit(
@@ -330,7 +347,7 @@ class GpuTests(unittest.TestCase):
                     expected = -1j / sqrt(8)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_circuit(self):
         circuit = CliffordTCircuit(
@@ -372,19 +389,21 @@ class GpuTests(unittest.TestCase):
                     expected = -sqrt(0.125) * 1j
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
 
-class HybridTests(unittest.TestCase):
+class TestHybrid:
     def test_mismatched_qubit_number(self):
         circuit = CliffordTCircuit(8, [])
         w = "000000000"
-        self.assertRaises(ValueError, simulate_circuit_hybrid, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit_hybrid(w, circuit)
 
     def test_invalid_basis_state(self):
         circuit = CliffordTCircuit(8, [])
         w = "010a0100"
-        self.assertRaises(ValueError, simulate_circuit_hybrid, w, circuit)
+        with pytest.raises(ValueError):
+            simulate_circuit_hybrid(w, circuit)
 
     def test_zero(self):
         circuit = CliffordTCircuit(8, [])
@@ -396,7 +415,7 @@ class HybridTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_imaginary(self):
         circuit = CliffordTCircuit(
@@ -417,7 +436,7 @@ class HybridTests(unittest.TestCase):
                     expected = 1j / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_flipped(self):
         circuit = CliffordTCircuit(
@@ -438,7 +457,7 @@ class HybridTests(unittest.TestCase):
                     expected = 1
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_bell_state(self):
         circuit = CliffordTCircuit(
@@ -457,7 +476,7 @@ class HybridTests(unittest.TestCase):
                     expected = 1 / sqrt(2)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_clifford_circuit(self):
         circuit = CliffordTCircuit(
@@ -503,7 +522,7 @@ class HybridTests(unittest.TestCase):
                     expected = -1j / sqrt(8)
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
+            assert result == pytest.approx(expected, abs=DELTA)
 
     def test_larger_circuit(self):
         circuit = CliffordTCircuit(
@@ -545,8 +564,4 @@ class HybridTests(unittest.TestCase):
                     expected = -sqrt(0.125) * 1j
                 case _:
                     expected = 0
-            self.assertAlmostEqual(result, expected, delta=DELTA)
-
-
-if __name__ == "__main__":
-    unittest.main(exit=False)
+            assert result == pytest.approx(expected, abs=DELTA)
