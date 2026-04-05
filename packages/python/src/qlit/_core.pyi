@@ -1,27 +1,40 @@
+from dataclasses import dataclass
 from typing import Iterable
 
 
 class CliffordTGate:
-    @staticmethod
-    def X(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def Y(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def Z(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def S(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def Sdg(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def H(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def T(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def Tdg(qubit: int) -> CliffordTGate: ...
-    @staticmethod
-    def Cnot(control: int, target: int) -> CliffordTGate: ...
-    @staticmethod
-    def Cz(control: int, target: int) -> CliffordTGate: ...
+    @dataclass
+    class X(CliffordTGate):
+        qubit: int
+    @dataclass
+    class Y(CliffordTGate):
+        qubit: int
+    @dataclass
+    class Z(CliffordTGate):
+        qubit: int
+    @dataclass
+    class S(CliffordTGate):
+        qubit: int
+    @dataclass
+    class Sdg(CliffordTGate):
+        qubit: int
+    @dataclass
+    class H(CliffordTGate):
+        qubit: int
+    @dataclass
+    class T(CliffordTGate):
+        qubit: int
+    @dataclass
+    class Tdg(CliffordTGate):
+        qubit: int
+    @dataclass
+    class Cnot(CliffordTGate):
+        control: int
+        target: int
+    @dataclass
+    class Cz(CliffordTGate):
+        control: int
+        target: int
 
 class CliffordTCircuit:
     def __init__(self, qubits: int, gates: Iterable[CliffordTGate]) -> None: ...
