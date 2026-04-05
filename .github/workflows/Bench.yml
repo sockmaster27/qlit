@@ -18,7 +18,7 @@ jobs:
             - name: Install system dependencies
               run: |
                   apt-get update
-                  apt-get install -y curl
+                  apt-get install -y curl build-essential
                   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain none -y
             - name: Setup rust toolchain, cache and cargo-codspeed binary
               uses: moonrepo/setup-rust@v0
