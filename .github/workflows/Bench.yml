@@ -9,7 +9,7 @@ jobs:
         name: Run Rust benchmarks
         runs-on: self-hosted
         container:
-            image: rust:slim
+            image: rust:latest
         env:
             DIVAN_MAX_TIME: 10
             DIVAN_SKIP_EXT_TIME: true
@@ -33,7 +33,7 @@ jobs:
         name: Run Python benchmarks
         runs-on: self-hosted
         container:
-            image: rust:slim
+            image: rust:latest
         steps:
             - uses: actions/checkout@v5
             - uses: astral-sh/setup-uv@v7
