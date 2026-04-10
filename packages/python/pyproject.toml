@@ -13,7 +13,7 @@ classifiers = [
 dependencies = []
 
 [dependency-groups]
-dev = ["qiskit>=1.2.4"]
+dev = ["qiskit>=2.2.3"]
 
 [tool.maturin]
 module-name = "qlit._core"
