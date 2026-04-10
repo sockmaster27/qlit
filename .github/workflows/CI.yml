@@ -86,7 +86,7 @@ jobs:
                       set -e
                       python3 -m venv .venv
                       source .venv/bin/activate
-                      pip install pytest
+                      pip install pytest qiskit
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
                       pip install qlit
                       cd ./packages/python && pytest
@@ -137,7 +137,7 @@ jobs:
                     python3 -m virtualenv .venv
                     source .venv/bin/activate
                     pip install qlit --no-index --no-deps --find-links dist --force-reinstall
-                    pip install qlit pytest
+                    pip install qlit pytest qiskit
                     cd ./packages/python && pytest
                   '
             - name: pytest
@@ -154,7 +154,7 @@ jobs:
                       python3 -m virtualenv .venv
                       source .venv/bin/activate
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
-                      pip install qlit pytest
+                      pip install qlit pytest qiskit
                       cd ./packages/python && pytest
 
     windows:
