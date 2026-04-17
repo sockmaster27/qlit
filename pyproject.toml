@@ -2,4 +2,4 @@
 members = ["packages/python"]
 
 [dependency-groups]
-dev = ["pytest>=8.4.2", "pytest-codspeed>=4.2.0"]
+dev = ["pytest>=8.4.2", "pytest-codspeed>=4.4.0"]
