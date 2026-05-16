@@ -39,6 +39,7 @@ mod cpu {
     criterion_group!(benches, cpu_small, cpu_large);
 }
 
+#[cfg(feature = "gpu")]
 mod gpu {
     use super::*;
     use qlit::simulate_circuit_gpu;
@@ -60,6 +61,7 @@ mod gpu {
     criterion_group!(benches, gpu_small, gpu_large);
 }
 
+#[cfg(feature = "gpu")]
 mod hybrid {
     use super::*;
     use qlit::simulate_circuit_hybrid;
@@ -81,4 +83,7 @@ mod hybrid {
     criterion_group!(benches, hybrid_small, hybrid_large);
 }
 
+#[cfg(feature = "gpu")]
 criterion_main!(cpu::benches, gpu::benches, hybrid::benches);
+#[cfg(not(feature = "gpu"))]
+criterion_main!(cpu::benches);
