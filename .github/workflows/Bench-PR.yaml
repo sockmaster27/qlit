@@ -28,6 +28,5 @@ jobs:
                   --start-point-reset \
                   --testbed ubuntu-latest \
                   --error-on-alert \
-                  --adapter json \
                   --github-actions '${{ secrets.GITHUB_TOKEN }}' \
                   "cargo bench"
