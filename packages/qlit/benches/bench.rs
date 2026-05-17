@@ -1,14 +1,12 @@
-use divan::{Bencher, black_box};
+use criterion::Criterion;
 use qlit::{CliffordTCircuit, initialize_global};
 use rand::{Rng, SeedableRng, rngs::SmallRng};
-
-fn main() {
-    rayon::ThreadPoolBuilder::new().build_global().unwrap();
-    initialize_global();
-    divan::main();
-}
+use std::{hint::black_box, time::Duration};
 
 fn setup(qubits: u32, gates: usize, t_gates: usize) -> (Vec<bool>, CliffordTCircuit) {
+    let _ = rayon::ThreadPoolBuilder::new().build_global();
+    initialize_global();
+
     let seed = 123;
     let rng = SmallRng::seed_from_u64(seed);
     let w = rng
@@ -23,49 +21,76 @@ mod cpu {
     use super::*;
     use qlit::simulate_circuit;
 
-    #[divan::bench]
-    fn cpu_small(bencher: Bencher) {
+    pub fn cpu_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
-        bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
+        c.bench_function("cpu_small", |b| {
+            b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
+        });
     }
 
-    #[divan::bench(ignore = std::env::var("CI").is_ok())]
-    fn cpu_large(bencher: Bencher) {
-        let (w, circuit) = setup(32, 512, 17);
-        bencher.bench_local(move || simulate_circuit(black_box(&w), black_box(&circuit)));
+    pub fn cpu_large(c: &mut Criterion) {
+        let (w, circuit) = setup(32, 512, 10);
+        c.bench_function("cpu_large", |b| {
+            b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
+        });
     }
 }
 
+#[cfg(feature = "gpu")]
 mod gpu {
     use super::*;
     use qlit::simulate_circuit_gpu;
 
-    #[divan::bench]
-    fn gpu_small(bencher: Bencher) {
+    pub fn gpu_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
-        bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
+        c.bench_function("gpu_small", |b| {
+            b.iter(|| simulate_circuit_gpu(black_box(&w), black_box(&circuit)))
+        });
     }
 
-    #[divan::bench(ignore = std::env::var("CI").is_ok())]
-    fn gpu_large(bencher: Bencher) {
-        let (w, circuit) = setup(32, 512, 17);
-        bencher.bench_local(move || simulate_circuit_gpu(black_box(&w), black_box(&circuit)));
+    pub fn gpu_large(c: &mut Criterion) {
+        let (w, circuit) = setup(32, 512, 10);
+        c.bench_function("gpu_large", |b| {
+            b.iter(|| simulate_circuit_gpu(black_box(&w), black_box(&circuit)))
+        });
     }
 }
 
+#[cfg(feature = "gpu")]
 mod hybrid {
     use super::*;
     use qlit::simulate_circuit_hybrid;
 
-    #[divan::bench]
-    fn hybrid_small(bencher: Bencher) {
+    pub fn hybrid_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
-        bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));
+        c.bench_function("hybrid_small", |b| {
+            b.iter(|| simulate_circuit_hybrid(black_box(&w), black_box(&circuit)))
+        });
     }
 
-    #[divan::bench(ignore = std::env::var("CI").is_ok())]
-    fn hybrid_large(bencher: Bencher) {
-        let (w, circuit) = setup(32, 512, 17);
-        bencher.bench_local(move || simulate_circuit_hybrid(black_box(&w), black_box(&circuit)));
+    pub fn hybrid_large(c: &mut Criterion) {
+        let (w, circuit) = setup(32, 512, 10);
+        c.bench_function("hybrid_large", |b| {
+            b.iter(|| simulate_circuit_hybrid(black_box(&w), black_box(&circuit)))
+        });
     }
+}
+
+fn main() {
+    let mut c = Criterion::default()
+        .sample_size(10)
+        .measurement_time(Duration::from_secs(10))
+        .configure_from_args();
+
+    cpu::cpu_small(&mut c);
+    cpu::cpu_large(&mut c);
+    #[cfg(feature = "gpu")]
+    {
+        gpu::gpu_small(&mut c);
+        gpu::gpu_large(&mut c);
+        hybrid::hybrid_small(&mut c);
+        hybrid::hybrid_large(&mut c);
+    }
+
+    c.final_summary();
 }

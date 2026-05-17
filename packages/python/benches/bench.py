@@ -1,10 +1,9 @@
 # To execute locally, run
 #
-#    uv run pytest packages/python/benches/bench.py --codspeed
+#    uv run pytest packages/python/benches/bench.py
 #
 
 import random
-import os
 
 import pytest
 from qlit import (
@@ -32,7 +31,6 @@ class TestPython:
         benchmark(implementation, w, circuit)
 
 
-    @pytest.mark.skipif(condition="CI" in os.environ, reason="Too slow for CI")
     def test_large(self, benchmark, implementation):
-        w, circuit = setup(32, 512, 17)
+        w, circuit = setup(32, 512, 10)
         benchmark(implementation, w, circuit)

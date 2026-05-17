@@ -197,4 +197,3 @@ dist-ssr
 # Profiling
 flamegraph.svg
 perf.data*
-.codspeed

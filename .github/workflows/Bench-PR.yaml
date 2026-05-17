@@ -1,0 +1,38 @@
+name: Benchmark Pull Request
+
+on:
+    pull_request:
+        types: [opened, reopened, edited, synchronize]
+
+jobs:
+    benchmark_pr_branch:
+        name: Benchmark pull request
+        # DO NOT REMOVE: For handling Fork PRs see Pull Requests from Forks
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        permissions:
+            pull-requests: write
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: bencherdev/bencher@main
+            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
+            - uses: astral-sh/setup-uv@v7
+              with:
+                  enable-cache: true
+            - name: Install dependencies
+              run: uv sync --locked
+            - name: Run Python benchmarks
+              run: |
+                  bencher run \
+                  --project qlit \
+                  --token '${{ secrets.BENCHER_API_TOKEN }}' \
+                  --branch "$GITHUB_HEAD_REF" \
+                  --start-point "$GITHUB_BASE_REF" \
+                  --start-point-hash '${{ github.event.pull_request.base.sha }}' \
+                  --start-point-clone-thresholds \
+                  --start-point-reset \
+                  --testbed ubuntu-latest \
+                  --error-on-alert \
+                  --github-actions '${{ secrets.GITHUB_TOKEN }}' \
+                  --file results.json \
+                  "uv run pytest --benchmark-json results.json packages/python/benches/bench.py --benchmark-min-time 0.5"
