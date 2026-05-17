@@ -34,4 +34,4 @@ jobs:
                   --error-on-alert \
                   --github-actions '${{ secrets.GITHUB_TOKEN }}' \
                   --file results.json \
-                  "uv run pytest --benchmark-json results.json packages/python/benches/bench.py"
+                  "uv run pytest --benchmark-json results.json packages/python/benches/bench.py --benchmark-min-time 0.5"
