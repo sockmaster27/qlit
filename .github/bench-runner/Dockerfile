@@ -1,5 +1,6 @@
 # On the runner machine:
 #   docker build -t qlit-bench-runner -f .github/bench-runner/Dockerfile .
+#   docker run -d -p 5000:5000 --restart=always --name local-registry registry:2
 
 FROM ubuntu:latest
 
