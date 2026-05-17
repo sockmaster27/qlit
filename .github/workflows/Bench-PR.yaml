@@ -12,6 +12,8 @@ jobs:
         permissions:
             pull-requests: write
         runs-on: self-hosted
+        container:
+            image: rust:slim
         steps:
             - uses: actions/checkout@v6
             - uses: bencherdev/bencher@main
