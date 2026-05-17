@@ -23,7 +23,7 @@ jobs:
             - name: Install dependencies
               run: |
                   apt-get update
-                  apt-get install -y mesa-vulkan-drivers mesa-utils vulkan-tools
+                  apt-get install -y mesa-vulkan-drivers mesa-utils
                   uv sync --locked
             - name: Run Python benchmarks
               run: |
