@@ -32,5 +32,5 @@ class TestPython:
 
 
     def test_large(self, benchmark, implementation):
-        w, circuit = setup(32, 512, 10)
+        w, circuit = setup(32, 512, 15)
         benchmark(implementation, w, circuit)
