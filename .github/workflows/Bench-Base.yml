@@ -9,7 +9,7 @@ jobs:
         name: Benchmark baseline
         permissions:
             checks: write
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         steps:
             - uses: actions/checkout@v6
             - uses: bencherdev/bencher@main
