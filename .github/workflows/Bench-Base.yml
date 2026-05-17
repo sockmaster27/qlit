@@ -13,7 +13,7 @@ jobs:
         container:
             image: ubuntu:latest
         steps:
-            - run: apt-get update && apt-get install -y mesa-vulkan-drivers curl
+            - run: apt-get update && apt-get install -y mesa-vulkan-drivers build-essential curl
             - uses: actions/checkout@v6
             - uses: bencherdev/bencher@main
             - uses: moonrepo/setup-rust@v1
