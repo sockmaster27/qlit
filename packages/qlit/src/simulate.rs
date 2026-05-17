@@ -42,7 +42,7 @@ const C_Z_DG: Complex<f64> = Complex {
 };
 
 /// TODO: Find an optimal value for this.
-const MAX_BATCH_SIZE_LOG2: usize = 20;
+const MAX_BATCH_SIZE_LOG2: usize = 1;
 
 /// Compute the coefficient of the given basis state, `w`,
 /// after `circuit` has been applied to the zero state.
