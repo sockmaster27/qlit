@@ -29,7 +29,7 @@ mod cpu {
     }
 
     pub fn cpu_large(c: &mut Criterion) {
-        let (w, circuit) = setup(32, 512, 10);
+        let (w, circuit) = setup(32, 512, 15);
         c.bench_function("cpu_large", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });
@@ -49,7 +49,7 @@ mod gpu {
     }
 
     pub fn gpu_large(c: &mut Criterion) {
-        let (w, circuit) = setup(32, 512, 10);
+        let (w, circuit) = setup(32, 512, 15);
         c.bench_function("gpu_large", |b| {
             b.iter(|| simulate_circuit_gpu(black_box(&w), black_box(&circuit)))
         });
@@ -69,7 +69,7 @@ mod hybrid {
     }
 
     pub fn hybrid_large(c: &mut Criterion) {
-        let (w, circuit) = setup(32, 512, 10);
+        let (w, circuit) = setup(32, 512, 15);
         c.bench_function("hybrid_large", |b| {
             b.iter(|| simulate_circuit_hybrid(black_box(&w), black_box(&circuit)))
         });
