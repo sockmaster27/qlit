@@ -1,4 +1,4 @@
-name: Benchmark Pull Request
+name: Run Benchmarks
 
 on:
     pull_request:
@@ -7,16 +7,11 @@ on:
 jobs:
     benchmark_pr_branch:
         name: Benchmark pull request
-        # DO NOT REMOVE: For handling Fork PRs see Pull Requests from Forks
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        permissions:
-            pull-requests: write
         runs-on: self-hosted
         container:
             image: localhost:5000/qlit-bench-runner
         steps:
             - uses: actions/checkout@v6
-            - uses: bencherdev/bencher@main
             - uses: moonrepo/setup-rust@v1
               with:
                   cache-target: release
@@ -24,18 +19,15 @@ jobs:
               with:
                   enable-cache: true
             - run: uv sync --locked
-            - name: Run Python benchmarks
-              run: |
-                  bencher run \
-                  --project qlit \
-                  --token '${{ secrets.BENCHER_API_TOKEN }}' \
-                  --branch "$GITHUB_HEAD_REF" \
-                  --start-point "$GITHUB_BASE_REF" \
-                  --start-point-hash '${{ github.event.pull_request.base.sha }}' \
-                  --start-point-clone-thresholds \
-                  --start-point-reset \
-                  --testbed ubuntu-latest \
-                  --error-on-alert \
-                  --github-actions '${{ secrets.GITHUB_TOKEN }}' \
-                  --file results.json \
-                  "uv run pytest --benchmark-json results.json packages/python/benches/bench.py --benchmark-min-time 0.5"
+            - name: Run benchmarks
+              run: uv run pytest --benchmark-json benchmark_results.json packages/python/benches/bench.py --benchmark-min-time 0.5
+            - name: Upload benchmark results
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmark_results.json
+                  path: ./benchmark_results.json
+            - name: Upload pull request event
+              uses: actions/upload-artifact@v4
+              with:
+                  name: event.json
+                  path: ${{ github.event_path }}
