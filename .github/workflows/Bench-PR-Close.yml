@@ -1,3 +1,5 @@
+name: Archive Benchmarks
+
 on:
     pull_request_target:
         types: [closed]
@@ -13,5 +15,5 @@ jobs:
               run: |
                   bencher archive \
                   --project qlit \
-                  --key '${{ secrets.BENCHER_API_KEY }}' \
+                  --token '${{ secrets.BENCHER_API_TOKEN }}' \
                   --branch "$GITHUB_HEAD_REF"
