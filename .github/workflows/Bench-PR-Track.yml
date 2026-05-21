@@ -50,7 +50,6 @@ jobs:
                   --start-point-reset \
                   --testbed ubuntu-latest \
                   --error-on-alert \
-                  --adapter json \
                   --github-actions '${{ secrets.GITHUB_TOKEN }}' \
                   --ci-number "$PR_NUMBER" \
                   --file "$BENCHMARK_RESULTS"
