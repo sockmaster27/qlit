@@ -70,7 +70,7 @@ jobs:
                   uv venv .venv
                   source .venv/bin/activate
                   uv pip install qlit --no-index --no-deps --find-links dist --reinstall
-                  uv pip install qlit pytest qiskit
+                  uv pip install qlit pytest
                   cd ./packages/python && pytest
             - name: pytest
               if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
@@ -86,7 +86,7 @@ jobs:
                       set -e
                       python3 -m venv .venv
                       source .venv/bin/activate
-                      pip install pytest qiskit
+                      pip install pytest
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
                       pip install qlit
                       cd ./packages/python && pytest
@@ -137,7 +137,7 @@ jobs:
                     python3 -m virtualenv .venv
                     source .venv/bin/activate
                     pip install qlit --no-index --no-deps --find-links dist --force-reinstall
-                    pip install qlit pytest qiskit
+                    pip install qlit pytest
                     cd ./packages/python && pytest
                   '
             - name: pytest
@@ -154,7 +154,7 @@ jobs:
                       python3 -m virtualenv .venv
                       source .venv/bin/activate
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
-                      pip install qlit pytest qiskit
+                      pip install qlit pytest
                       cd ./packages/python && pytest
 
     windows:
@@ -206,7 +206,7 @@ jobs:
                   uv venv .venv
                   source .venv/Scripts/activate
                   uv pip install qlit --no-index --no-deps --find-links dist --reinstall
-                  uv pip install qlit pytest qiskit
+                  uv pip install qlit pytest
                   cd ./packages/python && pytest
 
     macos:
@@ -250,7 +250,7 @@ jobs:
                   uv venv .venv
                   source .venv/bin/activate
                   uv pip install qlit --no-index --no-deps --find-links dist --reinstall
-                  uv pip install qlit pytest qiskit
+                  uv pip install qlit pytest
                   cd ./packages/python && pytest
 
     sdist:
