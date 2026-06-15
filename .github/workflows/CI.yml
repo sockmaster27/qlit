@@ -121,7 +121,6 @@ jobs:
                     - runner: ubuntu-22.04
                       target: armv7
         steps:
-            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: actions/checkout@v6
             - uses: actions/setup-python@v6
               with:
@@ -150,6 +149,7 @@ jobs:
               run: |
                   set -e
                   docker run --rm -v ${{ github.workspace }}:/io -w /io alpine:latest sh -c '
+                    sudo apt-get update && sudo apt-get install -y mesa-utils
                     apk add py3-pip py3-virtualenv
                     apk add mesa-utils
                     python3 -m virtualenv .venv
@@ -170,6 +170,7 @@ jobs:
                       apk add mesa-utils
                   run: |
                       set -e
+                      sudo apt-get update && sudo apt-get install -y mesa-utils
                       python3 -m virtualenv .venv
                       source .venv/bin/activate
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
