@@ -20,12 +20,6 @@ module-name = "qlit._core"
 python-packages = ["qlit"]
 python-source = "src"
 
-[tool.maturin.generate-ci.github]
-pytest = true
-
-[tool.pytest.ini_options]
-markers = ["gpu: exercises the GPU or Hybrid simulation backend"]
-
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
