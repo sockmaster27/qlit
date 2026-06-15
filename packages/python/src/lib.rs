@@ -4,7 +4,6 @@ use qlit::{
     CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit, simulate_circuit_gpu,
     simulate_circuit_hybrid,
 };
-use rayon::ThreadPoolBuilder;
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,7 +188,7 @@ fn py_simulate_circuit_hybrid(
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    ThreadPoolBuilder::new().build_global().unwrap();
+    let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
     m.add_class::<PyCliffordTGate>()?;
