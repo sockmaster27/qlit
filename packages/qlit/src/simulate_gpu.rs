@@ -898,7 +898,10 @@ impl<'a> GpuSimulator<'a> {
         }
 
         let res = {
-            let output_data = &self.output_read_buf.get_mapped_range(..);
+            let output_data = &self
+                .output_read_buf
+                .get_mapped_range(..)
+                .expect("failed to load output from GPU");
             bytes_to_complex(output_data).sum()
         };
         self.output_read_buf.unmap();
