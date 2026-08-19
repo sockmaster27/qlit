@@ -726,6 +726,30 @@ impl<'a> GpuSimulator<'a> {
         })
     }
 
+    /// Create a small buffer and fill it via the queue, instead of `create_buffer_init`'s
+    /// `mapped_at_creation` path. Unlike `create_buffer_init`, this never panics if the
+    /// device has already entered an error/lost state - like the rest of a buffer's
+    /// lifecycle, a failure here is instead reported asynchronously through whichever
+    /// error scope is active (see `run`), rather than via a synchronous `.expect()`.
+    ///
+    /// Used for the buffers repeatedly recreated in `run`'s per-gate hot path, where a
+    /// device that dies partway through would otherwise panic on the very next one.
+    fn write_new_buffer(
+        gpu: &GpuContext,
+        label: &str,
+        contents: &[u8],
+        usage: wgpu::BufferUsages,
+    ) -> wgpu::Buffer {
+        let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: contents.len() as u64,
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue.write_buffer(&buf, 0, contents);
+        buf
+    }
+
     fn new_global_bind_group(
         gpu: &GpuContext,
         n_buf: &wgpu::Buffer,
@@ -1082,6 +1106,12 @@ impl<'a> GpuSimulator<'a> {
             "Cannot split batches beyond max_batches"
         );
 
+        let qubit_buf = Self::write_new_buffer(
+            self.gpu,
+            "qubit",
+            &a.to_ne_bytes(),
+            wgpu::BufferUsages::UNIFORM,
+        );
         let bind_group = self
             .gpu
             .device
@@ -1090,15 +1120,7 @@ impl<'a> GpuSimulator<'a> {
                 layout: &self.gpu.single_qubit_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: self
-                        .gpu
-                        .device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("qubit"),
-                            contents: &a.to_ne_bytes(),
-                            usage: wgpu::BufferUsages::UNIFORM,
-                        })
-                        .as_entire_binding(),
+                    resource: qubit_buf.as_entire_binding(),
                 }],
             });
 
@@ -1110,14 +1132,12 @@ impl<'a> GpuSimulator<'a> {
         pass.dispatch_workgroups(workgroups, 1, 1);
 
         self.active_batches *= 2;
-        self.active_batches_buf =
-            self.gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("active_batches"),
-                    contents: &self.active_batches.to_ne_bytes(),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
+        self.active_batches_buf = Self::write_new_buffer(
+            self.gpu,
+            "active_batches",
+            &self.active_batches.to_ne_bytes(),
+            wgpu::BufferUsages::STORAGE,
+        );
         self.global_bind_group = Self::new_global_bind_group(
             &self.gpu,
             &self.n_buf,
@@ -1183,6 +1203,12 @@ impl<'a> GpuSimulator<'a> {
     }
 
     fn update_before_h(&mut self, a: u32) {
+        let qubit_buf = Self::write_new_buffer(
+            self.gpu,
+            "qubit",
+            &a.to_ne_bytes(),
+            wgpu::BufferUsages::UNIFORM,
+        );
         let bind_group = self
             .gpu
             .device
@@ -1191,15 +1217,7 @@ impl<'a> GpuSimulator<'a> {
                 layout: &self.gpu.single_qubit_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: self
-                        .gpu
-                        .device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("qubit"),
-                            contents: &a.to_ne_bytes(),
-                            usage: wgpu::BufferUsages::UNIFORM,
-                        })
-                        .as_entire_binding(),
+                    resource: qubit_buf.as_entire_binding(),
                 }],
             });
 
