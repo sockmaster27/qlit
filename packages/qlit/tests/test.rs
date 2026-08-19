@@ -398,7 +398,7 @@ mod gpu {
     fn mismatched_qubit_number() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
         let w = [false; 9];
-        simulate_circuit_gpu(&w, &circuit);
+        simulate_circuit_gpu(&w, &circuit).unwrap();
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -425,7 +425,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -442,7 +442,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::I,
@@ -459,7 +459,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -477,7 +477,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -494,7 +494,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -536,7 +536,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -555,7 +555,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -572,7 +572,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -589,7 +589,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 | 0b1010_0000 | 0b0110_0000 => {
@@ -608,7 +608,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 => Complex { re: 0.5, im: 0.0 },
@@ -647,7 +647,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
@@ -708,7 +708,7 @@ mod gpu {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex { re: 0.0, im: -0.5 },
@@ -739,7 +739,7 @@ mod hybrid {
     fn mismatched_qubit_number() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
         let w = [false; 9];
-        simulate_circuit_gpu(&w, &circuit);
+        simulate_circuit_gpu(&w, &circuit).unwrap();
     }
 
     #[test]
@@ -749,7 +749,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -766,7 +766,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -783,7 +783,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::I,
@@ -800,7 +800,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -818,7 +818,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -835,7 +835,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
@@ -877,7 +877,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -896,7 +896,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -913,7 +913,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -930,7 +930,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 | 0b1010_0000 | 0b0110_0000 => {
@@ -949,7 +949,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 => Complex { re: 0.5, im: 0.0 },
@@ -988,7 +988,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
@@ -1049,7 +1049,7 @@ mod hybrid {
         for i in 0b0000_0000..=0b1111_1111 {
             let w = bits_to_bools(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_gpu(&w, &circuit).unwrap();
 
             let expected = match i {
                 0b0000_0000 => Complex { re: 0.0, im: -0.5 },

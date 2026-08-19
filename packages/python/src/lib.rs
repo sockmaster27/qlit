@@ -1,9 +1,19 @@
 use num_complex::Complex;
-use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
+use pyo3::{
+    PyAny, PyErr,
+    exceptions::{PyRuntimeError, PyValueError},
+    prelude::*,
+    types::PyString,
+    wrap_pyfunction,
+};
 use qlit::{
     CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit, simulate_circuit_gpu,
     simulate_circuit_hybrid,
 };
+
+fn gpu_err_to_py(err: impl std::fmt::Display) -> PyErr {
+    PyErr::new::<PyRuntimeError, _>(err.to_string())
+}
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,10 +178,8 @@ fn py_simulate_circuit_gpu(
     w: &Bound<PyString>,
     circuit: &PyCliffordTCircuit,
 ) -> PyResult<Complex<f64>> {
-    Ok(simulate_circuit_gpu(
-        &parse_basis_state(w, circuit.qubits())?,
-        &circuit.0,
-    ))
+    simulate_circuit_gpu(&parse_basis_state(w, circuit.qubits())?, &circuit.0)
+        .map_err(gpu_err_to_py)
 }
 
 #[pyfunction]
@@ -180,10 +188,8 @@ fn py_simulate_circuit_hybrid(
     w: &Bound<PyString>,
     circuit: &PyCliffordTCircuit,
 ) -> PyResult<Complex<f64>> {
-    Ok(simulate_circuit_hybrid(
-        &parse_basis_state(w, circuit.qubits())?,
-        &circuit.0,
-    ))
+    simulate_circuit_hybrid(&parse_basis_state(w, circuit.qubits())?, &circuit.0)
+        .map_err(gpu_err_to_py)
 }
 
 #[pymodule]

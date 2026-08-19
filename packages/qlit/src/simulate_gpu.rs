@@ -2,7 +2,7 @@ use std::{
     cmp::max,
     mem,
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock,
         atomic::{self, AtomicBool},
     },
     thread,
@@ -21,6 +21,39 @@ const WORKGROUP_SIZE: u32 = 64;
 const U32_SIZE: u64 = size_of::<u32>() as u64;
 const COMPLEX_SIZE: u64 = 2 * size_of::<f32>() as u64;
 
+/// An error reported by the GPU (out of memory, a validation failure, or the
+/// device having been lost), surfaced as a normal `Result` instead of a panic.
+#[derive(Debug)]
+pub struct GpuError(String);
+
+impl std::fmt::Display for GpuError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GPU error: {}", self.0)
+    }
+}
+impl std::error::Error for GpuError {}
+impl From<wgpu::Error> for GpuError {
+    fn from(err: wgpu::Error) -> Self {
+        GpuError(err.to_string())
+    }
+}
+impl From<wgpu::BufferAsyncError> for GpuError {
+    fn from(err: wgpu::BufferAsyncError) -> Self {
+        GpuError(err.to_string())
+    }
+}
+impl From<wgpu::PollError> for GpuError {
+    fn from(err: wgpu::PollError) -> Self {
+        GpuError(err.to_string())
+    }
+}
+
+/// Set by the device-lost callback registered in [`GpuContext::new`].
+/// Checked at the start of [`GpuSimulator::new`] so that, once the process-global
+/// GPU device has been lost, later calls fail fast with a clear error instead of
+/// each independently panicking on whatever buffer they happen to allocate first.
+static DEVICE_LOST: AtomicBool = AtomicBool::new(false);
+
 /// Initialize the global GPU context.
 ///
 /// This will happen automatically the first time it's needed,
@@ -32,12 +65,34 @@ fn get_gpu() -> &'static GpuContext {
     GPU_CONTEXT.get_or_init(|| pollster::block_on(GpuContext::new()))
 }
 
+/// The largest `batch_size_log2` for which the buffers `GpuSimulator::new` would
+/// allocate for an `n`-qubit circuit fit within the GPU's reported buffer-size limits.
+pub(crate) fn max_supported_batch_size_log2(n: u32) -> usize {
+    let limits = &get_gpu().limits;
+    let max_buffer_bytes = limits
+        .max_buffer_size
+        .min(limits.max_storage_buffer_binding_size);
+
+    let mut log2 = 0usize;
+    while log2 < 32 {
+        let max_batches = 1u32 << log2;
+        let tableau_bytes = tableau_block_length(n, max_batches).saturating_mul(BLOCK_SIZE_BYTES);
+        let ws_bytes = U32_SIZE * u64::from(n) * u64::from(max_batches);
+        if tableau_bytes > max_buffer_bytes || ws_bytes > max_buffer_bytes {
+            break;
+        }
+        log2 += 1;
+    }
+    log2.saturating_sub(1)
+}
+
 /// The global GPU context.
 /// Includes the initialized device, compiled shaders, etc.
 static GPU_CONTEXT: OnceLock<GpuContext> = OnceLock::new();
 struct GpuContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    limits: wgpu::Limits,
 
     global_bind_group_layout: wgpu::BindGroupLayout,
     single_qubit_bind_group_layout: wgpu::BindGroupLayout,
@@ -56,19 +111,40 @@ struct GpuContext {
 }
 impl GpuContext {
     async fn new() -> GpuContext {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = instance.request_adapter(&Default::default()).await.unwrap();
+
+        let info = adapter.get_info();
+        eprintln!(
+            "qlit: using GPU adapter '{}' (backend={:?}, device_type={:?}, driver={:?} {:?})",
+            info.name, info.backend, info.device_type, info.driver, info.driver_info
+        );
+
+        let limits = adapter.limits();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_features: Default::default(),
-                required_limits: adapter.limits(),
+                required_limits: limits.clone(),
                 experimental_features: Default::default(),
                 memory_hints: Default::default(),
                 trace: Default::default(),
             })
             .await
             .unwrap();
+
+        // Errors not caught by an explicit error scope (see `GpuSimulator::new`/`run`)
+        // would otherwise be treated as fatal by wgpu's default handler, which panics
+        // the reporting thread. Log them instead so a stray uncaptured error can't
+        // take down the whole process.
+        device.on_uncaptured_error(Arc::new(|error| {
+            eprintln!("qlit: uncaptured wgpu error (not caught by an error scope): {error}");
+        }));
+        device.set_device_lost_callback(|reason, message| {
+            eprintln!("qlit: GPU device lost ({reason:?}): {message}");
+            DEVICE_LOST.store(true, atomic::Ordering::SeqCst);
+        });
 
         let shader_module = device.create_shader_module(wgpu::include_wgsl!("simulate_gpu.wgsl"));
 
@@ -408,6 +484,7 @@ impl GpuContext {
         GpuContext {
             device,
             queue,
+            limits,
 
             global_bind_group_layout,
             apply_gates_bind_group_layout,
@@ -459,8 +536,17 @@ pub struct GpuSimulator<'a> {
     compute_output_bind_group: wgpu::BindGroup,
 }
 impl<'a> GpuSimulator<'a> {
-    pub fn new(circuit: &'a CliffordTCircuit, w: &[bool], batch_size_log2: usize) -> Self {
+    pub fn new(
+        circuit: &'a CliffordTCircuit,
+        w: &[bool],
+        batch_size_log2: usize,
+    ) -> Result<Self, GpuError> {
         let gpu = get_gpu();
+        if DEVICE_LOST.load(atomic::Ordering::SeqCst) {
+            return Err(GpuError(
+                "GPU device was previously lost and cannot be recovered in this process".into(),
+            ));
+        }
 
         let n: u32 = circuit.qubits();
         let path_length: u32 = (circuit.t_gates() - batch_size_log2)
@@ -473,6 +559,11 @@ impl<'a> GpuSimulator<'a> {
         let max_batches: u32 = 1 << batch_size_log2;
         let max_batches_u64: u64 = max_batches.into();
         let active_batches: u32 = 1;
+
+        // Catch OOM/validation failures here instead of letting wgpu's default
+        // fatal-error handler panic the process (see `GpuContext::new`).
+        let oom_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let validation_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
@@ -499,7 +590,7 @@ impl<'a> GpuSimulator<'a> {
         });
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tableau"),
-            size: u64::from(tableau_block_length(n, max_batches)) * BLOCK_SIZE_BYTES,
+            size: tableau_block_length(n, max_batches) * BLOCK_SIZE_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -595,7 +686,14 @@ impl<'a> GpuSimulator<'a> {
             ],
         });
 
-        Self {
+        // Scopes must be popped in reverse order of being pushed.
+        let validation_err = pollster::block_on(validation_scope.pop());
+        let oom_err = pollster::block_on(oom_scope.pop());
+        if let Some(err) = oom_err.or(validation_err) {
+            return Err(GpuError::from(err));
+        }
+
+        Ok(Self {
             circuit,
 
             gpu,
@@ -625,7 +723,7 @@ impl<'a> GpuSimulator<'a> {
             output_buf,
             output_read_buf,
             compute_output_bind_group,
-        }
+        })
     }
 
     fn new_global_bind_group(
@@ -837,7 +935,18 @@ impl<'a> GpuSimulator<'a> {
         bind_groups
     }
 
-    pub fn run(&mut self, path: &[bool]) -> Complex<f64> {
+    pub fn run(&mut self, path: &[bool]) -> Result<Complex<f64>, GpuError> {
+        // Catch OOM/validation failures here instead of letting wgpu's default
+        // fatal-error handler panic the process (see `GpuContext::new`).
+        let oom_scope = self
+            .gpu
+            .device
+            .push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let validation_scope = self
+            .gpu
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+
         self.gpu
             .queue
             .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
@@ -880,31 +989,40 @@ impl<'a> GpuSimulator<'a> {
 
         let done1 = Arc::new(AtomicBool::new(false));
         let done2 = Arc::clone(&done1);
+        let map_result1 = Arc::new(Mutex::new(None));
+        let map_result2 = Arc::clone(&map_result1);
         let handle = thread::current();
 
         self.output_read_buf
             .map_async(wgpu::MapMode::Read, .., move |r| {
-                r.expect("Failed to get output from GPU");
+                *map_result1.lock().unwrap() = Some(r);
 
                 done1.store(true, atomic::Ordering::Relaxed);
                 handle.unpark();
             });
-        self.gpu
-            .device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
+        let poll_result = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
 
         while !done2.load(atomic::Ordering::Acquire) {
             thread::park();
         }
 
-        let res = {
+        // Scopes must be popped in reverse order of being pushed.
+        let validation_err = pollster::block_on(validation_scope.pop());
+        let oom_err = pollster::block_on(oom_scope.pop());
+
+        let map_result = map_result2.lock().unwrap().take();
+        let res = (|| -> Result<Complex<f64>, GpuError> {
+            poll_result?;
+            map_result.expect("map_async callback did not run before poll returned")?;
+            if let Some(err) = oom_err.or(validation_err) {
+                return Err(GpuError::from(err));
+            }
             let output_data = &self
                 .output_read_buf
                 .get_mapped_range(..)
-                .expect("failed to load output from GPU");
-            bytes_to_complex(output_data).sum()
-        };
+                .map_err(|e| GpuError(e.to_string()))?;
+            Ok(bytes_to_complex(output_data).sum())
+        })();
         self.output_read_buf.unmap();
 
         res
@@ -1117,12 +1235,15 @@ fn single_column_block_length(n: u32) -> u32 {
     (n + 1).div_ceil(BLOCK_SIZE)
 }
 // Get the block-length of the columns of all the combined tableau batches.
-fn column_block_length(n: u32, max_batches: u32) -> u32 {
-    single_column_block_length(n) * max_batches
+fn column_block_length(n: u32, max_batches: u32) -> u64 {
+    u64::from(single_column_block_length(n)) * u64::from(max_batches)
 }
 /// Get the length of the tableau in blocks.
-fn tableau_block_length(n: u32, max_batches: u32) -> u32 {
-    column_block_length(n, max_batches) * (n + n + 1)
+///
+/// Computed in `u64` since `n² · max_batches` can exceed `u32::MAX` for large
+/// circuits, which would otherwise silently wrap and under-allocate the buffer.
+fn tableau_block_length(n: u32, max_batches: u32) -> u64 {
+    column_block_length(n, max_batches) * u64::from(n + n + 1)
 }
 
 fn encode_bitstring(bits: &[bool]) -> Vec<u8> {

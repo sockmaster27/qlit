@@ -12,6 +12,8 @@ pub use simulate::simulate_circuit;
 pub use simulate::simulate_circuit_gpu;
 #[cfg(feature = "gpu")]
 pub use simulate::simulate_circuit_hybrid;
+#[cfg(feature = "gpu")]
+pub use simulate_gpu::GpuError;
 
 /// Initialization all global resources.
 ///

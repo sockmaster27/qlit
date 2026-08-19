@@ -11,7 +11,7 @@ use std::{
 use num_complex::Complex;
 
 #[cfg(feature = "gpu")]
-use crate::simulate_gpu::GpuSimulator;
+use crate::simulate_gpu::{GpuError, GpuSimulator, max_supported_batch_size_log2};
 
 use crate::{
     circuit::{CliffordTCircuit, CliffordTGate},
@@ -108,7 +108,10 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_gpu(
+    w: &[bool],
+    circuit: &CliffordTCircuit,
+) -> Result<Complex<f64>, GpuError> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -118,16 +121,19 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
-    let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t);
+    let batch_size_log2 = min(
+        min(MAX_BATCH_SIZE_LOG2, max_supported_batch_size_log2(n)),
+        t,
+    );
     let mut path = vec![false; t - batch_size_log2];
     let mut w_coeff = Complex::ZERO;
-    let mut g = GpuSimulator::new(circuit, w, batch_size_log2);
+    let mut g = GpuSimulator::new(circuit, w, batch_size_log2)?;
     let mut done = false;
     while !done {
-        w_coeff += g.run(&path);
+        w_coeff += g.run(&path)?;
         done = increment_path(&mut path);
     }
-    w_coeff
+    Ok(w_coeff)
 }
 
 /// Compute the coefficient of the given basis state, `w`,
@@ -138,7 +144,10 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_hybrid(
+    w: &[bool],
+    circuit: &CliffordTCircuit,
+) -> Result<Complex<f64>, GpuError> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -159,14 +168,18 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
         .unwrap_or(usize::MAX);
 
     // Ensure that there is at least one batch per thread.
-    let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
+    let batch_size_log2 = min(
+        min(MAX_BATCH_SIZE_LOG2, max_supported_batch_size_log2(n)),
+        t - threads_log2,
+    );
 
-    let mut gpu_sim = GpuSimulator::new(circuit, w, batch_size_log2);
+    let mut gpu_sim = GpuSimulator::new(circuit, w, batch_size_log2)?;
 
     let mut w_coeff_local = Complex::<f64>::ZERO;
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
     let w_coeff = Mutex::new(Complex::<f64>::ZERO);
     let done = AtomicBool::new(false);
+    let gpu_error: Mutex<Option<GpuError>> = Mutex::new(None);
 
     rayon::in_place_scope(|s| {
         s.spawn_broadcast(|_, _| {
@@ -195,11 +208,24 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
             done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
             drop(next_path_locked);
 
-            w_coeff_local += gpu_sim.run(&path);
+            match gpu_sim.run(&path) {
+                Ok(coeff) => w_coeff_local += coeff,
+                Err(err) => {
+                    // Stop the CPU broadcast threads too; the computation as a
+                    // whole cannot complete without the GPU.
+                    *gpu_error.lock().unwrap() = Some(err);
+                    done.store(true, Ordering::SeqCst);
+                    break;
+                }
+            }
         }
     });
 
-    w_coeff_local + w_coeff.into_inner().unwrap()
+    if let Some(err) = gpu_error.into_inner().unwrap() {
+        return Err(err);
+    }
+
+    Ok(w_coeff_local + w_coeff.into_inner().unwrap())
 }
 
 fn run_cpu(
