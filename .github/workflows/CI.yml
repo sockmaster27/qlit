@@ -37,7 +37,6 @@ jobs:
                     - runner: ubuntu-22.04
                       target: ppc64le
         steps:
-            - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - uses: actions/checkout@v6
             - uses: actions/setup-python@v6
               with:
@@ -68,6 +67,7 @@ jobs:
               shell: bash
               run: |
                   set -e
+                  sudo apt-get update && sudo apt-get install -y mesa-utils
                   uv venv .venv
                   source .venv/bin/activate
                   uv pip install qlit --no-index --no-deps --find-links dist --reinstall
@@ -82,6 +82,7 @@ jobs:
                   githubToken: ${{ github.token }}
                   install: |
                       apt-get update
+                      apt-get install -y mesa-utils
                       apt-get install -y --no-install-recommends python3 python3-venv
                   run: |
                       set -e
