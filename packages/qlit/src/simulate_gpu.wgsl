@@ -64,6 +64,9 @@ fn zero(
 @group(1) @binding(0) var<storage, read> gates: array<u32>;
 @group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
 @group(1) @binding(2) var<uniform> initial_seen_t_gates: u32;
+@group(1) @binding(3) var<uniform> initial_seen_gates: u32;
+@group(1) @binding(4) var<uniform> initial_seen_qubit_params: u32;
+@group(1) @binding(5) var<uniform> gates_to_apply: u32;
 
 @compute
 @workgroup_size(64)
@@ -77,9 +80,9 @@ fn apply_gates(
     let batch_index = id.x / single_column_block_length();
     let block_index = id.x % single_column_block_length();
 
-    var p: u32 = 0;
+    var p: u32 = initial_seen_qubit_params;
     var seen_t_gates = initial_seen_t_gates;
-    for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
+    for (var i: u32 = initial_seen_gates; i < initial_seen_gates + gates_to_apply; i += 1) {
         switch gates[i] {
             case 0: {
                 // CNOT
