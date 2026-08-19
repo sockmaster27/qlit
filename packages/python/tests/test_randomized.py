@@ -1,14 +1,16 @@
 import json
 import random
+from pathlib import Path
 
 import pytest
-from generate_fixtures import FIXTURES_PATH
 from qlit import (
     CliffordTCircuit,
     simulate_circuit,
     simulate_circuit_gpu,
     simulate_circuit_hybrid,
 )
+
+FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
 
 
 class TestQlitRandomized:
