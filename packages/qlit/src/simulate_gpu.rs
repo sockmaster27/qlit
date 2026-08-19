@@ -846,15 +846,19 @@ impl<'a> GpuSimulator<'a> {
         for &gate in self.circuit.gates() {
             match gate {
                 CliffordTGate::H(a) => {
-                    self.submit_gates();
+                    self.dispatch_gates();
                     self.bring_into_rref();
                     self.update_before_h(a);
+                    // This is the single heaviest operation for the circuit,
+                    // therefore we perform a submission of the full pipeline up to this point before moving on,
+                    // to get the GPU started as soon as possible.
+                    self.submit_encoder();
                 }
                 CliffordTGate::T(a) => {
                     if seen_t_gates < self.path_length {
                         seen_t_gates += 1;
                     } else {
-                        self.submit_gates();
+                        self.dispatch_gates();
                         self.apply_t_gate_parallel(a);
                     }
                 }
@@ -862,20 +866,17 @@ impl<'a> GpuSimulator<'a> {
                     if seen_t_gates < self.path_length {
                         seen_t_gates += 1;
                     } else {
-                        self.submit_gates();
+                        self.dispatch_gates();
                         self.apply_tdg_gate_parallel(a);
                     }
                 }
                 _ => {}
             }
         }
-        self.submit_gates();
+        self.dispatch_gates();
         self.bring_into_rref();
         self.compute_output();
-
-        let new_encoder = self.gpu.device.create_command_encoder(&Default::default());
-        let encoder = mem::replace(&mut self.encoder, new_encoder);
-        self.gpu.queue.submit([encoder.finish()]);
+        self.submit_encoder();
 
         let done1 = Arc::new(AtomicBool::new(false));
         let done2 = Arc::clone(&done1);
@@ -927,7 +928,7 @@ impl<'a> GpuSimulator<'a> {
         drop(pass);
     }
 
-    fn submit_gates(&mut self) {
+    fn dispatch_gates(&mut self) {
         match &self.apply_gates_bind_groups[self.apply_gates_bind_group_index] {
             Some(bind_group) => {
                 let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
@@ -942,6 +943,13 @@ impl<'a> GpuSimulator<'a> {
             }
         }
         self.apply_gates_bind_group_index += 1;
+    }
+
+    /// Submits everything in the current command encoder to the GPU and resets the encoder.
+    fn submit_encoder(&mut self) {
+        let new_encoder = self.gpu.device.create_command_encoder(&Default::default());
+        let encoder = mem::replace(&mut self.encoder, new_encoder);
+        self.gpu.queue.submit([encoder.finish()]);
     }
 
     fn apply_t_gate_parallel(&mut self, a: u32) {
