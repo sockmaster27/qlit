@@ -1,7 +1,8 @@
 import json
 import random
-import pytest
 
+import pytest
+from generate_fixtures import FIXTURES_PATH
 from qlit import (
     CliffordTCircuit,
     simulate_circuit,
@@ -13,7 +14,7 @@ from qlit import (
 class TestQlitRandomized:
     def test_against_statevector(self):
         print("\nTesting against Qiskit statevector simulator...")
-        with open("packages/python/tests/randomized_fixtures.json", "r") as f:
+        with open(FIXTURES_PATH, "r") as f:
             fixtures = json.load(f)
         for fixture in fixtures:
             circuit = CliffordTCircuit.random(

@@ -1,6 +1,6 @@
-import pytest
 from math import sqrt
 
+import pytest
 from qlit import (
     CliffordTCircuit,
     CliffordTGate,

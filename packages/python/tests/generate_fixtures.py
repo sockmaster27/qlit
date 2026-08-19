@@ -3,6 +3,7 @@
 
 import json
 import random
+from pathlib import Path
 
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
@@ -10,6 +11,8 @@ from qlit import (
     CliffordTCircuit,
     CliffordTGate,
 )
+
+FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
 
 
 def setup(
@@ -77,7 +80,7 @@ def generate_fixtures():
             w_data.append({"w": w, "w_coeff_re": w_coeff.real, "w_coeff_im": w_coeff.imag})
         data.append({"qubits": qubits, "t_gates": t_gates, "gates": gates, "seed": seed, "w_data": w_data})
 
-    with open("packages/python/tests/randomized_fixtures.json", "w") as f:
+    with open(FIXTURES_PATH, "w") as f:
         f.write(json.dumps(data, indent=2))
 
 
