@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
@@ -110,23 +110,24 @@ impl CliffordTCircuit {
                         b = rng.random_range(0..qubits);
                     }
                     if t_gate_positions.contains(&i) {
-                        match rng.random_range(0..=1) {
-                            0 => CliffordTGate::T(a),
-                            1 => CliffordTGate::Tdg(a),
-                            _ => unreachable!(),
-                        }
+                        [CliffordTGate::T(a), CliffordTGate::Tdg(a)]
+                            .choose(&mut rng)
+                            .unwrap()
+                            .clone()
                     } else {
-                        match rng.random_range(0..=7) {
-                            0 => CliffordTGate::X(a),
-                            1 => CliffordTGate::Y(a),
-                            2 => CliffordTGate::Z(a),
-                            3 => CliffordTGate::H(a),
-                            4 => CliffordTGate::S(a),
-                            5 => CliffordTGate::Sdg(a),
-                            6 => CliffordTGate::Cnot(a, b),
-                            7 => CliffordTGate::Cz(a, b),
-                            _ => unreachable!(),
-                        }
+                        [
+                            CliffordTGate::X(a),
+                            CliffordTGate::Y(a),
+                            CliffordTGate::Z(a),
+                            CliffordTGate::H(a),
+                            CliffordTGate::S(a),
+                            CliffordTGate::Sdg(a),
+                            CliffordTGate::Cnot(a, b),
+                            CliffordTGate::Cz(a, b),
+                        ]
+                        .choose(&mut rng)
+                        .unwrap()
+                        .clone()
                     }
                 })
                 .collect(),
