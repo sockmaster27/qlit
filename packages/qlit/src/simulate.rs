@@ -61,7 +61,6 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
-    panic!("current_num_threads() = {}", rayon::current_num_threads());
     let threads = min(
         rayon::current_num_threads(),
         2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
