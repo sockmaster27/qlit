@@ -40,7 +40,7 @@ jobs:
             - name: Track benchmarks with Bencher
               run: |
                   bencher run \
-                  --project qlit \
+                  --project qlit-b20d40e-1lqksbyck7340 \
                   --key '${{ secrets.BENCHER_API_KEY }}' \
                   --branch "$PR_HEAD" \
                   --hash "$PR_HEAD_SHA" \
