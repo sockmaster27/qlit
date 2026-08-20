@@ -100,7 +100,7 @@ jobs:
                       elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
                           # QEMU's s390x emulation is far slower than the other
                           # architectures tested here, so we skip the heaviest tests.
-                          pytest -m "not heavy"
+                          pytest -m "not gpu"
                       else
                           pytest
                       fi
