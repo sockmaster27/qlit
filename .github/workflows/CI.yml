@@ -96,14 +96,11 @@ jobs:
                           # GPU compute aborts the process outright,
                           # likely a bug in the underlying runner/VM/driver.
                           # Fixing is out of scope.
-                          # Skip the GPU/Hybrid-backed tests on this leg only.
-                          echo "Skipping GPU/Hybrid tests on linux armv7"
-                          pytest -k "not Gpu and not Hybrid and not test_against_statevector and not test_implementations_against_eachother"
+                          pytest -m "not gpu"
                       elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
                           # QEMU's s390x emulation is far slower than the other
-                          # architectures tested here, so wee skip the heaviest tests.
-                          echo "Skipping heavy tests on linux s390x"
-                          pytest -k "not test_against_statevector and not test_implementations_against_eachother"
+                          # architectures tested here, so we skip the heaviest tests.
+                          pytest -m "not heavy"
                       else
                           pytest
                       fi
@@ -174,7 +171,15 @@ jobs:
                       source .venv/bin/activate
                       pip install qlit --no-index --no-deps --find-links dist --force-reinstall
                       pip install qlit pytest
-                      cd ./packages/python && pytest
+                      cd ./packages/python
+                      if [ "${{ matrix.platform.target }}" = "armv7" ]; then
+                          # GPU compute aborts the process outright,
+                          # likely a bug in the underlying runner/VM/driver.
+                          # Fixing is out of scope.
+                          pytest -m "not gpu"
+                      else
+                          pytest
+                      fi
 
     windows:
         runs-on: ${{ matrix.platform.runner }}
@@ -231,9 +236,7 @@ jobs:
                       # The 32-bit GPU driver stack is unreliable under WOW64 on this
                       # runner across every backend tried (Vulkan crashes, DX12 loses
                       # the device under sustained load, GL has no adapter at all here).
-                      # Skip the GPU/Hybrid-backed tests on this leg only.
-                      echo "Skipping GPU/Hybrid tests on windows x86 (unreliable 32-bit GPU driver stack)"
-                      pytest -k "not Gpu and not Hybrid and not test_against_statevector and not test_implementations_against_eachother"
+                      pytest -m "not gpu"
                   else
                       pytest
                   fi

@@ -23,6 +23,12 @@ python-source = "src"
 [tool.maturin.generate-ci.github]
 pytest = true
 
+[tool.pytest.ini_options]
+markers = [
+    "gpu: exercises the GPU or Hybrid simulation backend",
+    "heavy: computationally expensive, e.g. slow under emulation or on constrained hardware",
+]
+
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },

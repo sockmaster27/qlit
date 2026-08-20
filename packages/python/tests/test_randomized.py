@@ -13,6 +13,8 @@ from qlit import (
 FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
 
 
+@pytest.mark.gpu
+@pytest.mark.heavy
 class TestQlitRandomized:
     def test_against_statevector(self):
         print("\nTesting against Qiskit statevector simulator...")
