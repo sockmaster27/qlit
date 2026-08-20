@@ -9,7 +9,6 @@ use std::{
 };
 
 use num_complex::Complex;
-use wgpu::util::DeviceExt;
 
 use crate::{CliffordTCircuit, CliffordTGate};
 
@@ -567,20 +566,13 @@ impl<'a> GpuSimulator<'a> {
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
-        let n_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("n"),
-                contents: &n.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let max_batches_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("max_batches"),
-                contents: &max_batches.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+        let n_buf = Self::write_new_buffer(gpu, "n", &n.to_ne_bytes(), wgpu::BufferUsages::UNIFORM);
+        let max_batches_buf = Self::write_new_buffer(
+            gpu,
+            "max_batches",
+            &max_batches.to_ne_bytes(),
+            wgpu::BufferUsages::UNIFORM,
+        );
         let path_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("path"),
             // Buffers must not be zero-sized, so we allocate at least 1 block even if path_length is 0.
@@ -652,13 +644,12 @@ impl<'a> GpuSimulator<'a> {
             mapped_at_creation: false,
         });
 
-        let w_target_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("w_target"),
-                contents: &encode_bitstring(w),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let w_target_buf = Self::write_new_buffer(
+            gpu,
+            "w_target",
+            &encode_bitstring(w),
+            wgpu::BufferUsages::STORAGE,
+        );
         let output_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("output"),
             size: COMPLEX_SIZE * max_batches_u64,
@@ -818,33 +809,30 @@ impl<'a> GpuSimulator<'a> {
                 return;
             }
 
-            let gates_buf = gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("gates"),
-                    contents: &gates
-                        .iter()
-                        .flat_map(|&g| g.to_ne_bytes())
-                        .collect::<Vec<u8>>(),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
-            let qubit_params_buf =
-                gpu.device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("qubit_params"),
-                        contents: &qubit_params
-                            .iter()
-                            .flat_map(|&q| q.to_ne_bytes())
-                            .collect::<Vec<u8>>(),
-                        usage: wgpu::BufferUsages::STORAGE,
-                    });
-            let initial_seen_t_gates_buf =
-                gpu.device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("initial_seen_t_gates"),
-                        contents: &initial_seen_t_gates.to_ne_bytes(),
-                        usage: wgpu::BufferUsages::UNIFORM,
-                    });
+            let gates_buf = GpuSimulator::write_new_buffer(
+                gpu,
+                "gates",
+                &gates
+                    .iter()
+                    .flat_map(|&g| g.to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                wgpu::BufferUsages::STORAGE,
+            );
+            let qubit_params_buf = GpuSimulator::write_new_buffer(
+                gpu,
+                "qubit_params",
+                &qubit_params
+                    .iter()
+                    .flat_map(|&q| q.to_ne_bytes())
+                    .collect::<Vec<u8>>(),
+                wgpu::BufferUsages::STORAGE,
+            );
+            let initial_seen_t_gates_buf = GpuSimulator::write_new_buffer(
+                gpu,
+                "initial_seen_t_gates",
+                &initial_seen_t_gates.to_ne_bytes(),
+                wgpu::BufferUsages::UNIFORM,
+            );
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Apply Gates"),
                 layout: &gpu.apply_gates_bind_group_layout,
