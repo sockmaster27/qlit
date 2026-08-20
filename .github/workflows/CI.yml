@@ -98,9 +98,9 @@ jobs:
                           # Fixing is out of scope.
                           pytest -m "not gpu"
                       elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
-                          # QEMU's s390x emulation is far slower than the other
-                          # architectures tested here, so we skip the heaviest tests.
-                          pytest -m "not gpu"
+                          # The GPU backend hangs under QEMU's s390x emulation.
+                          # Try forcing the GL backend instead of Vulkan.
+                          WGPU_BACKEND=gl pytest
                       else
                           pytest
                       fi
