@@ -25,7 +25,7 @@ jobs:
             - name: Run Python benchmarks
               run: |
                   bencher run \
-                  --project qlit \
+                  --project qlit-b20d40e-1lqksbyck7340 \
                   --key '${{ secrets.BENCHER_API_KEY }}' \
                   --branch main \
                   --testbed ubuntu-latest \
