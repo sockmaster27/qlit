@@ -1,6 +1,6 @@
 use criterion::Criterion;
 use qlit::{CliffordTCircuit, initialize_global};
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::{hint::black_box, time::Duration};
 
 fn setup(qubits: u32, gates: usize, t_gates: usize) -> (Vec<bool>, CliffordTCircuit) {
