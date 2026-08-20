@@ -99,8 +99,8 @@ jobs:
                           pytest -m "not gpu"
                       elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
                           # The GPU backend hangs under QEMU's s390x emulation.
-                          # Try forcing the GL backend instead of Vulkan.
-                          WGPU_BACKEND=gl pytest
+                          # Try forcing the Vulkan backend.
+                          WGPU_BACKEND=vulkan pytest
                       else
                           pytest
                       fi
