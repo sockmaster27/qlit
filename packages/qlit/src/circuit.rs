@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use rand::{Rng, SeedableRng, rngs::SmallRng, seq::IndexedRandom};
+use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliffordTGate {
@@ -85,7 +85,10 @@ impl CliffordTCircuit {
             "t_gates must be less than or equal to gates"
         );
 
-        let mut rng = SmallRng::seed_from_u64(seed);
+        // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
+        // seed always produces the same circuit regardless of pointer width.
+        // Useful for CI testing and benchmarking.
+        let mut rng = Xoshiro128PlusPlus::seed_from_u64(seed);
 
         let mut t_gate_positions = Vec::new();
         for _ in 0..t_gates {
