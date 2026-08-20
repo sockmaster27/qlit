@@ -100,6 +100,11 @@ jobs:
                           # Skip the GPU/Hybrid-backed tests on this leg only.
                           echo "Skipping GPU/Hybrid tests on linux armv7"
                           pytest -k "not Gpu and not Hybrid and not test_against_statevector and not test_implementations_against_eachother"
+                      elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
+                          # QEMU's s390x emulation is far slower than the other
+                          # architectures tested here, so wee skip the heaviest tests.
+                          echo "Skipping heavy tests on linux s390x"
+                          pytest -k "not test_against_statevector and not test_implementations_against_eachother"
                       else
                           pytest
                       fi
