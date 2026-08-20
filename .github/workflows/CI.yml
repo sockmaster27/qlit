@@ -213,8 +213,8 @@ jobs:
                   # The 32-bit Vulkan driver crashes under WOW64 on this runner;
                   # fall back to the GL backend on that leg specifically.
                   if [ "${{ matrix.platform.target }}" = "x86" ]; then
-                      export WGPU_BACKEND=gl
-                      echo "Forcing WGPU_BACKEND=gl for windows x86"
+                      export WGPU_BACKEND=dx12
+                      echo "Forcing WGPU_BACKEND=dx12 for windows x86"
                   fi
                   uv venv .venv
                   source .venv/Scripts/activate
