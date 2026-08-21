@@ -20,6 +20,9 @@ module-name = "qlit._core"
 python-packages = ["qlit"]
 python-source = "src"
 
+[tool.maturin.generate-ci.github]
+pytest = true
+
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
