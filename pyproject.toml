@@ -1,5 +1,8 @@
 [tool.uv.workspace]
 members = ["packages/python"]
 
+[tool.pytest.ini_options]
+markers = ["gpu: exercises the GPU or Hybrid simulation backend"]
+
 [dependency-groups]
 dev = ["pytest>=8.4.2", "pytest-benchmark>=5.2.3"]
