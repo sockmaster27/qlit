@@ -1,6 +1,6 @@
 [package]
 name = "qlit"
-version = "0.1.0"
+version = "0.2.0"
 license = "MPL-2.0"
 description = "Strong exact simulation of Clifford+T quantum circuits"
 edition = "2024"
