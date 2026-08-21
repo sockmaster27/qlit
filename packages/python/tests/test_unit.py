@@ -1,6 +1,6 @@
-import pytest
 from math import sqrt
 
+import pytest
 from qlit import (
     CliffordTCircuit,
     CliffordTGate,
@@ -217,6 +217,7 @@ class TestCpu:
             assert result == pytest.approx(expected, abs=DELTA)
 
 
+@pytest.mark.gpu
 class TestGpu:
     def test_mismatched_qubit_number(self):
         circuit = CliffordTCircuit(8, [])
@@ -392,6 +393,7 @@ class TestGpu:
             assert result == pytest.approx(expected, abs=DELTA)
 
 
+@pytest.mark.gpu
 class TestHybrid:
     def test_mismatched_qubit_number(self):
         circuit = CliffordTCircuit(8, [])
