@@ -21,7 +21,7 @@ def setup(
     t_gates, 
     w_samples,
     seed,
-) -> tuple[CliffordTCircuit, QuantumCircuit, list[str]]:
+) -> tuple[QuantumCircuit, list[str]]:
     circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
     random.seed(seed)
 
@@ -55,7 +55,7 @@ def setup(
             case _:
                 raise ValueError(f"Unknown gate: {gate}")
 
-    return circuit, qiskit_circuit, ws
+    return qiskit_circuit, ws
 
 
 def generate_fixtures():
@@ -69,7 +69,7 @@ def generate_fixtures():
         t_gates = 5
         gates = 100
         seed = 1234 + i
-        circuit, qiskit_circuit, ws = setup(qubits, gates, t_gates, w_samples, seed)
+        qiskit_circuit, ws = setup(qubits, gates, t_gates, w_samples, seed)
         
         state = Statevector.from_instruction(qiskit_circuit)
         w_data = []
