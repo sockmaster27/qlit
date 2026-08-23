@@ -468,7 +468,7 @@ impl<'a> GpuSimulator<'a> {
             .expect("Number of T gates exceeds maximum supported by GPU simulator");
         debug_assert!(
             batch_size_log2 < 32,
-            "batch_size_log2 must be less strictly less than 32 to avoid overflow in max_batches"
+            "batch_size_log2 must be strictly less than 32 to avoid overflow in max_batches"
         );
         let max_batches: u32 = 1 << batch_size_log2;
         let max_batches_u64: u64 = max_batches.into();

@@ -13,7 +13,7 @@ pub use simulate::simulate_circuit_gpu;
 #[cfg(feature = "gpu")]
 pub use simulate::simulate_circuit_hybrid;
 
-/// Initialization all global resources.
+/// Initialize all global resources.
 ///
 /// This will happen automatically the first time it's needed,
 /// but this can be called to pre-empt that work at a more appropriate time.

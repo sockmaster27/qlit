@@ -29,7 +29,7 @@ pub struct ExtendedTableau {
     /// ...
     /// Pn -> x1 x2 ... xn | z1 z2 ... zn | r1 r2 ... r2^t
     /// ```
-    /// is layed out column-wise in the following way:
+    /// is laid out column-wise in the following way:
     /// ```text
     /// P1 -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t
     /// P2 -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t
@@ -200,7 +200,7 @@ impl ExtendedTableau {
     /// ```
     ///
     /// This function takes an iterator over basis states `w1s` with length `r_cols`,
-    /// and returns a slice of of the coeff. ratios between each `w1s[i]` and `w2`,
+    /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the sign of the `i`th r-column.
     pub fn coeff_ratios<'a>(
         &mut self,
@@ -519,7 +519,7 @@ impl ExtendedTableau {
         self.tableau[r_column_block_index(n, row_block_index, i)] & row_bitmask != 0
     }
 
-    /// Get the Pauli matrix corresponding to the `q`th tensor element in the `p`th row,
+    /// Get the Pauli matrix corresponding to the `q`th tensor element in the `row`th row.
     fn tensor_element(&self, row: usize, q: usize) -> Pauli {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
