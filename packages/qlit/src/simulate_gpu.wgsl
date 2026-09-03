@@ -677,11 +677,11 @@ fn column_block_index(batch_index: u32, i: u32, j: u32) -> u32 {
 }
 // Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
 fn x_column_block_index(batch_index: u32, i: u32, q: u32) -> u32 {
-    return column_block_index(batch_index, i, 2 * q);
+    return column_block_index(batch_index, i, q);
 }
 // Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
 fn z_column_block_index(batch_index: u32, i: u32, q: u32) -> u32 {
-    return column_block_index(batch_index, i, 2 * q + 1);
+    return column_block_index(batch_index, i, n + q);
 }
 // Get the index of the i'th block of the r column.
 fn r_column_block_index(batch_index: u32, i: u32) -> u32 {
@@ -707,11 +707,11 @@ fn bit(batch_index: u32, row: u32, j: u32) -> bool {
 }
 // Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
 fn x_bit(batch_index: u32, row: u32, q: u32) -> bool {
-    return bit(batch_index, row, 2 * q);
+    return bit(batch_index, row, q);
 }
 // Get the value of the z bit corresponding to the `q`th tensor element in the `row`th row.
 fn z_bit(batch_index: u32, row: u32, q: u32) -> bool {
-    return bit(batch_index, row, 2 * q + 1);
+    return bit(batch_index, row, n + q);
 }
 
 fn i(batch_index: u32, row: u32, q: u32) -> bool {
