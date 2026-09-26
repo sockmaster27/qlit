@@ -9,7 +9,7 @@ jobs:
         name: Benchmark baseline
         permissions:
             checks: write
-        runs-on: self-hosted
+        runs-on: lille
         container:
             image: localhost:5000/qlit-bench-runner
         steps:
@@ -18,23 +18,11 @@ jobs:
             - uses: moonrepo/setup-rust@v1
               with:
                   cache-target: release
-            - uses: astral-sh/setup-uv@v7
-              with:
-                  enable-cache: true
-            - run: uv sync --locked
-            - name: Run Python benchmarks
+            - name: Run benchmarks
               run: |
                   bencher run \
                   --project qlit-b20d40e-1lqksbyck7340 \
-                  --key '${{ secrets.BENCHER_API_KEY }}' \
                   --branch main \
-                  --testbed ubuntu-latest \
-                  --threshold-measure latency \
-                  --threshold-test t_test \
-                  --threshold-max-sample-size 64 \
-                  --threshold-upper-boundary 0.99 \
-                  --thresholds-reset \
-                  --error-on-alert \
-                  --github-actions '${{ secrets.GITHUB_TOKEN }}' \
-                  --file results.json \
-                  "uv run pytest --benchmark-json results.json packages/python/benches/bench.py --benchmark-min-time 0.5"
+                  --start-point-reset \
+                  --testbed lille \
+                  "cargo bench"

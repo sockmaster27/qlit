@@ -12,7 +12,7 @@ jobs:
             pull-requests: write
         runs-on: ubuntu-latest
         env:
-            BENCHMARK_RESULTS: benchmark_results.json
+            BENCHMARK_RESULTS: benchmark_results.txt
             PR_EVENT: event.json
         steps:
             - name: Download benchmark results
@@ -48,7 +48,11 @@ jobs:
                   --start-point-hash "$PR_BASE_SHA" \
                   --start-point-clone-thresholds \
                   --start-point-reset \
-                  --testbed ubuntu-latest \
+                  --testbed lille \
+                  --threshold-measure latency \
+                  --threshold-test percentage \
+                  --threshold-upper-boundary 0.05 \
+                  --thresholds-reset \
                   --error-on-alert \
                   --github-actions '${{ secrets.GITHUB_TOKEN }}' \
                   --ci-number "$PR_NUMBER" \
