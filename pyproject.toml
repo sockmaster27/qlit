@@ -5,4 +5,4 @@ members = ["packages/python"]
 markers = ["gpu: exercises the GPU or Hybrid simulation backend"]
 
 [dependency-groups]
-dev = ["pytest>=8.4.2", "pytest-benchmark>=5.2.3"]
+dev = ["pytest>=8.4.2"]
