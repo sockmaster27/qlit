@@ -79,7 +79,7 @@ mod hybrid {
 fn main() {
     let mut c = Criterion::default()
         .sample_size(10)
-        .measurement_time(Duration::from_secs(10))
+        .measurement_time(Duration::from_secs(30))
         .configure_from_args();
 
     cpu::cpu_small(&mut c);
