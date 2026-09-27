@@ -37,7 +37,7 @@ jobs:
                     - runner: ubuntu-22.04
                       target: ppc64le
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-python@v6
               with:
                   python-version: "3.9"
@@ -120,7 +120,7 @@ jobs:
                     - runner: ubuntu-22.04
                       target: armv7
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-python@v6
               with:
                   python-version: "3.9"
@@ -197,7 +197,7 @@ jobs:
                       target: aarch64
                       python_arch: arm64
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-python@v6
               with:
                   python-version: "3.13"
@@ -252,7 +252,7 @@ jobs:
                     - runner: macos-latest
                       target: aarch64
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/setup-python@v6
               with:
                   python-version: "3.9"
@@ -291,7 +291,7 @@ jobs:
     cargo-test:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - run: sudo apt-get update && sudo apt-get install -y mesa-utils
             - name: Run cargo tests
               run: cargo test
@@ -299,7 +299,7 @@ jobs:
     sdist:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - name: Build sdist
               uses: PyO3/maturin-action@v1
               with:
@@ -337,7 +337,7 @@ jobs:
               run: uv publish 'wheels-*/*'
               env:
                   UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - name: Publish to crates.io
               if: ${{ startsWith(github.ref, 'refs/tags/') }}
               run: cargo publish
