@@ -1,3 +1,4 @@
+mod bitstring;
 mod circuit;
 mod simulate;
 #[cfg(feature = "gpu")]
