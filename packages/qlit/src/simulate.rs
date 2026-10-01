@@ -282,19 +282,18 @@ fn run_cpu(
             }
             CliffordTGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                let rs = g.coeff_ratios_flipped_bit(xs.iter().map(Vec::as_slice), a);
-                for i in 0..r_cols {
-                    let r = rs[i];
+                let rs = g.coeff_ratios_flipped_bit(xs.iter_mut().map(Vec::as_mut_slice), a);
+                for (i, (x, r)) in rs.enumerate() {
                     if r != -Complex::ONE {
                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
-                        xs[i][a] = false;
+                        x[a] = false;
                     } else {
-                        if xs[i][a] == false {
+                        if x[a] == false {
                             x_coeffs[i] *= 2.0 / SQRT_2;
                         } else {
                             x_coeffs[i] *= -2.0 / SQRT_2;
                         }
-                        xs[i][a] = true;
+                        x[a] = true;
                     }
                 }
                 g.apply_h_gate(a);
@@ -377,8 +376,8 @@ fn run_cpu(
 
     let mut w_coeff = Complex::ZERO;
     let rs = g.coeff_ratios(xs.iter().map(Vec::as_slice), w);
-    for i in 0..r_cols {
-        w_coeff += x_coeffs[i] * rs[i];
+    for (i, r) in rs.enumerate() {
+        w_coeff += x_coeffs[i] * r;
     }
     w_coeff
 }

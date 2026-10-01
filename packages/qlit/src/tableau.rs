@@ -43,9 +43,6 @@ pub struct ExtendedTableau {
     /// This auxiliary row is assumed to be kept zeroed.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
-    /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
-    /// Must have length of at least 2^`c_cols` at all times.
-    output: Vec<Complex<f64>>,
 }
 impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
@@ -61,7 +58,6 @@ impl ExtendedTableau {
             c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
-            output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
 
@@ -171,10 +167,10 @@ impl ExtendedTableau {
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
     pub fn coeff_ratios<'a>(
-        &mut self,
+        &'a mut self,
         w1s: impl 'a + IntoIterator<Item = &'a [bool]>,
-        w2: &[bool],
-    ) -> &[Complex<f64>] {
+        w2: &'a [bool],
+    ) -> impl 'a + Iterator<Item = Complex<f64>> {
         let n = self.n;
         let c_cols = self.c_cols;
         debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
@@ -188,14 +184,12 @@ impl ExtendedTableau {
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
-        let mut size = 0;
-        for (i, w1) in w1s.into_iter().enumerate() {
+        w1s.into_iter().enumerate().map(move |(i, w1)| {
             debug_assert!(
                 i < current_tableaus,
                 "Received more queries than contained tableaus, {i} >= {current_tableaus}"
             );
             debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
-            size += 1;
 
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             for row in 0..n {
@@ -207,21 +201,22 @@ impl ExtendedTableau {
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1, w2);
+            let out = self.stabilizer_matrix_entry(i, aux_row, w1, w2);
 
             // Reset the auxiliary row.
             for r in 0..(n + n + 1 + c_cols) {
                 self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
             }
-        }
-        &self.output[..size]
+
+            out
+        })
     }
     /// Same as [`Self::coeff_ratios`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
     pub fn coeff_ratios_flipped_bit<'a>(
-        &mut self,
-        w1s: impl 'a + IntoIterator<Item = &'a [bool]>,
+        &'a mut self,
+        w1s: impl 'a + IntoIterator<Item = &'a mut [bool]>,
         flipped_bit: usize,
-    ) -> &[Complex<f64>] {
+    ) -> impl 'a + Iterator<Item = (&'a mut [bool], Complex<f64>)> {
         let n = self.n;
 
         // Bring tableau's x part into reduced row echelon form.
@@ -236,29 +231,23 @@ impl ExtendedTableau {
             }
         }
 
-        let mut size = 0;
-        match row {
-            None => {
-                for (i, _) in w1s.into_iter().enumerate() {
-                    size += 1;
-                    self.output[i] = Complex::ZERO;
-                }
-            }
-            Some(row) => {
-                for (i, w1) in w1s.into_iter().enumerate() {
-                    debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
-                    size += 1;
+        w1s.into_iter().enumerate().map(move |(i, w1)| {
+            debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
 
+            match row {
+                None => (w1, Complex::ZERO),
+                Some(row) => {
                     // Compute the (w2, w1) entry in the stabilizer of the correct form.
-                    let w2 = w1
+                    let w2: &[bool] = w1;
+                    let w3 = w2
                         .iter()
                         .enumerate()
                         .map(|(i, &b)| if i == flipped_bit { !b } else { b });
-                    self.output[i] = self.stabilizer_matrix_entry(i, row, w1, w2);
+                    let r = self.stabilizer_matrix_entry(i, row, w2, w3);
+                    (w1, r)
                 }
             }
-        }
-        &self.output[..size]
+        })
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
@@ -685,14 +674,14 @@ mod tests {
             let w2 = bits_to_bools(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if i == 0b0000_0000 {
                 Complex::ONE
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -705,7 +694,7 @@ mod tests {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if i == 0b0000_0000 {
                 Complex::ONE
@@ -714,7 +703,7 @@ mod tests {
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -727,7 +716,7 @@ mod tests {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if i == 0b0000_0000 {
                 -Complex::I
@@ -736,7 +725,7 @@ mod tests {
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -751,14 +740,14 @@ mod tests {
             g.apply_s_gate(0);
             g.apply_s_gate(0);
             g.apply_h_gate(0);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if i == 0b1000_0000 {
                 Complex::ONE
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -771,14 +760,14 @@ mod tests {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_cnot_gate(0, 1);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
                 Complex::ONE
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -809,7 +798,7 @@ mod tests {
             g.apply_cnot_gate(3, 2);
             g.apply_h_gate(1);
             g.apply_cnot_gate(3, 1);
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if [
                 0b0000_0000,
@@ -827,13 +816,13 @@ mod tests {
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn bitflip_ratio() {
-        let w1 = bits_to_bools(0b1000_0000);
+        let mut w1 = bits_to_bools(0b1000_0000);
         let mut g = ExtendedTableau::zero(8, 0);
         g.apply_h_gate(0);
         g.apply_h_gate(1);
@@ -856,18 +845,21 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        assert_eq!(
-            g.coeff_ratios_flipped_bit([w1.as_slice()], 0),
-            &[-Complex::ONE]
-        );
-        assert_eq!(
-            g.coeff_ratios_flipped_bit([w1.as_slice()], 1),
-            &[-Complex::ONE]
-        );
-        assert_eq!(
-            g.coeff_ratios_flipped_bit([w1.as_slice()], 2),
-            &[Complex::ZERO]
-        );
+        let (_, result) = g
+            .coeff_ratios_flipped_bit([w1.as_mut_slice()], 0)
+            .next()
+            .unwrap();
+        assert_eq!(result, -Complex::ONE);
+        let (_, result) = g
+            .coeff_ratios_flipped_bit([w1.as_mut_slice()], 1)
+            .next()
+            .unwrap();
+        assert_eq!(result, -Complex::ONE);
+        let (_, result) = g
+            .coeff_ratios_flipped_bit([w1.as_mut_slice()], 2)
+            .next()
+            .unwrap();
+        assert_eq!(result, Complex::ZERO);
     }
 
     #[test]
@@ -898,7 +890,7 @@ mod tests {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
-            let result = g.coeff_ratios([w1.as_slice()], &w2);
+            let result = g.coeff_ratios([w1.as_slice()], &w2).next().unwrap();
 
             let expected = if [
                 0b0000_0000,
@@ -916,7 +908,7 @@ mod tests {
             } else {
                 Complex::ZERO
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
