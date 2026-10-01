@@ -330,7 +330,7 @@ fn run_cpu(
                         }
                         x_coeffs[index_z] *= C_Z;
                     }
-                    g.split_r_columns(a);
+                    g.fork_apply_z_gate(a);
                     r_cols *= 2;
                 }
 
@@ -366,7 +366,7 @@ fn run_cpu(
                         }
                         x_coeffs[index_z] *= C_Z_DG;
                     }
-                    g.split_r_columns(a);
+                    g.fork_apply_z_gate(a);
                     r_cols *= 2;
                 }
 
