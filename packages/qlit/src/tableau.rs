@@ -16,182 +16,150 @@ enum Pauli {
 }
 
 /// An extended stabilizer tableau.
+///
+/// Able to represent a sequence of stabilizer states, differing by single-qubit Pauli rotations.
 #[derive(Clone)]
 pub struct ExtendedTableau {
     /// The number of qubits in the tableau.
     n: usize,
-    /// The current number of active r-columns in the tableau.
-    r_cols: usize,
+    /// The current number of active c-columns in the tableau.
+    c_cols: usize,
     /// The augmented stabilizer tableau,
     /// ```text
-    /// P1 -> x1 x2 ... xn | z1 z2 ... zn | r1 r2 ... r2^t
-    /// P2 -> x1 x2 ... xn | z1 z2 ... zn | r1 r2 ... r2^t
+    /// P1 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
+    /// P2 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
     /// ...
-    /// Pn -> x1 x2 ... xn | z1 z2 ... zn | r1 r2 ... r2^t
+    /// Pn -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
     /// ```
     /// is laid out column-wise in the following way:
     /// ```text
-    /// P1 -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t
-    /// P2 -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t
+    /// P1 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+    /// P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
     /// ...
-    /// Pn -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t
-    /// (E -> x1 z1 x2 z2 ... xn zn | r1 r2 ... r2^t)
+    /// Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+    /// (E -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct)
     /// ```
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     /// This auxiliary row is assumed to be kept zeroed.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
-    /// Must have length of at least `r_cols` at all times.
+    /// Must have length of at least 2^`c_cols` at all times.
     output: Vec<Complex<f64>>,
 }
 impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
-    /// This allocates a tableau with capacity for `2^r_cols_log2` r-columns.
-    pub fn zero(n: usize, r_cols_log2: usize) -> Self {
-        let r_cols_capacity = 1 << r_cols_log2;
-        let mut tableau = vec![0; tableau_block_length(n, r_cols_capacity)];
+    /// This allocates an extended tableau with capacity for representing a total of 2^`capacity_log2` states.
+    pub fn zero(n: usize, capacity_log2: usize) -> Self {
+        let mut tableau = vec![0; tableau_block_length(n, capacity_log2)];
         for i in 0..n {
             let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
         }
         ExtendedTableau {
             n,
-            r_cols: 1,
+            c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
-            output: vec![Complex::ZERO; r_cols_capacity],
+            output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
 
     pub fn apply_s_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
             let z = z_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
             self.tableau[z] ^= self.tableau[x];
         }
     }
     pub fn apply_sdg_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
             let z = z_column_block_index(n, i, a);
+            let r = r_column_block_index(n, i);
             self.tableau[z] ^= self.tableau[x];
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
-            }
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
         }
     }
     pub fn apply_h_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
             let z = z_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] & self.tableau[z];
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^= self.tableau[x] & self.tableau[z];
             self.tableau.swap(z, x);
         }
     }
     pub fn apply_cnot_gate(&mut self, a: usize, b: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let xa = x_column_block_index(n, i, a);
             let za = z_column_block_index(n, i, a);
             let xb = x_column_block_index(n, i, b);
             let zb = z_column_block_index(n, i, b);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^=
-                    self.tableau[xa] & self.tableau[zb] & !(self.tableau[xb] ^ self.tableau[za]);
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^=
+                self.tableau[xa] & self.tableau[zb] & !(self.tableau[xb] ^ self.tableau[za]);
             self.tableau[za] ^= self.tableau[zb];
             self.tableau[xb] ^= self.tableau[xa];
         }
     }
     pub fn apply_cz_gate(&mut self, a: usize, b: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let xa = x_column_block_index(n, i, a);
             let za = z_column_block_index(n, i, a);
             let xb = x_column_block_index(n, i, b);
             let zb = z_column_block_index(n, i, b);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                // TODO: Simplify expression?
-                self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
-                    ^ (self.tableau[xa]
-                        & self.tableau[xb]
-                        & !(self.tableau[zb] ^ self.tableau[za]))
-                    ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
-            }
+            let r = r_column_block_index(n, i);
+            // TODO: Simplify expression?
+            self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
+                ^ (self.tableau[xa] & self.tableau[xb] & !(self.tableau[zb] ^ self.tableau[za]))
+                ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
             self.tableau[za] ^= self.tableau[xb];
             self.tableau[zb] ^= self.tableau[xa];
         }
     }
     pub fn apply_x_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let z = z_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[z];
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^= self.tableau[z];
         }
     }
     pub fn apply_y_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
             let z = z_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x] ^ self.tableau[z];
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^= self.tableau[x] ^ self.tableau[z];
         }
     }
     pub fn apply_z_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
         for i in 0..column_block_length(n) {
             let x = x_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r = r_column_block_index(n, i, j);
-                self.tableau[r] ^= self.tableau[x];
-            }
+            let r = r_column_block_index(n, i);
+            self.tableau[r] ^= self.tableau[x];
         }
     }
 
-    /// Double the number of r-columns in the tableau to represent the current state of the tableau both with and without the Z(a) gate applied.
-    ///
-    /// The first half of the resulting r-columns will be unchanged,
-    /// while the second half will be those where the Z(a) gate is applied.
-    pub fn split_r_columns(&mut self, a: usize) {
+    /// Fork the extended tableau such that it represents the current sequence of states,
+    /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state.
+    pub fn fork_apply_z_gate(&mut self, a: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
-        for i in 0..column_block_length(n) {
-            let x = x_column_block_index(n, i, a);
-            for j in 0..r_cols {
-                let r1 = r_column_block_index(n, i, j);
-                let r2 = r_column_block_index(n, i, j + r_cols);
-                self.tableau[r2] = self.tableau[r1] ^ self.tableau[x];
-            }
-        }
-        self.r_cols *= 2;
+        let c_cols = self.c_cols;
+        let x = x_column_block_index(n, 0, a);
+        let c = c_column_block_index(n, 0, c_cols);
+        self.tableau.copy_within(x..(x + column_block_length(n)), c);
+        self.c_cols += 1;
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that
@@ -199,17 +167,18 @@ impl ExtendedTableau {
     /// coeff_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
     ///
-    /// This function takes an iterator over basis states `w1s` with length `r_cols`,
+    /// This function takes an iterator over basis states `w1s` with length `c_cols`,
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
-    /// each respecting the sign of the `i`th r-column.
+    /// each respecting the state of the i'th state in the sequence.
     pub fn coeff_ratios<'a>(
         &mut self,
         w1s: impl 'a + IntoIterator<Item = &'a [bool]>,
         w2: &[bool],
     ) -> &[Complex<f64>] {
         let n = self.n;
-        let r_cols = self.r_cols;
+        let c_cols = self.c_cols;
         debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
+        let current_tableaus = 1 << c_cols;
 
         let aux_row = n;
         let aux_block_index = aux_row / BLOCK_SIZE;
@@ -219,10 +188,14 @@ impl ExtendedTableau {
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
-        let mut w1s = w1s.into_iter();
-        for i in 0..r_cols {
-            let w1 = w1s.next().expect("w1s must have length equal to r_cols");
+        let mut size = 0;
+        for (i, w1) in w1s.into_iter().enumerate() {
+            debug_assert!(
+                i < current_tableaus,
+                "Received more queries than contained tableaus, {i} >= {current_tableaus}"
+            );
             debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
+            size += 1;
 
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             for row in 0..n {
@@ -237,11 +210,11 @@ impl ExtendedTableau {
             self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1, w2);
 
             // Reset the auxiliary row.
-            for r in 0..(n + n + r_cols) {
+            for r in 0..(n + n + 1 + c_cols) {
                 self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
             }
         }
-        &self.output[..r_cols]
+        &self.output[..size]
     }
     /// Same as [`Self::coeff_ratios`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
     pub fn coeff_ratios_flipped_bit<'a>(
@@ -250,7 +223,6 @@ impl ExtendedTableau {
         flipped_bit: usize,
     ) -> &[Complex<f64>] {
         let n = self.n;
-        let r_cols = self.r_cols;
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
@@ -264,17 +236,18 @@ impl ExtendedTableau {
             }
         }
 
+        let mut size = 0;
         match row {
             None => {
-                for i in 0..r_cols {
+                for (i, _) in w1s.into_iter().enumerate() {
+                    size += 1;
                     self.output[i] = Complex::ZERO;
                 }
             }
             Some(row) => {
-                let mut w1s = w1s.into_iter();
-                for i in 0..r_cols {
-                    let w1 = w1s.next().expect("w1s must have length equal to r_cols");
+                for (i, w1) in w1s.into_iter().enumerate() {
                     debug_assert_eq!(w1.len(), n, "Basis state must have length {n}");
+                    size += 1;
 
                     // Compute the (w2, w1) entry in the stabilizer of the correct form.
                     let w2 = w1
@@ -285,7 +258,7 @@ impl ExtendedTableau {
                 }
             }
         }
-        &self.output[..r_cols]
+        &self.output[..size]
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
@@ -293,7 +266,7 @@ impl ExtendedTableau {
     /// This should take O(n^2) time, plus an additional O(n^2) time for each gate that has been applied since the last call to this function.
     fn bring_into_rref(&mut self) {
         let n = self.n;
-        let r_cols = self.r_cols;
+        let c_cols = self.c_cols;
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
         let mut pivot_mask: Vec<BitBlock> = vec![!0; column_block_length(n)];
@@ -381,12 +354,10 @@ impl ExtendedTableau {
                     debug_assert!(phase_bit1 == 0, "Imaginary sign");
                     // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
                     // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
-                    for j in 0..r_cols {
-                        self.tableau[r_column_block_index(n, i, j)] ^= phase_bit2 & mask;
-                    }
+                    self.tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
 
                     // XOR
-                    for j in 0..(n + n + r_cols) {
+                    for j in 0..(n + n + 1 + c_cols) {
                         if self.bit(pivot, j) == true {
                             self.tableau[column_block_index(n, i, j)] ^= mask;
                         }
@@ -407,9 +378,9 @@ impl ExtendedTableau {
         }
     }
 
-    /// Compute the entry of the `row`th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
+    /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
-    /// This will respect the sign of the `i`th column.
+    /// This will respect the state of the i'th tableau in the sequence.
     fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
@@ -454,7 +425,7 @@ impl ExtendedTableau {
     /// NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
     fn multiply_rows_into(&mut self, source: usize, target: usize) {
         let n = self.n;
-        let r_cols = self.r_cols;
+        let c_cols = self.c_cols;
 
         let source_block_index = source / BLOCK_SIZE;
         let target_block_index = target / BLOCK_SIZE;
@@ -489,15 +460,13 @@ impl ExtendedTableau {
             }
             2 => {
                 // Negate the sign bit.
-                for j in 0..r_cols {
-                    self.tableau[r_column_block_index(n, target_block_index, j)] ^= target_bitmask;
-                }
+                self.tableau[r_column_block_index(n, target_block_index)] ^= target_bitmask;
             }
             _ => unreachable!("No valid stabilizer can have imaginary phase: {phase}"),
         };
 
         // XOR
-        for j in 0..(n + n + r_cols) {
+        for j in 0..(n + n + 1 + c_cols) {
             let source_block = column_block_index(n, source_block_index, j);
             let target_block = column_block_index(n, target_block_index, j);
             self.tableau[target_block] ^= align_bit_to(
@@ -510,16 +479,25 @@ impl ExtendedTableau {
 
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
-    /// This will respect the sign of the `i`th column.
-    fn row_negative(&self, i: usize, row: usize) -> bool {
+    /// This will respect the sign of the i'th state.
+    fn row_negative(&self, mut i: usize, row: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask = bitmask(row_bit_index);
-        self.tableau[r_column_block_index(n, row_block_index, i)] & row_bitmask != 0
+        let mut r = self.tableau[r_column_block_index(n, row_block_index)];
+        let mut j = 0;
+        while i != 0 {
+            if i % 2 != 0 {
+                r ^= self.tableau[c_column_block_index(n, row_block_index, j)];
+            }
+            i /= 2;
+            j += 1;
+        }
+        r & row_bitmask != 0
     }
 
-    /// Get the Pauli matrix corresponding to the `q`th tensor element in the `row`th row.
+    /// Get the Pauli matrix corresponding to the q'th tensor element in the `row`'th row.
     fn tensor_element(&self, row: usize, q: usize) -> Pauli {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -537,7 +515,7 @@ impl ExtendedTableau {
         }
     }
 
-    /// Get the value of the bit corresponding to the `j`th column in the `row`th row.
+    /// Get the value of the bit corresponding to the j'th column in the `row`'th row.
     fn bit(&self, row: usize, j: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -545,24 +523,29 @@ impl ExtendedTableau {
         let row_bitmask = bitmask(row_bit_index);
         self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
     }
-    /// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
+    /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
     fn x_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q)
     }
-    /// Get the value of the z bit corresponding to the `q`th tensor element in the `row`th row.
+    /// Get the value of the z bit corresponding to the q'th tensor element in the `row`'th row.
     fn z_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q + 1)
     }
-    /// Get the value of the r bit corresponding to the `j`th column in the `row`th row.
-    fn r_bit(&self, row: usize, j: usize) -> bool {
+    /// Get the value of the r bit corresponding to the `row`'th row.
+    fn r_bit(&self, row: usize) -> bool {
         let n = self.n;
-        self.bit(row, 2 * n + j)
+        self.bit(row, n + n)
+    }
+    /// Get the value of the c bit corresponding to the j'th column in the `row`'th row.
+    fn c_bit(&self, row: usize, j: usize) -> bool {
+        let n = self.n;
+        self.bit(row, n + n + 1 + j)
     }
 }
 impl Debug for ExtendedTableau {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
-        let r_cols = self.r_cols;
+        let c_cols = self.c_cols;
         for row in 0..n {
             write!(
                 f,
@@ -577,8 +560,10 @@ impl Debug for ExtendedTableau {
                 write!(f, "{} ", if self.z_bit(row, q) { "1" } else { "0" })?;
             }
             write!(f, "| ")?;
-            for j in 0..r_cols {
-                write!(f, "{} ", if self.r_bit(row, j) { "1" } else { "0" })?;
+            write!(f, "{} ", if self.r_bit(row) { "1" } else { "0" })?;
+            write!(f, "| ")?;
+            for j in 0..c_cols {
+                write!(f, "{} ", if self.c_bit(row, j) { "1" } else { "0" })?;
             }
         }
         Ok(())
@@ -660,8 +645,12 @@ fn z_column_block_index(n: usize, i: usize, q: usize) -> usize {
     column_block_index(n, i, 2 * q + 1)
 }
 /// Get the index of the i'th block of the r column.
-fn r_column_block_index(n: usize, i: usize, j: usize) -> usize {
-    column_block_index(n, i, 2 * n + j)
+fn r_column_block_index(n: usize, i: usize) -> usize {
+    column_block_index(n, i, n + n)
+}
+/// Get the index of the i'th block of the j'th c column.
+fn c_column_block_index(n: usize, i: usize, j: usize) -> usize {
+    column_block_index(n, i, n + n + 1 + j)
 }
 
 /// Get the block-length of the columns in the tableau.
@@ -670,8 +659,8 @@ fn column_block_length(n: usize) -> usize {
     (n + 1).div_ceil(BLOCK_SIZE)
 }
 /// Get the block-length of the tableau.
-fn tableau_block_length(n: usize, r_cols: usize) -> usize {
-    column_block_length(n) * (n + n + r_cols)
+fn tableau_block_length(n: usize, c_cols: usize) -> usize {
+    column_block_length(n) * (n + n + 1 + c_cols)
 }
 
 /// Bit-shift the given block such that the `from`th bit is moved to the `to`th position.
