@@ -11,7 +11,7 @@ pub struct BitString {
 }
 impl BitString {
     pub fn zero(length: usize) -> Self {
-        let block_length = length / BLOCK_SIZE;
+        let block_length = length.div_ceil(BLOCK_SIZE);
         Self {
             length,
             inner: vec![0; block_length],
@@ -29,7 +29,11 @@ impl BitString {
     }
 
     fn index(&self, i: usize) -> (usize, usize) {
-        debug_assert!(i < self.length, "Index out of bounds");
+        let len = self.length;
+        debug_assert!(
+            i < len,
+            "index out of bounds: the len is {len} but the index is {i}"
+        );
         let block_index = i / BLOCK_SIZE;
         let bit_index = i % BLOCK_SIZE;
         (block_index, bit_index)
