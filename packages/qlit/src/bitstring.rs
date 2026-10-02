@@ -26,6 +26,7 @@ impl BitStringArray {
         }
     }
 
+    #[inline]
     fn index(&self, i: usize, j: usize) -> (usize, usize) {
         debug_assert!(j < self.string_length);
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
@@ -34,24 +35,29 @@ impl BitStringArray {
         (block_index, bit_index)
     }
 
+    #[inline]
     pub fn get(&self, i: usize, j: usize) -> bool {
         let (block_index, bit_index) = self.index(i, j);
         let bit_mask: BitBlock = bitmask(bit_index);
         (self.inner[block_index] & bit_mask) != 0
     }
+    #[inline]
     pub fn set(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
         self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
     }
+    #[inline]
     pub fn unset(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
         self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
     }
+    #[inline]
     pub fn flip(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
         let bit_mask: BitBlock = bitmask(bit_index);
         self.inner[block_index] ^= bit_mask;
     }
+    #[inline]
     pub fn copy_within(&mut self, src: usize, dst: usize) {
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
         let src_start = src * string_block_length;
@@ -60,6 +66,7 @@ impl BitStringArray {
             .copy_within(src_start..src_start + string_block_length, dst_start);
     }
 
+    #[inline]
     pub fn iter_string<'a>(&'a self, i: usize) -> impl Iterator<Item = bool> + 'a {
         BitStringArrayIter {
             array: self,
@@ -77,6 +84,7 @@ pub struct BitStringArrayIter<'a> {
 impl<'a> Iterator for BitStringArrayIter<'a> {
     type Item = bool;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.j >= self.array.string_length {
             return None;

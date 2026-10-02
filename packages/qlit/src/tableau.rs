@@ -69,6 +69,7 @@ impl ExtendedTableau {
     }
 
     /// Return the number of states currently represented by the tableau.
+    #[inline]
     pub fn contained_states(&self) -> usize {
         1 << self.c_cols
     }
@@ -510,6 +511,7 @@ impl ExtendedTableau {
     }
 
     /// Get the value of the bit corresponding to the j'th column in the `row`'th row.
+    #[inline]
     fn bit(&self, row: usize, j: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -518,19 +520,23 @@ impl ExtendedTableau {
         self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
+    #[inline]
     fn x_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q)
     }
     /// Get the value of the z bit corresponding to the q'th tensor element in the `row`'th row.
+    #[inline]
     fn z_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q + 1)
     }
     /// Get the value of the r bit corresponding to the `row`'th row.
+    #[inline]
     fn r_bit(&self, row: usize) -> bool {
         let n = self.n;
         self.bit(row, n + n)
     }
     /// Get the value of the c bit corresponding to the j'th column in the `row`'th row.
+    #[inline]
     fn c_bit(&self, row: usize, j: usize) -> bool {
         let n = self.n;
         self.bit(row, n + n + 1 + j)
@@ -565,35 +571,42 @@ impl Debug for ExtendedTableau {
 }
 
 /// Get the index of the i'th block of the `j`th column.
+#[inline]
 fn column_block_index(n: usize, i: usize, j: usize) -> usize {
     debug_assert!(i < column_block_length(n));
     j * column_block_length(n) + i
 }
 /// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
+#[inline]
 fn x_column_block_index(n: usize, i: usize, q: usize) -> usize {
     debug_assert!(q < n);
     column_block_index(n, i, 2 * q)
 }
 /// Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
+#[inline]
 fn z_column_block_index(n: usize, i: usize, q: usize) -> usize {
     debug_assert!(q < n);
     column_block_index(n, i, 2 * q + 1)
 }
 /// Get the index of the i'th block of the r column.
+#[inline]
 fn r_column_block_index(n: usize, i: usize) -> usize {
     column_block_index(n, i, n + n)
 }
 /// Get the index of the i'th block of the j'th c column.
+#[inline]
 fn c_column_block_index(n: usize, i: usize, j: usize) -> usize {
     column_block_index(n, i, n + n + 1 + j)
 }
 
 /// Get the block-length of the columns in the tableau.
+#[inline]
 fn column_block_length(n: usize) -> usize {
     // Make room for the auxiliary row.
     (n + 1).div_ceil(BLOCK_SIZE)
 }
 /// Get the block-length of the tableau.
+#[inline]
 fn tableau_block_length(n: usize, c_cols: usize) -> usize {
     column_block_length(n) * (n + n + 1 + c_cols)
 }
