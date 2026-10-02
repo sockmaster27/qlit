@@ -306,11 +306,7 @@ fn run_cpu(
             CliffordTGate::T(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
-                    if path[seen_t_gates] == false {
-                        for i in 0..g.contained_states() {
-                            x_coeffs[i] *= C_I;
-                        }
-                    } else {
+                    if path[seen_t_gates] {
                         for i in 0..g.contained_states() {
                             if xs.get(i, a) {
                                 x_coeffs[i] *= -Complex::ONE;
@@ -318,6 +314,10 @@ fn run_cpu(
                             x_coeffs[i] *= C_Z;
                         }
                         g.apply_z_gate(a);
+                    } else {
+                        for i in 0..g.contained_states() {
+                            x_coeffs[i] *= C_I;
+                        }
                     }
                 } else {
                     for i in 0..g.contained_states() {
@@ -341,11 +341,7 @@ fn run_cpu(
             CliffordTGate::Tdg(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
-                    if path[seen_t_gates] == false {
-                        for i in 0..g.contained_states() {
-                            x_coeffs[i] *= C_I_DG;
-                        }
-                    } else {
+                    if path[seen_t_gates] {
                         for i in 0..g.contained_states() {
                             if xs.get(i, a) {
                                 x_coeffs[i] *= -Complex::ONE;
@@ -353,6 +349,10 @@ fn run_cpu(
                             x_coeffs[i] *= C_Z_DG;
                         }
                         g.apply_z_gate(a);
+                    } else {
+                        for i in 0..g.contained_states() {
+                            x_coeffs[i] *= C_I_DG;
+                        }
                     }
                 } else {
                     for i in 0..g.contained_states() {
