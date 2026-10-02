@@ -10,15 +10,6 @@ pub trait BitBlock: PrimInt + ShlAssign<usize> + BitAndAssign {
 }
 impl<B: PrimInt + ShlAssign<usize> + BitAndAssign> BitBlock for B {}
 
-/// Convert the 8 bits to a vector of 8 booleans, e.g.
-/// ```text
-/// bits_to_bools(10010110) -> [true, false, false, true, false, true, true, false]
-/// ```
-#[cfg(test)]
-pub fn bits_to_bools(bits: u8) -> Vec<bool> {
-    (0..8).map(|b| bits & (0b1000_0000 >> b) != 0).collect()
-}
-
 /// Get an iterator over the indices of the set bits in the given block, e.g.
 /// ```text
 /// bit_indices(10000000) -> [0]

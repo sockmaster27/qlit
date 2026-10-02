@@ -7,6 +7,71 @@ type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
 #[derive(PartialEq, Eq)]
+pub struct BitString {
+    length: usize,
+    inner: Vec<BitBlock>,
+}
+impl BitString {
+    pub fn zero(length: usize) -> Self {
+        let block_length = length / BLOCK_SIZE;
+        Self {
+            length,
+            inner: vec![0; block_length],
+        }
+    }
+    pub fn from_u8_ltr(s: u8) -> Self {
+        Self {
+            length: 8,
+            inner: vec![s],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    fn index(&self, i: usize) -> (usize, usize) {
+        debug_assert!(i < self.length, "Index out of bounds");
+        let block_index = i / BLOCK_SIZE;
+        let bit_index = i % BLOCK_SIZE;
+        (block_index, bit_index)
+    }
+
+    pub fn get(&self, i: usize) -> bool {
+        let (block_index, bit_index) = self.index(i);
+        let bit_mask: BitBlock = bitmask(bit_index);
+        (self.inner[block_index] & bit_mask) != 0
+    }
+    pub fn set(&mut self, i: usize) {
+        let (block_index, bit_index) = self.index(i);
+        self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
+    }
+    pub fn unset(&mut self, i: usize) {
+        let (block_index, bit_index) = self.index(i);
+        self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = bool> {
+        BitStringIter {
+            length: self.length,
+            inner: &self.inner,
+            i: 0,
+        }
+    }
+}
+impl From<&[bool]> for BitString {
+    fn from(value: &[bool]) -> Self {
+        let mut r = Self::zero(value.len());
+        for (i, &b) in value.iter().enumerate() {
+            if b {
+                r.set(i);
+            }
+        }
+        r
+    }
+}
+
+#[derive(PartialEq, Eq)]
 pub struct BitStringArray {
     string_length: usize,
     inner: Vec<BitBlock>,
@@ -21,14 +86,14 @@ impl BitStringArray {
     }
 
     #[cfg(test)]
-    pub fn from_u8s(s: &[u8]) -> Self {
+    pub fn from_u8s_ltr(s: &[u8]) -> Self {
         Self {
             string_length: 8,
             inner: s.to_owned(),
         }
     }
     #[cfg(test)]
-    pub fn from_u16s(s: &[u16]) -> Self {
+    pub fn from_u16s_ltr(s: &[u16]) -> Self {
         Self {
             string_length: 16,
             inner: s.iter().map(|x| x.to_be_bytes()).flatten().collect(),
@@ -98,11 +163,13 @@ impl BitStringArray {
     }
 
     #[inline]
-    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
-        BitStringArrayIter {
-            array: self,
-            i,
-            j: 0,
+    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringIter<'a> {
+        let string_block_length = self.string_length / BLOCK_SIZE;
+        let start = i * string_block_length;
+        BitStringIter {
+            length: self.string_length,
+            inner: &self.inner[start..],
+            i: 0,
         }
     }
 }
@@ -119,21 +186,25 @@ impl Debug for BitStringArray {
 }
 
 #[derive(Clone)]
-pub struct BitStringArrayIter<'a> {
-    array: &'a BitStringArray,
+pub struct BitStringIter<'a> {
+    length: usize,
+    inner: &'a [BitBlock],
     i: usize,
-    j: usize,
 }
-impl<'a> Iterator for BitStringArrayIter<'a> {
+impl<'a> Iterator for BitStringIter<'a> {
     type Item = bool;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.j >= self.array.string_length {
+        let i = self.i;
+        if i >= self.length {
             return None;
         }
-        let r = self.array.get(self.i, self.j);
-        self.j += 1;
+        let block_index = i / BLOCK_SIZE;
+        let bit_index = i % BLOCK_SIZE;
+        let bit_mask: BitBlock = bitmask(bit_index);
+        let r = (self.inner[block_index] & bit_mask) != 0;
+        self.i += 1;
         Some(r)
     }
 }
@@ -144,7 +215,7 @@ mod tests {
 
     #[test]
     fn copy_within() {
-        let mut array = BitStringArray::from_u16s(&[
+        let mut array = BitStringArray::from_u16s_ltr(&[
             0b0000_0000_0000_0000,
             0b0110_1001_1001_0110,
             0b0000_0000_0000_0000,
@@ -153,7 +224,7 @@ mod tests {
         array.copy_within(1, 2);
         assert_eq!(
             array,
-            BitStringArray::from_u16s(&[
+            BitStringArray::from_u16s_ltr(&[
                 0b0000_0000_0000_0000,
                 0b0110_1001_1001_0110,
                 0b0110_1001_1001_0110,
@@ -164,7 +235,7 @@ mod tests {
 
     #[test]
     fn equal_to_previous1() {
-        let array = BitStringArray::from_u16s(&[
+        let array = BitStringArray::from_u16s_ltr(&[
             0b0000_0000_0000_0000,
             0b0110_1001_1001_0110,
             0b0110_1001_1001_0110,
@@ -174,7 +245,7 @@ mod tests {
     }
     #[test]
     fn equal_to_previous2() {
-        let array = BitStringArray::from_u16s(&[
+        let array = BitStringArray::from_u16s_ltr(&[
             0b0110_1001_0110_1001,
             0b0110_1001_1001_0110,
             0b0110_1001_1001_0110,
@@ -184,7 +255,7 @@ mod tests {
     }
     #[test]
     fn equal_to_previous3() {
-        let array = BitStringArray::from_u16s(&[
+        let array = BitStringArray::from_u16s_ltr(&[
             0b1001_0110_1001_0110,
             0b0110_1001_1001_0110,
             0b0110_1001_1001_0110,
@@ -194,7 +265,7 @@ mod tests {
     }
     #[test]
     fn equal_to_previous4() {
-        let array = BitStringArray::from_u16s(&[
+        let array = BitStringArray::from_u16s_ltr(&[
             0b0000_0000_0000_0000,
             0b0110_1001_1001_0110,
             0b0110_1001_1001_0110,

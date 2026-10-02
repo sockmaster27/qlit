@@ -3,7 +3,7 @@ use std::mem;
 
 use num_complex::Complex;
 
-use crate::bitstring::BitStringArray;
+use crate::bitstring::{BitString, BitStringArray};
 use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 
 type BitBlock = u64;
@@ -201,7 +201,7 @@ impl ExtendedTableau {
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
     /// The output will have length exactly equal to [`Self::contained_states`].
-    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f64>] {
+    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &BitString) -> &[Complex<f64>] {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
@@ -224,7 +224,7 @@ impl ExtendedTableau {
                 let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
                 for row in 0..n {
                     if let Some(q) = self.row_pivots[row]
-                        && w1s.get(s, q) != w2[q]
+                        && w1s.get(s, q) != w2.get(s)
                     {
                         let row_block_index = row / BLOCK_SIZE;
                         let row_bit_index = row % BLOCK_SIZE;
@@ -289,7 +289,7 @@ impl ExtendedTableau {
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
             self.output[s] =
-                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter().copied());
+                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -742,7 +742,6 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::bits_to_bools;
     use rand::rngs::Xoshiro128PlusPlus;
     use rand::{RngExt, SeedableRng};
 
@@ -750,9 +749,9 @@ mod tests {
 
     #[test]
     fn zero() {
-        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             let result = g.coeff_ratios(&w1, &w2);
@@ -767,9 +766,9 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -787,9 +786,9 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -807,9 +806,9 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -828,9 +827,9 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let w1 = BitStringArray::from_u8s(&[0b1100_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1100_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -847,9 +846,9 @@ mod tests {
 
     #[test]
     fn larger_circuit() {
-        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -886,7 +885,7 @@ mod tests {
 
     #[test]
     fn bitflip_ratio() {
-        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
         let mut g = ExtendedTableau::zero(8, 0);
         g.apply_h_gate(0);
         g.apply_h_gate(1);
@@ -944,9 +943,9 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 
@@ -966,9 +965,9 @@ mod tests {
         g.apply_h_gate(0);
         g.fork_apply_z_gate(0);
 
-        let w1 = BitStringArray::from_u8s(&[0b0000_0000, 0b1000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000, 0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 
@@ -992,9 +991,9 @@ mod tests {
         g.fork_apply_z_gate(123);
 
         let w1 = BitStringArray::new(300, 8);
-        let mut w2 = [false; 300];
+        let mut w2 = BitString::zero(300);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE; 8]);
-        w2[1] = true;
+        w2.set(1);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -1008,7 +1007,7 @@ mod tests {
                 -Complex::ONE,
             ]
         );
-        w2[78] = true;
+        w2.set(78);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -1022,7 +1021,7 @@ mod tests {
                 Complex::ONE,
             ]
         );
-        w2[123] = true;
+        w2.set(123);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -1036,7 +1035,7 @@ mod tests {
                 -Complex::ONE,
             ]
         );
-        w2[1] = false;
+        w2.unset(1);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -1050,7 +1049,7 @@ mod tests {
                 Complex::ONE,
             ]
         );
-        w2[42] = true;
+        w2.set(42);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ZERO; 8]);
     }
 
@@ -1064,13 +1063,13 @@ mod tests {
             g.apply_cz_gate(q, q + 1);
         }
 
-        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
+        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 
-            let adjacent_pairs = (0..7).filter(|&q| w2[q] && w2[q + 1]).count();
+            let adjacent_pairs = (0..7).filter(|&q| w2.get(q) && w2.get(q + 1)).count();
             let expected = if adjacent_pairs % 2 == 0 {
                 Complex::ONE
             } else {
@@ -1092,17 +1091,17 @@ mod tests {
         g.apply_cz_gate(0, 69);
 
         let w1 = BitStringArray::new(70, 1);
-        let mut w2 = [false; 70];
+        let mut w2 = BitString::zero(70);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[0] = true;
+        w2.set(0);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[64] = true; // Edge 0-64.
+        w2.set(64); // Edge 0-64.
         assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
-        w2[69] = true; // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
+        w2.set(69); // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[64] = false; // Edge 0-69.
+        w2.unset(64); // Edge 0-69.
         assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
-        w2[0] = false; // No edges.
+        w2.unset(0); // No edges.
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
     }
 

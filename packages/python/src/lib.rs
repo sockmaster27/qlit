@@ -157,7 +157,7 @@ fn py_simulate_circuit(
     circuit: &PyCliffordTCircuit,
 ) -> PyResult<Complex<f64>> {
     Ok(simulate_circuit(
-        &parse_basis_state(w, circuit.qubits())?,
+        &parse_basis_state(w, circuit.qubits())?[..].into(),
         &circuit.0,
     ))
 }
