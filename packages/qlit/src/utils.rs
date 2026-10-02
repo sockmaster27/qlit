@@ -28,6 +28,7 @@ pub fn bits_to_bools(bits: u8) -> Vec<bool> {
 /// bit_indices(01101000) -> [1, 2, 4]
 ///              ^^ ^
 /// ```
+#[inline]
 pub fn bit_indices(block: impl BitBlock) -> impl Iterator<Item = usize> {
     SetBitIndexIterator { block, offset: 0 }
 }
@@ -38,6 +39,7 @@ struct SetBitIndexIterator<B: BitBlock> {
 impl<B: BitBlock> Iterator for SetBitIndexIterator<B> {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.block == B::zero() {
             return None;
@@ -56,6 +58,7 @@ impl<B: BitBlock> Iterator for SetBitIndexIterator<B> {
 /// bitmask(1) -> 01000000
 /// bitmask(6) -> 00000010
 /// ```
+#[inline]
 pub fn bitmask<B: BitBlock>(i: usize) -> B {
     debug_assert!(i < B::SIZE);
     B::one() << (B::SIZE - 1 - i)
@@ -67,6 +70,7 @@ pub fn bitmask<B: BitBlock>(i: usize) -> B {
 /// set_bit(00110111, 1) -> 01110111
 /// set_bit(01100101, 6) -> 01100111
 /// ```
+#[inline]
 pub fn set_bit<B: BitBlock>(block: B, i: usize) -> B {
     debug_assert!(i < B::SIZE);
     block | bitmask::<B>(i)
@@ -78,6 +82,7 @@ pub fn set_bit<B: BitBlock>(block: B, i: usize) -> B {
 /// unset_bit(01110111, 1) -> 00110111
 /// unset_bit(01100111, 6) -> 01100101
 /// ```
+#[inline]
 pub fn unset_bit<B: BitBlock>(block: B, i: usize) -> B {
     debug_assert!(i < B::SIZE);
     block & !bitmask::<B>(i)
@@ -88,6 +93,7 @@ pub fn unset_bit<B: BitBlock>(block: B, i: usize) -> B {
 /// align_bit_to(01000000, 2, 6) -> 00000010
 ///               ^                   >>>>^
 /// ```
+#[inline]
 pub fn align_bit_to<B: BitBlock>(block: B, from: usize, to: usize) -> B {
     if to < from {
         block << (from - to)
