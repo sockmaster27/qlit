@@ -1,5 +1,7 @@
 use std::mem;
 
+use crate::utils::{bitmask, set_bit, unset_bit};
+
 type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
@@ -34,19 +36,21 @@ impl BitStringArray {
 
     pub fn get(&self, i: usize, j: usize) -> bool {
         let (block_index, bit_index) = self.index(i, j);
-        (self.inner[block_index] & bitmask(bit_index)) != 0
+        let bit_mask: BitBlock = bitmask(bit_index);
+        (self.inner[block_index] & bit_mask) != 0
     }
     pub fn set(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
-        self.inner[block_index] |= bitmask(bit_index);
+        self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
     }
     pub fn unset(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
-        self.inner[block_index] &= !bitmask(bit_index);
+        self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
     }
     pub fn flip(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
-        self.inner[block_index] ^= bitmask(bit_index);
+        let bit_mask: BitBlock = bitmask(bit_index);
+        self.inner[block_index] ^= bit_mask;
     }
     pub fn copy_within(&mut self, src: usize, dst: usize) {
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
@@ -81,18 +85,4 @@ impl<'a> Iterator for BitStringArrayIter<'a> {
         self.j += 1;
         Some(r)
     }
-}
-
-/// Get the bitmask for the i'th bit, e.g.
-/// ```text
-/// bitmask(0) -> 10000000
-/// bitmask(1) -> 01000000
-/// bitmask(6) -> 00000010
-/// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
-fn bitmask(i: usize) -> BitBlock {
-    debug_assert!(i < BLOCK_SIZE);
-    1 << (BLOCK_SIZE - 1 - i)
 }
