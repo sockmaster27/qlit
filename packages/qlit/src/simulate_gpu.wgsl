@@ -430,7 +430,7 @@ fn elimination_pass(
 
     // XOR
     for (var j = 0u; j < n + n + 1; j += 1) {
-        if bit(batch_index, pivot, j) == true {
+        if bit(batch_index, pivot, j)  {
             tableau[column_block_index(batch_index, block_index, j)] ^= mask;
         }
     }

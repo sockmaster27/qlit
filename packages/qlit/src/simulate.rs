@@ -14,6 +14,7 @@ use num_complex::Complex;
 use crate::simulate_gpu::GpuSimulator;
 
 use crate::{
+    bitstring::BitStringArray,
     circuit::{CliffordTCircuit, CliffordTGate},
     tableau::ExtendedTableau,
 };
@@ -209,8 +210,7 @@ fn run_cpu(
     batch_size_log2: usize,
 ) -> Complex<f64> {
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
-    let mut r_cols = 1;
-    let mut xs = vec![vec![false; n]];
+    let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
     let mut x_coeffs = vec![Complex::ONE];
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
     let mut seen_t_gates = 0;
@@ -218,27 +218,27 @@ fn run_cpu(
         match gate {
             CliffordTGate::X(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    xs[i][a] = !xs[i][a];
+                for i in 0..g.contained_states() {
+                    xs.flip(i, a);
                 }
                 g.apply_x_gate(a);
             }
             CliffordTGate::Y(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    if xs[i][a] == true {
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) {
                         x_coeffs[i] *= -Complex::I;
                     } else {
                         x_coeffs[i] *= Complex::I;
                     }
-                    xs[i][a] = !xs[i][a];
+                    xs.flip(i, a);
                 }
                 g.apply_y_gate(a);
             }
             CliffordTGate::Z(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    if xs[i][a] == true {
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) {
                         x_coeffs[i] *= -Complex::ONE;
                     }
                 }
@@ -246,8 +246,8 @@ fn run_cpu(
             }
             CliffordTGate::S(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    if xs[i][a] == true {
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) {
                         x_coeffs[i] *= Complex::I;
                     }
                 }
@@ -255,8 +255,8 @@ fn run_cpu(
             }
             CliffordTGate::Sdg(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    if xs[i][a] == true {
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) {
                         x_coeffs[i] *= -Complex::I;
                     }
                 }
@@ -265,16 +265,18 @@ fn run_cpu(
             CliffordTGate::Cnot(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    xs[i][b] ^= xs[i][a];
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) {
+                        xs.flip(i, b);
+                    }
                 }
                 g.apply_cnot_gate(a, b);
             }
             CliffordTGate::Cz(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..r_cols {
-                    if xs[i][a] == true && xs[i][b] == true {
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) && xs.get(i, b) {
                         x_coeffs[i] *= -Complex::ONE;
                     }
                 }
@@ -282,19 +284,20 @@ fn run_cpu(
             }
             CliffordTGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                let rs = g.coeff_ratios_flipped_bit(xs.iter().map(Vec::as_slice), a);
-                for i in 0..r_cols {
+                let contained_states = g.contained_states();
+                let rs = g.coeff_ratios_flipped_bit(&xs, a);
+                for i in 0..contained_states {
                     let r = rs[i];
                     if r != -Complex::ONE {
                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
-                        xs[i][a] = false;
+                        xs.unset(i, a);
                     } else {
-                        if xs[i][a] == false {
-                            x_coeffs[i] *= 2.0 / SQRT_2;
-                        } else {
+                        if xs.get(i, a) {
                             x_coeffs[i] *= -2.0 / SQRT_2;
+                        } else {
+                            x_coeffs[i] *= 2.0 / SQRT_2;
                         }
-                        xs[i][a] = true;
+                        xs.set(i, a);
                     }
                 }
                 g.apply_h_gate(a);
@@ -303,35 +306,34 @@ fn run_cpu(
             CliffordTGate::T(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
-                    if path[seen_t_gates] == false {
-                        for i in 0..r_cols {
-                            x_coeffs[i] *= C_I;
-                        }
-                    } else {
-                        for i in 0..r_cols {
-                            if xs[i][a] == true {
+                    if path[seen_t_gates] {
+                        for i in 0..g.contained_states() {
+                            if xs.get(i, a) {
                                 x_coeffs[i] *= -Complex::ONE;
                             }
                             x_coeffs[i] *= C_Z;
                         }
                         g.apply_z_gate(a);
+                    } else {
+                        for i in 0..g.contained_states() {
+                            x_coeffs[i] *= C_I;
+                        }
                     }
                 } else {
-                    for i in 0..r_cols {
+                    for i in 0..g.contained_states() {
                         let index_i = i;
-                        let index_z = i + r_cols;
-                        xs.push(xs[index_i].clone());
+                        let index_z = i + g.contained_states();
+                        xs.copy_within(index_i, index_z);
                         x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I;
 
-                        if xs[index_z][a] == true {
+                        if xs.get(index_z, a) {
                             x_coeffs[index_z] *= -Complex::ONE;
                         }
                         x_coeffs[index_z] *= C_Z;
                     }
                     g.fork_apply_z_gate(a);
-                    r_cols *= 2;
                 }
 
                 seen_t_gates += 1;
@@ -339,35 +341,34 @@ fn run_cpu(
             CliffordTGate::Tdg(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_t_gates < path.len() {
-                    if path[seen_t_gates] == false {
-                        for i in 0..r_cols {
-                            x_coeffs[i] *= C_I_DG;
-                        }
-                    } else {
-                        for i in 0..r_cols {
-                            if xs[i][a] == true {
+                    if path[seen_t_gates] {
+                        for i in 0..g.contained_states() {
+                            if xs.get(i, a) {
                                 x_coeffs[i] *= -Complex::ONE;
                             }
                             x_coeffs[i] *= C_Z_DG;
                         }
                         g.apply_z_gate(a);
+                    } else {
+                        for i in 0..g.contained_states() {
+                            x_coeffs[i] *= C_I_DG;
+                        }
                     }
                 } else {
-                    for i in 0..r_cols {
+                    for i in 0..g.contained_states() {
                         let index_i = i;
-                        let index_z = i + r_cols;
-                        xs.push(xs[index_i].clone());
+                        let index_z = i + g.contained_states();
+                        xs.copy_within(index_i, index_z);
                         x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I_DG;
 
-                        if xs[index_z][a] == true {
+                        if xs.get(index_z, a) {
                             x_coeffs[index_z] *= -Complex::ONE;
                         }
                         x_coeffs[index_z] *= C_Z_DG;
                     }
                     g.fork_apply_z_gate(a);
-                    r_cols *= 2;
                 }
 
                 seen_t_gates += 1;
@@ -376,8 +377,9 @@ fn run_cpu(
     }
 
     let mut w_coeff = Complex::ZERO;
-    let rs = g.coeff_ratios(xs.iter().map(Vec::as_slice), w);
-    for i in 0..r_cols {
+    let contained_states = g.contained_states();
+    let rs = g.coeff_ratios(&xs, w);
+    for i in 0..contained_states {
         w_coeff += x_coeffs[i] * rs[i];
     }
     w_coeff
@@ -388,7 +390,7 @@ fn run_cpu(
 fn increment_path(path: &mut Vec<bool>) -> bool {
     for e in path {
         *e = !*e;
-        if *e == true {
+        if *e {
             return false;
         }
     }
