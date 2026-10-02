@@ -5,6 +5,7 @@ use std::mem;
 use num_complex::Complex;
 
 use crate::bitstring::BitStringArray;
+use crate::utils::{align_bit_to, bit_indices, bitmask, unset_bit};
 
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -187,7 +188,7 @@ impl ExtendedTableau {
         let aux_row = n;
         let aux_block_index = aux_row / BLOCK_SIZE;
         let aux_bit_index = aux_row % BLOCK_SIZE;
-        let aux_bitmask = bitmask(aux_bit_index);
+        let aux_bitmask: BitBlock = bitmask(aux_bit_index);
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
@@ -289,7 +290,7 @@ impl ExtendedTableau {
                 for i in 0..column_block_length(n) {
                     // Bitmask blocking out the pivot row.
                     let pivot_mask = if i == pivot_block_index {
-                        !bitmask(pivot_bit_index)
+                        !bitmask::<BitBlock>(pivot_bit_index)
                     } else {
                         !0
                     };
@@ -423,8 +424,8 @@ impl ExtendedTableau {
         let target_block_index = target / BLOCK_SIZE;
         let source_bit_index = source % BLOCK_SIZE;
         let target_bit_index = target % BLOCK_SIZE;
-        let source_bitmask = bitmask(source_bit_index);
-        let target_bitmask = bitmask(target_bit_index);
+        let source_bitmask: BitBlock = bitmask(source_bit_index);
+        let target_bitmask: BitBlock = bitmask(target_bit_index);
 
         // Determine phase shift.
         let mut phase: i8 = 0;
@@ -476,7 +477,7 @@ impl ExtendedTableau {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask = bitmask(row_bit_index);
+        let row_bitmask: BitBlock = bitmask(row_bit_index);
         let mut r = self.tableau[r_column_block_index(n, row_block_index)];
         let mut j = 0;
         while i != 0 {
@@ -494,7 +495,7 @@ impl ExtendedTableau {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask = bitmask(row_bit_index);
+        let row_bitmask: BitBlock = bitmask(row_bit_index);
 
         let x = self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
         let z = self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
@@ -512,7 +513,7 @@ impl ExtendedTableau {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask = bitmask(row_bit_index);
+        let row_bitmask: BitBlock = bitmask(row_bit_index);
         self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
@@ -562,65 +563,6 @@ impl Debug for ExtendedTableau {
     }
 }
 
-/// Get an iterator over the indices of the set bits in the given block, e.g.
-/// ```text
-/// bit_indices(10000000) -> [0]
-///             ^
-/// bit_indices(00000001) -> [7]
-///                    ^
-/// bit_indices(01101000) -> [1, 2, 4]
-///              ^^ ^
-/// ```
-fn bit_indices(block: BitBlock) -> impl Iterator<Item = usize> {
-    SetBitIndexIterator { block, offset: 0 }
-}
-struct SetBitIndexIterator {
-    block: BitBlock,
-    offset: usize,
-}
-impl Iterator for SetBitIndexIterator {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.block == 0 {
-            return None;
-        }
-        let leading_zeros: usize = self.block.leading_zeros().try_into().unwrap();
-        self.block <<= leading_zeros;
-        self.block <<= 1;
-        self.offset += leading_zeros + 1;
-        Some(self.offset - 1)
-    }
-}
-
-/// Get the bitmask for the i'th bit, e.g.
-/// ```text
-/// bitmask(0) -> 10000000
-/// bitmask(1) -> 01000000
-/// bitmask(6) -> 00000010
-/// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
-fn bitmask(i: usize) -> BitBlock {
-    debug_assert!(i < BLOCK_SIZE);
-    1 << (BLOCK_SIZE - 1 - i)
-}
-
-/// Unset the i'th bit of the given block, i.e. set the bit to 0.
-/// ```text
-/// set_bit(11111111, 0) -> 01111111
-/// set_bit(01110111, 1) -> 00110111
-/// set_bit(01100111, 6) -> 01100101
-/// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
-fn unset_bit(block: &mut BitBlock, i: usize) {
-    debug_assert!(i < BLOCK_SIZE);
-    *block &= !bitmask(i);
-}
-
 /// Get the index of the i'th block of the `j`th column.
 fn column_block_index(n: usize, i: usize, j: usize) -> usize {
     debug_assert!(i < column_block_length(n));
@@ -653,15 +595,6 @@ fn column_block_length(n: usize) -> usize {
 /// Get the block-length of the tableau.
 fn tableau_block_length(n: usize, c_cols: usize) -> usize {
     column_block_length(n) * (n + n + 1 + c_cols)
-}
-
-/// Bit-shift the given block such that the `from`th bit is moved to the `to`th position.
-fn align_bit_to(block: BitBlock, from: usize, to: usize) -> BitBlock {
-    if to < from {
-        block << (from - to)
-    } else {
-        block >> (to - from)
-    }
 }
 
 #[cfg(test)]
@@ -901,20 +834,5 @@ mod tests {
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
-    }
-
-    #[test]
-    fn test_bit_indices() {
-        let block =
-            0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
-        let indices: Vec<usize> = bit_indices(block).collect();
-        assert_eq!(indices, vec![0, 2, 4, 32, 34, 36]);
-    }
-    #[test]
-    fn test_bit_indices2() {
-        let block =
-            0b0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0001;
-        let indices: Vec<usize> = bit_indices(block).collect();
-        assert_eq!(indices, vec![63]);
     }
 }
