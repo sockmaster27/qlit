@@ -4,7 +4,7 @@ use std::mem;
 
 use num_complex::Complex;
 
-use crate::bitstring::BitStringArray;
+use crate::bitstring::{BitString, BitStringArray};
 use crate::utils::{align_bit_to, bit_indices, bitmask, unset_bit};
 
 type BitBlock = u64;
@@ -177,10 +177,10 @@ impl ExtendedTableau {
     /// coeff_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
     ///
-    /// This function takes an iterator over basis states `w1s` with length `c_cols`,
+    /// This function takes an array of basis states `w1s` with length `tableau.contained_states()`,
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
-    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f64>] {
+    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &BitString) -> &[Complex<f64>] {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
@@ -198,14 +198,15 @@ impl ExtendedTableau {
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
-                    && w1s.get(i, q) != w2[q]
+                    && w1s.get(i, q) != w2.get(q)
                 {
                     self.multiply_rows_into(row, aux_row);
                 }
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1s.iter_string(i), w2);
+            self.output[i] =
+                self.stabilizer_matrix_entry(i, aux_row, w1s.iter_string(i), w2.iter());
 
             // Reset the auxiliary row.
             for r in 0..(n + n + 1 + c_cols) {
@@ -613,15 +614,13 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::bits_to_bools;
-
     use super::*;
 
     #[test]
     fn zero() {
-        let w1 = BitStringArray::singleton_from_u8(0b0000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             let result = g.coeff_ratios(&w1, &w2);
@@ -637,9 +636,9 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let w1 = BitStringArray::singleton_from_u8(0b0000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -659,9 +658,9 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -681,9 +680,9 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -703,9 +702,9 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let w1 = BitStringArray::singleton_from_u8(0b1100_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1100_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -723,9 +722,9 @@ mod tests {
 
     #[test]
     fn larger_circuit() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
@@ -772,7 +771,7 @@ mod tests {
 
     #[test]
     fn bitflip_ratio() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1000_0000);
         let mut g = ExtendedTableau::zero(8, 0);
         g.apply_h_gate(0);
         g.apply_h_gate(1);
@@ -824,9 +823,9 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::singleton_from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 

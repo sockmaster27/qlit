@@ -5,6 +5,70 @@ use crate::utils::{bitmask, set_bit, unset_bit};
 type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
+pub struct BitString {
+    length: usize,
+    inner: Vec<BitBlock>,
+}
+impl BitString {
+    pub fn zero(length: usize) -> Self {
+        let block_length = length / BLOCK_SIZE;
+        Self {
+            length,
+            inner: vec![0; block_length],
+        }
+    }
+    pub fn from_u8_ltr(s: u8) -> Self {
+        Self {
+            length: 8,
+            inner: vec![s],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    fn index(&self, i: usize) -> (usize, usize) {
+        debug_assert!(i < self.length, "Index out of bounds");
+        let block_index = i / BLOCK_SIZE;
+        let bit_index = i % BLOCK_SIZE;
+        (block_index, bit_index)
+    }
+
+    pub fn get(&self, i: usize) -> bool {
+        let (block_index, bit_index) = self.index(i);
+        let bit_mask: BitBlock = bitmask(bit_index);
+        (self.inner[block_index] & bit_mask) != 0
+    }
+    pub fn set(&mut self, i: usize) {
+        let (block_index, bit_index) = self.index(i);
+        self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
+    }
+    pub fn unset(&mut self, i: usize) {
+        let (block_index, bit_index) = self.index(i);
+        self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = bool> {
+        BitStringIter {
+            length: self.length,
+            inner: &self.inner,
+            i: 0,
+        }
+    }
+}
+impl From<&[bool]> for BitString {
+    fn from(value: &[bool]) -> Self {
+        let mut r = Self::zero(value.len());
+        for (i, &b) in value.iter().enumerate() {
+            if b {
+                r.set(i);
+            }
+        }
+        r
+    }
+}
+
 pub struct BitStringArray {
     string_length: usize,
     inner: Vec<BitBlock>,
@@ -19,7 +83,7 @@ impl BitStringArray {
     }
 
     #[cfg(test)]
-    pub fn singleton_from_u8(s: u8) -> Self {
+    pub fn singleton_from_u8_ltr(s: u8) -> Self {
         Self {
             string_length: 8,
             inner: vec![s],
@@ -68,29 +132,35 @@ impl BitStringArray {
 
     #[inline]
     pub fn iter_string<'a>(&'a self, i: usize) -> impl Iterator<Item = bool> + 'a {
-        BitStringArrayIter {
-            array: self,
-            i,
-            j: 0,
+        let string_block_length = self.string_length / BLOCK_SIZE;
+        let start = i * string_block_length;
+        BitStringIter {
+            length: self.string_length,
+            inner: &self.inner[start..],
+            i: 0,
         }
     }
 }
 
-pub struct BitStringArrayIter<'a> {
-    array: &'a BitStringArray,
+pub struct BitStringIter<'a> {
+    length: usize,
+    inner: &'a [BitBlock],
     i: usize,
-    j: usize,
 }
-impl<'a> Iterator for BitStringArrayIter<'a> {
+impl<'a> Iterator for BitStringIter<'a> {
     type Item = bool;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.j >= self.array.string_length {
+        let i = self.i;
+        if i >= self.length {
             return None;
         }
-        let r = self.array.get(self.i, self.j);
-        self.j += 1;
+        let block_index = i / BLOCK_SIZE;
+        let bit_index = i % BLOCK_SIZE;
+        let bit_mask: BitBlock = bitmask(bit_index);
+        let r = (self.inner[block_index] & bit_mask) != 0;
+        self.i += 1;
         Some(r)
     }
 }
