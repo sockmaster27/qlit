@@ -284,7 +284,8 @@ impl ExtendedTableau {
             if let Some(pivot) = pivot {
                 let pivot_block_index = pivot / BLOCK_SIZE;
                 let pivot_bit_index = pivot % BLOCK_SIZE;
-                unset_bit(&mut pivot_mask[pivot_block_index], pivot_bit_index);
+                pivot_mask[pivot_block_index] =
+                    unset_bit(pivot_mask[pivot_block_index], pivot_bit_index);
                 self.row_pivots[pivot] = Some(col);
 
                 for i in 0..column_block_length(n) {

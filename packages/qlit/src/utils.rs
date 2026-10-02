@@ -61,15 +61,26 @@ pub fn bitmask<B: BitBlock>(i: usize) -> B {
     B::one() << (B::SIZE - 1 - i)
 }
 
+/// Set the i'th bit of the given block, i.e. set the bit to 1.
+/// ```text
+/// set_bit(00000000, 0) -> 10000000
+/// set_bit(00110111, 1) -> 01110111
+/// set_bit(01100101, 6) -> 01100111
+/// ```
+pub fn set_bit<B: BitBlock>(block: B, i: usize) -> B {
+    debug_assert!(i < B::SIZE);
+    block | bitmask::<B>(i)
+}
+
 /// Unset the i'th bit of the given block, i.e. set the bit to 0.
 /// ```text
 /// unset_bit(11111111, 0) -> 01111111
 /// unset_bit(01110111, 1) -> 00110111
 /// unset_bit(01100111, 6) -> 01100101
 /// ```
-pub fn unset_bit<B: BitBlock>(block: &mut B, i: usize) {
+pub fn unset_bit<B: BitBlock>(block: B, i: usize) -> B {
     debug_assert!(i < B::SIZE);
-    *block &= !bitmask::<B>(i);
+    block & !bitmask::<B>(i)
 }
 
 /// Bit-shift the given block such that the `from`th bit is moved to the `to`th position, e.g.
@@ -122,22 +133,39 @@ mod test {
     }
 
     #[test]
-    fn test_unset_bit1() {
-        let mut block: u64 =
-            0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
-        unset_bit(&mut block, 34);
+    fn test_set_bit1() {
+        let block: u64 =
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1000_1000_0000_0000_0000_0000_0000_0000;
         assert_eq!(
-            block,
+            set_bit(block, 34),
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000
+        );
+    }
+    #[test]
+    fn test_set_bit2() {
+        let block: u64 =
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1011_1000_0000_0000_0000_0000_0000_0000;
+        assert_eq!(
+            set_bit(block, 35),
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1011_1000_0000_0000_0000_0000_0000_0000
+        );
+    }
+
+    #[test]
+    fn test_unset_bit1() {
+        let block: u64 =
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
+        assert_eq!(
+            unset_bit(block, 34),
             0b1010_1000_0000_0000_0000_0000_0000_0000_1000_1000_0000_0000_0000_0000_0000_0000
         );
     }
     #[test]
     fn test_unset_bit2() {
-        let mut block: u64 =
+        let block: u64 =
             0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
-        unset_bit(&mut block, 35);
         assert_eq!(
-            block,
+            unset_bit(block, 35),
             0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000
         );
     }
