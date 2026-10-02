@@ -16,6 +16,14 @@ impl BitStringArray {
         }
     }
 
+    #[cfg(test)]
+    pub fn singleton_from_u8(s: u8) -> Self {
+        Self {
+            string_length: 8,
+            inner: vec![s],
+        }
+    }
+
     fn index(&self, i: usize, j: usize) -> (usize, usize) {
         debug_assert!(j < self.string_length);
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
