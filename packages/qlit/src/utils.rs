@@ -10,11 +10,9 @@ pub trait BitBlock: PrimInt + ShlAssign<usize> + BitAndAssign {
 }
 impl<B: PrimInt + ShlAssign<usize> + BitAndAssign> BitBlock for B {}
 
-/// Convert the 8 bits to a vector of 8 booleans.
-///
-/// # Example
-/// ```ignore
-/// bits_to_bools(0b1001_0110) -> [true, false, false, true, false, true, true, false]
+/// Convert the 8 bits to a vector of 8 booleans, e.g.
+/// ```text
+/// bits_to_bools(10010110) -> [true, false, false, true, false, true, true, false]
 /// ```
 #[cfg(test)]
 pub fn bits_to_bools(bits: u8) -> Vec<bool> {
@@ -58,9 +56,6 @@ impl<B: BitBlock> Iterator for SetBitIndexIterator<B> {
 /// bitmask(1) -> 01000000
 /// bitmask(6) -> 00000010
 /// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
 pub fn bitmask<B: BitBlock>(i: usize) -> B {
     debug_assert!(i < B::SIZE);
     B::one() << (B::SIZE - 1 - i)
@@ -68,19 +63,20 @@ pub fn bitmask<B: BitBlock>(i: usize) -> B {
 
 /// Unset the i'th bit of the given block, i.e. set the bit to 0.
 /// ```text
-/// set_bit(11111111, 0) -> 01111111
-/// set_bit(01110111, 1) -> 00110111
-/// set_bit(01100111, 6) -> 01100101
+/// unset_bit(11111111, 0) -> 01111111
+/// unset_bit(01110111, 1) -> 00110111
+/// unset_bit(01100111, 6) -> 01100101
 /// ```
-///
-/// # Panics
-/// If `i` is greater than or equal to `BLOCK_SIZE` in debug mode.
 pub fn unset_bit<B: BitBlock>(block: &mut B, i: usize) {
     debug_assert!(i < B::SIZE);
     *block &= !bitmask::<B>(i);
 }
 
-/// Bit-shift the given block such that the `from`th bit is moved to the `to`th position.
+/// Bit-shift the given block such that the `from`th bit is moved to the `to`th position, e.g.
+/// ```text
+/// align_bit_to(01000000, 2, 6) -> 00000010
+///               ^                   >>>>^
+/// ```
 pub fn align_bit_to<B: BitBlock>(block: B, from: usize, to: usize) -> B {
     if to < from {
         block << (from - to)
