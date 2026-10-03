@@ -210,8 +210,10 @@ fn run_cpu(
     batch_size_log2: usize,
 ) -> Complex<f64> {
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
-    let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
-    let mut x_coeffs = vec![Complex::ONE];
+    let batch_size = 1 << batch_size_log2;
+    let mut xs = BitStringArray::new(n, batch_size);
+    let mut x_coeffs = Vec::with_capacity(batch_size);
+    x_coeffs.push(Complex::ONE);
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
     let mut seen_t_gates = 0;
     for &gate in circuit.gates() {
