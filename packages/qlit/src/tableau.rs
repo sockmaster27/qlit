@@ -44,17 +44,17 @@ pub struct ExtendedTableau {
     /// ```
     /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
     /// This auxiliary row is assumed to be kept zeroed.
-    tableau: Vec<BitBlock>,
-    row_pivots: Vec<Option<usize>>,
+    tableau: Box<[BitBlock]>,
+    row_pivots: Box<[Option<usize>]>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
     /// Must have length of at least 2^`c_cols` at all times.
-    output: Vec<Complex<f64>>,
+    output: Box<[Complex<f64>]>,
 }
 impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
     /// This allocates an extended tableau with capacity for representing a total of 2^`capacity_log2` states.
     pub fn zero(n: usize, capacity_log2: usize) -> Self {
-        let mut tableau = vec![0; tableau_block_length(n, capacity_log2)];
+        let mut tableau = vec![0; tableau_block_length(n, capacity_log2)].into_boxed_slice();
         for i in 0..n {
             let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
             tableau[block_index] = bitmask(i % BLOCK_SIZE);
@@ -63,8 +63,8 @@ impl ExtendedTableau {
             n,
             c_cols: 0,
             tableau,
-            row_pivots: vec![None; n],
-            output: vec![Complex::ZERO; 1 << capacity_log2],
+            row_pivots: vec![None; n].into_boxed_slice(),
+            output: vec![Complex::ZERO; 1 << capacity_log2].into_boxed_slice(),
         }
     }
 
@@ -263,7 +263,7 @@ impl ExtendedTableau {
         let c_cols = self.c_cols;
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
-        let mut pivot_mask: Vec<BitBlock> = vec![!0; column_block_length(n)];
+        let mut pivot_mask = vec![!0; column_block_length(n)];
 
         for col in 0..n {
             // Find pivot row.

@@ -210,8 +210,9 @@ fn run_cpu(
     batch_size_log2: usize,
 ) -> Complex<f64> {
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
-    let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
-    let mut x_coeffs = vec![Complex::ONE];
+    let batch_size = 1 << batch_size_log2;
+    let mut xs = BitStringArray::new(n, batch_size);
+    let mut x_coeffs = vec![Complex::ONE; batch_size].into_boxed_slice();
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
     let mut seen_t_gates = 0;
     for &gate in circuit.gates() {
@@ -324,7 +325,7 @@ fn run_cpu(
                         let index_i = i;
                         let index_z = i + g.contained_states();
                         xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
+                        x_coeffs[index_z] = x_coeffs[index_i];
 
                         x_coeffs[index_i] *= C_I;
 
@@ -359,7 +360,7 @@ fn run_cpu(
                         let index_i = i;
                         let index_z = i + g.contained_states();
                         xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
+                        x_coeffs[index_z] = x_coeffs[index_i];
 
                         x_coeffs[index_i] *= C_I_DG;
 
