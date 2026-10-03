@@ -85,11 +85,7 @@ impl BitString {
 
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = bool> {
-        BitStringIter {
-            length: self.length,
-            inner: &self.inner,
-            i: 0,
-        }
+        BitStringIter::new(self.length, &self.inner)
     }
 }
 impl<T: AsRef<[bool]>> From<T> for BitString {
@@ -171,39 +167,45 @@ impl BitStringArray {
     pub fn iter_string<'a>(&'a self, i: usize) -> impl Iterator<Item = bool> + 'a {
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
         let start = i * string_block_length;
-        BitStringIter {
-            length: self.string_length,
-            inner: &self.inner[start..],
-            i: 0,
-        }
+        BitStringIter::new(self.string_length, &self.inner[start..])
     }
 }
 
 pub struct BitStringIter<'a> {
-    length: usize,
-    inner: &'a [BitBlock],
-    i: usize,
+    remaining: usize,
+    mask: BitBlock,
+    data: &'a [BitBlock],
+}
+impl<'a> BitStringIter<'a> {
+    fn new(length: usize, data: &'a [BitBlock]) -> Self {
+        Self {
+            remaining: length,
+            mask: bitmask(0),
+            data,
+        }
+    }
 }
 impl<'a> Iterator for BitStringIter<'a> {
     type Item = bool;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let i = self.i;
-        if i >= self.length {
+        if self.remaining == 0 {
             return None;
         }
-        let block_index = i / BLOCK_SIZE;
-        let bit_index = i % BLOCK_SIZE;
-        let bit_mask: BitBlock = bitmask(bit_index);
-        let r = (self.inner[block_index] & bit_mask) != 0;
-        self.i += 1;
+        self.remaining -= 1;
+        let r = (self.data[0] & self.mask) != 0;
+        self.mask >>= 1;
+        if self.mask == 0 {
+            self.mask = bitmask(0);
+            self.data = &self.data[1..]
+        }
         Some(r)
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.length, Some(self.length))
+        (self.remaining, Some(self.remaining))
     }
 }
 
