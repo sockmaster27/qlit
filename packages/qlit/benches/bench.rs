@@ -24,7 +24,7 @@ mod cpu {
     pub fn cpu_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
         // TODO: Setup bitstring directly
-        let w = w[..].into();
+        // let w = w[..].into();
         c.bench_function("cpu_small", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });
@@ -32,7 +32,7 @@ mod cpu {
 
     pub fn cpu_large(c: &mut Criterion) {
         let (w, circuit) = setup(32, 512, 15);
-        let w = w[..].into();
+        // let w = w[..].into();
         c.bench_function("cpu_large", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });

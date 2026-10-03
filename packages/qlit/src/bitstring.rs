@@ -195,7 +195,7 @@ impl BitStringArray {
     }
 
     #[inline]
-    pub fn iter_string<'a>(&'a self, i: usize) -> impl Iterator<Item = bool> + 'a {
+    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringIter<'a> {
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
         let start = i * string_block_length;
         BitStringIter::new(self.string_length, &self.inner[start..])
