@@ -66,7 +66,7 @@ impl ExtendedTableau {
             c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
-            row_mask_buffer: vec![0; column_block_length(n)],
+            row_mask_buffer: Vec::with_capacity(column_block_length(n)),
             output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
@@ -273,7 +273,8 @@ impl ExtendedTableau {
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
         let pivot_mask = &mut self.row_mask_buffer;
-        pivot_mask.fill(!0);
+        pivot_mask.truncate(0);
+        pivot_mask.resize(column_block_length(n), !0);
 
         for col in 0..n {
             // Find pivot row.
