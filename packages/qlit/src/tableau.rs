@@ -46,6 +46,8 @@ pub struct ExtendedTableau {
     /// This auxiliary row is assumed to be kept zeroed.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
+    /// Buffer with room for n bits.
+    row_mask_buffer: Vec<BitBlock>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
     /// Must have length of at least 2^`c_cols` at all times.
     output: Vec<Complex<f64>>,
@@ -64,6 +66,7 @@ impl ExtendedTableau {
             c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
+            row_mask_buffer: Vec::with_capacity(column_block_length(n)),
             output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
@@ -234,7 +237,7 @@ impl ExtendedTableau {
         // Identify the row with a set bit in the given position.
         let mut row = None;
         for r in 0..n {
-            if self.x_bit(r, flipped_bit) {
+            if Self::x_bit(n, &self.tableau, r, flipped_bit) {
                 row = Some(r);
                 break;
             }
@@ -266,17 +269,20 @@ impl ExtendedTableau {
     fn bring_into_rref(&mut self) {
         let n = self.n;
         let c_cols = self.c_cols;
+        let tableau = &mut self.tableau;
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
-        let mut pivot_mask: Vec<BitBlock> = vec![!0; column_block_length(n)];
+        let pivot_mask = &mut self.row_mask_buffer;
+        pivot_mask.truncate(0);
+        pivot_mask.resize(column_block_length(n), !0);
 
         for col in 0..n {
             // Find pivot row.
             let mut pivot = None;
             let mut m = None;
             for block_index in 0..column_block_length(n) {
-                let block = self.tableau[x_column_block_index(n, block_index, col)]
-                    & pivot_mask[block_index];
+                let block =
+                    tableau[x_column_block_index(n, block_index, col)] & pivot_mask[block_index];
                 for bit_index in bit_indices(block) {
                     let row = BLOCK_SIZE * block_index + bit_index;
                     if m <= self.row_pivots[row] {
@@ -302,7 +308,7 @@ impl ExtendedTableau {
                         !0
                     };
                     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-                    let mask = self.tableau[x_column_block_index(n, i, col)] & pivot_mask;
+                    let mask = tableau[x_column_block_index(n, i, col)] & pivot_mask;
                     if mask == 0 {
                         continue;
                     }
@@ -324,11 +330,19 @@ impl ExtendedTableau {
                             x & z
                         }
 
-                        let x1 = self.tableau[x_column_block_index(n, i, col2)];
-                        let z1 = self.tableau[z_column_block_index(n, i, col2)];
+                        let x1 = tableau[x_column_block_index(n, i, col2)];
+                        let z1 = tableau[z_column_block_index(n, i, col2)];
                         // Fill these blocks with the bits in the pivot row.
-                        let x2 = if self.x_bit(pivot, col2) { !0 } else { 0 };
-                        let z2 = if self.z_bit(pivot, col2) { !0 } else { 0 };
+                        let x2 = if Self::x_bit(n, tableau, pivot, col2) {
+                            !0
+                        } else {
+                            0
+                        };
+                        let z2 = if Self::z_bit(n, tableau, pivot, col2) {
+                            !0
+                        } else {
+                            0
+                        };
 
                         // XY = +iZ
                         // YZ = +iX
@@ -354,12 +368,12 @@ impl ExtendedTableau {
                     debug_assert!(phase_bit1 == 0, "Imaginary sign");
                     // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
                     // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
-                    self.tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
+                    tableau[r_column_block_index(n, i)] ^= phase_bit2 & mask;
 
                     // XOR
                     for j in 0..(n + n + 1 + c_cols) {
-                        if self.bit(pivot, j) {
-                            self.tableau[column_block_index(n, i, j)] ^= mask;
+                        if Self::bit(n, &tableau, pivot, j) {
+                            tableau[column_block_index(n, i, j)] ^= mask;
                         }
                     }
                 }
@@ -517,40 +531,38 @@ impl ExtendedTableau {
 
     /// Get the value of the bit corresponding to the j'th column in the `row`'th row.
     #[inline]
-    fn bit(&self, row: usize, j: usize) -> bool {
-        let n = self.n;
+    fn bit(n: usize, tableau: &[BitBlock], row: usize, j: usize) -> bool {
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask: BitBlock = bitmask(row_bit_index);
-        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+        tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
-    fn x_bit(&self, row: usize, q: usize) -> bool {
-        self.bit(row, 2 * q)
+    fn x_bit(n: usize, tableau: &[BitBlock], row: usize, q: usize) -> bool {
+        Self::bit(n, tableau, row, 2 * q)
     }
     /// Get the value of the z bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
-    fn z_bit(&self, row: usize, q: usize) -> bool {
-        self.bit(row, 2 * q + 1)
+    fn z_bit(n: usize, tableau: &[BitBlock], row: usize, q: usize) -> bool {
+        Self::bit(n, tableau, row, 2 * q + 1)
     }
     /// Get the value of the r bit corresponding to the `row`'th row.
     #[inline]
-    fn r_bit(&self, row: usize) -> bool {
-        let n = self.n;
-        self.bit(row, n + n)
+    fn r_bit(n: usize, tableau: &[BitBlock], row: usize) -> bool {
+        Self::bit(n, tableau, row, n + n)
     }
     /// Get the value of the c bit corresponding to the j'th column in the `row`'th row.
     #[inline]
-    fn c_bit(&self, row: usize, j: usize) -> bool {
-        let n = self.n;
-        self.bit(row, n + n + 1 + j)
+    fn c_bit(n: usize, tableau: &[BitBlock], row: usize, j: usize) -> bool {
+        Self::bit(n, tableau, row, n + n + 1 + j)
     }
 }
 impl Debug for ExtendedTableau {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
         let c_cols = self.c_cols;
+        let tableau = &self.tableau;
         for row in 0..n {
             write!(
                 f,
@@ -558,17 +570,49 @@ impl Debug for ExtendedTableau {
                 self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
             )?;
             for q in 0..n {
-                write!(f, "{} ", if self.x_bit(row, q) { "1" } else { "0" })?;
+                write!(
+                    f,
+                    "{} ",
+                    if Self::x_bit(n, tableau, row, q) {
+                        "1"
+                    } else {
+                        "0"
+                    }
+                )?;
             }
             write!(f, "| ")?;
             for q in 0..n {
-                write!(f, "{} ", if self.z_bit(row, q) { "1" } else { "0" })?;
+                write!(
+                    f,
+                    "{} ",
+                    if Self::z_bit(n, tableau, row, q) {
+                        "1"
+                    } else {
+                        "0"
+                    }
+                )?;
             }
             write!(f, "| ")?;
-            write!(f, "{} ", if self.r_bit(row) { "1" } else { "0" })?;
+            write!(
+                f,
+                "{} ",
+                if Self::r_bit(n, tableau, row) {
+                    "1"
+                } else {
+                    "0"
+                }
+            )?;
             write!(f, "| ")?;
             for j in 0..c_cols {
-                write!(f, "{} ", if self.c_bit(row, j) { "1" } else { "0" })?;
+                write!(
+                    f,
+                    "{} ",
+                    if Self::c_bit(n, tableau, row, j) {
+                        "1"
+                    } else {
+                        "0"
+                    }
+                )?;
             }
         }
         Ok(())
