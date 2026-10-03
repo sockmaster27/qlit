@@ -48,7 +48,7 @@ fn invalid_qubit_index() {
 }
 
 mod cpu {
-    use qlit::simulate_circuit;
+    use qlit::{BitString, simulate_circuit};
 
     use super::*;
 
@@ -56,7 +56,7 @@ mod cpu {
     #[should_panic]
     fn mismatched_qubit_number() {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
-        let w = [false; 9];
+        let w = BitString::zero(9);
         simulate_circuit(&w, &circuit);
     }
 
@@ -65,7 +65,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, []).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -82,7 +82,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [X(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -99,7 +99,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [Y(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -116,7 +116,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -134,7 +134,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -151,7 +151,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -193,7 +193,7 @@ mod cpu {
         .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -212,7 +212,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [T(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -229,7 +229,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [Tdg(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -246,7 +246,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -265,7 +265,7 @@ mod cpu {
         let circuit = CliffordTCircuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -304,7 +304,7 @@ mod cpu {
         .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -365,7 +365,7 @@ mod cpu {
         .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
