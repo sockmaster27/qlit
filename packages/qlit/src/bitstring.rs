@@ -195,10 +195,32 @@ impl BitStringArray {
     }
 
     #[inline]
-    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringIter<'a> {
-        let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
-        let start = i * string_block_length;
-        BitStringIter::new(self.string_length, &self.inner[start..])
+    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
+        BitStringArrayIter {
+            array: self,
+            i,
+            j: 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BitStringArrayIter<'a> {
+    array: &'a BitStringArray,
+    i: usize,
+    j: usize,
+}
+impl<'a> Iterator for BitStringArrayIter<'a> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.j >= self.array.string_length {
+            return None;
+        }
+        let r = self.array.get(self.i, self.j);
+        self.j += 1;
+        Some(r)
     }
 }
 impl Debug for BitStringArray {
