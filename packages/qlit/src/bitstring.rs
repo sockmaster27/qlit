@@ -26,10 +26,12 @@ impl BitString {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.length
     }
 
+    #[inline]
     fn index(&self, i: usize) -> (usize, usize) {
         let len = self.length;
         debug_assert!(
@@ -41,20 +43,24 @@ impl BitString {
         (block_index, bit_index)
     }
 
+    #[inline]
     pub fn get(&self, i: usize) -> bool {
         let (block_index, bit_index) = self.index(i);
         let bit_mask: BitBlock = bitmask(bit_index);
         (self.inner[block_index] & bit_mask) != 0
     }
+    #[inline]
     pub fn set(&mut self, i: usize) {
         let (block_index, bit_index) = self.index(i);
         self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
     }
+    #[inline]
     pub fn unset(&mut self, i: usize) {
         let (block_index, bit_index) = self.index(i);
         self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
     }
 
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = bool> {
         BitStringIter {
             length: self.length,
@@ -64,6 +70,7 @@ impl BitString {
     }
 }
 impl From<&[bool]> for BitString {
+    #[inline]
     fn from(value: &[bool]) -> Self {
         let mut r = Self::zero(value.len());
         for (i, &b) in value.iter().enumerate() {
