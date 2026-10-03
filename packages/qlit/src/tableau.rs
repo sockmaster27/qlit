@@ -263,7 +263,7 @@ impl ExtendedTableau {
         let c_cols = self.c_cols;
 
         // Bitmask with zeros in indices corresponding to rows where pivots have already been seen
-        let mut pivot_mask = vec![!0; column_block_length(n)].into_boxed_slice();
+        let mut pivot_mask = vec![!0; column_block_length(n)];
 
         for col in 0..n {
             // Find pivot row.
