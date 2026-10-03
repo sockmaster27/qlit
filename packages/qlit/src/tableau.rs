@@ -377,14 +377,14 @@ impl ExtendedTableau {
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
     /// This will respect the state of the i'th tableau in the sequence.
-    fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
-    where
-        W1: IntoIterator<Item: Borrow<bool>>,
-        W2: IntoIterator<Item: Borrow<bool>>,
-    {
+    fn stabilizer_matrix_entry(
+        &self,
+        i: usize,
+        row: usize,
+        mut w1: impl Iterator<Item = bool>,
+        mut w2: impl Iterator<Item = bool>,
+    ) -> Complex<f64> {
         let n = self.n;
-        let mut w1 = w1.into_iter();
-        let mut w2 = w2.into_iter();
 
         let mut res = if self.row_negative(i, row) {
             -Complex::ONE
@@ -395,8 +395,8 @@ impl ExtendedTableau {
             // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
             res *= match (
                 self.tensor_element(row, q),
-                w1.next().unwrap().borrow(),
-                w2.next().unwrap().borrow(),
+                w1.next().unwrap(),
+                w2.next().unwrap(),
             ) {
                 (Pauli::I, false, false) => Complex::ONE,
                 (Pauli::I, true, true) => Complex::ONE,
