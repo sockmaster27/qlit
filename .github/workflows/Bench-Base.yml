@@ -27,3 +27,5 @@ jobs:
                   --start-point-reset \
                   --testbed lille \
                   "cargo bench"
+              env:
+                  RUSTFLAGS: "-C target-cpu=native"

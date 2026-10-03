@@ -17,6 +17,8 @@ jobs:
                   cache-target: release
             - name: Run benchmarks
               run: cargo bench | tee benchmark_results.txt
+              env:
+                  RUSTFLAGS: "-C target-cpu=native"
             - name: Upload benchmark results
               uses: actions/upload-artifact@v4
               with:
