@@ -325,7 +325,7 @@ fn run_cpu(
                     for i in 0..g.contained_states() {
                         let index_i = i;
                         let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
+                        xs.extend_from_within(index_i);
                         x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I;
@@ -360,7 +360,7 @@ fn run_cpu(
                     for i in 0..g.contained_states() {
                         let index_i = i;
                         let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
+                        xs.extend_from_within(index_i);
                         x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I_DG;
