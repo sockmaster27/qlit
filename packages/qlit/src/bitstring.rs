@@ -7,14 +7,14 @@ const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
 pub struct BitStringArray {
     string_length: usize,
-    inner: Vec<BitBlock>,
+    inner: Box<[BitBlock]>,
 }
 impl BitStringArray {
     pub fn new(string_length: usize, string_count: usize) -> Self {
         let string_block_length = string_length.div_ceil(BLOCK_SIZE);
         Self {
             string_length,
-            inner: vec![0; string_block_length * string_count],
+            inner: vec![0; string_block_length * string_count].into_boxed_slice(),
         }
     }
 
@@ -22,7 +22,7 @@ impl BitStringArray {
     pub fn singleton_from_u8(s: u8) -> Self {
         Self {
             string_length: 8,
-            inner: vec![s],
+            inner: Box::new([s]),
         }
     }
 
