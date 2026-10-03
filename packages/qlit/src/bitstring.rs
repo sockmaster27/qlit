@@ -86,7 +86,7 @@ impl BitString {
 
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = bool> {
-        BitStringIter::new(self.length, &self.inner)
+        BitStringIter { inner: &self, i: 0 }
     }
 }
 impl<T: AsRef<[bool]>> From<T> for BitString {
@@ -197,7 +197,7 @@ impl BitStringArray {
     #[inline]
     pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
         BitStringArrayIter {
-            array: self,
+            inner: self,
             i,
             j: 0,
         }
@@ -205,8 +205,26 @@ impl BitStringArray {
 }
 
 #[derive(Clone)]
+pub struct BitStringIter<'a> {
+    inner: &'a BitString,
+    i: usize,
+}
+impl<'a> Iterator for BitStringIter<'a> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i >= self.inner.length {
+            return None;
+        }
+        let r = self.inner.get(self.i);
+        self.i += 1;
+        Some(r)
+    }
+}
+
 pub struct BitStringArrayIter<'a> {
-    array: &'a BitStringArray,
+    inner: &'a BitStringArray,
     i: usize,
     j: usize,
 }
@@ -215,10 +233,10 @@ impl<'a> Iterator for BitStringArrayIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.j >= self.array.string_length {
+        if self.j >= self.inner.string_length {
             return None;
         }
-        let r = self.array.get(self.i, self.j);
+        let r = self.inner.get(self.i, self.j);
         self.j += 1;
         Some(r)
     }
@@ -232,45 +250,6 @@ impl Debug for BitStringArray {
                     .collect::<String>()
             }))
             .finish()
-    }
-}
-
-#[derive(Clone)]
-pub struct BitStringIter<'a> {
-    remaining: usize,
-    mask: BitBlock,
-    data: &'a [BitBlock],
-}
-impl<'a> BitStringIter<'a> {
-    fn new(length: usize, data: &'a [BitBlock]) -> Self {
-        Self {
-            remaining: length,
-            mask: bitmask(0),
-            data,
-        }
-    }
-}
-impl<'a> Iterator for BitStringIter<'a> {
-    type Item = bool;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining == 0 {
-            return None;
-        }
-        self.remaining -= 1;
-        let r = (self.data[0] & self.mask) != 0;
-        self.mask >>= 1;
-        if self.mask == 0 {
-            self.mask = bitmask(0);
-            self.data = &self.data[1..]
-        }
-        Some(r)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
     }
 }
 
