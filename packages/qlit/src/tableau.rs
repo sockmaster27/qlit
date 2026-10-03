@@ -177,13 +177,18 @@ impl ExtendedTableau {
     /// coeff_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
     ///
-    /// This function takes an iterator over basis states `w1s` with length `c_cols`,
+    /// This function takes an array of basis states `w1s` with length at least equal to [`Self::contained_states`],
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
+    /// The output will have length exactly equal to [`Self::contained_states`].
     pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f64>] {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
+        debug_assert!(
+            w1s.len() >= contained_states,
+            "Basis state 1 must have length at least {contained_states}"
+        );
         debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
 
         let aux_row = n;

@@ -27,6 +27,12 @@ impl BitStringArray {
     }
 
     #[inline]
+    pub fn len(&self) -> usize {
+        let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
+        self.inner.len() / string_block_length
+    }
+
+    #[inline]
     fn index(&self, i: usize, j: usize) -> (usize, usize) {
         debug_assert!(j < self.string_length);
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
