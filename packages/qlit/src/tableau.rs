@@ -66,7 +66,7 @@ impl ExtendedTableau {
             c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
-            row_mask_buffer: vec![0; n],
+            row_mask_buffer: vec![0; column_block_length(n)],
             output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
