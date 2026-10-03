@@ -5,6 +5,7 @@ use crate::utils::{bitmask, set_bit, unset_bit};
 type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct BitString {
     length: usize,
     inner: Vec<BitBlock>,
@@ -21,6 +22,30 @@ impl BitString {
         Self {
             length: 8,
             inner: vec![s],
+        }
+    }
+    pub fn from_u16_ltr(s: u16) -> Self {
+        Self {
+            length: 16,
+            inner: s.to_be_bytes().into(),
+        }
+    }
+    pub fn from_u32_ltr(s: u32) -> Self {
+        Self {
+            length: 32,
+            inner: s.to_be_bytes().into(),
+        }
+    }
+    pub fn from_u64_ltr(s: u64) -> Self {
+        Self {
+            length: 64,
+            inner: s.to_be_bytes().into(),
+        }
+    }
+    pub fn from_u128_ltr(s: u128) -> Self {
+        Self {
+            length: 128,
+            inner: s.to_be_bytes().into(),
         }
     }
 
@@ -67,11 +92,12 @@ impl BitString {
         }
     }
 }
-impl From<&[bool]> for BitString {
+impl<T: AsRef<[bool]>> From<T> for BitString {
     #[inline]
-    fn from(value: &[bool]) -> Self {
-        let mut r = Self::zero(value.len());
-        for (i, &b) in value.iter().enumerate() {
+    fn from(value: T) -> Self {
+        let slice = value.as_ref();
+        let mut r = Self::zero(slice.len());
+        for (i, &b) in slice.iter().enumerate() {
             if b {
                 r.set(i);
             }
@@ -173,5 +199,145 @@ impl<'a> Iterator for BitStringIter<'a> {
         let r = (self.inner[block_index] & bit_mask) != 0;
         self.i += 1;
         Some(r)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.length, Some(self.length))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn bitstring_zero() {
+        let b = BitString::zero(20);
+        assert_eq!(b.len(), 20);
+        assert_eq!(b.iter().collect::<Vec<_>>(), vec![false; 20]);
+    }
+
+    #[test]
+    fn bitstring_from_u8_ltr() {
+        let b = BitString::from_u8_ltr(0b011_01001);
+        assert_eq!(b.len(), 8);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![false, true, true, false, true, false, false, true]
+        );
+    }
+    #[test]
+    fn bitstring_from_u16_ltr() {
+        let b = BitString::from_u16_ltr(0b0110_1001_0110_1001);
+        assert_eq!(b.len(), 16);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u32_ltr() {
+        let b = BitString::from_u32_ltr(0b0110_1001_0110_1001_0110_1001_0110_1001);
+        assert_eq!(b.len(), 32);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u64_ltr() {
+        let b = BitString::from_u64_ltr(
+            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
+        );
+        assert_eq!(b.len(), 64);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true, false, true, true, false, true, false, false, true, false, true, true,
+                false, true, false, false, true, false, true, true, false, true, false, false,
+                true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u128_ltr() {
+        let b = BitString::from_u128_ltr(
+            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
+        );
+        assert_eq!(b.len(), 128);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true, false, true, true, false, true, false, false, true, false, true, true,
+                false, true, false, false, true, false, true, true, false, true, false, false,
+                true, false, true, true, false, true, false, false, true, false, true, true, false,
+                true, false, false, true, false, true, true, false, true, false, false, true,
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true,
+            ]
+        );
+    }
+
+    #[test]
+    fn bitstring_from_bool_vec() {
+        let v = vec![
+            false, true, true, false, true, false, false, true, false, false,
+        ];
+        let b: BitString = From::from(&v);
+        assert_eq!(b.len(), 10);
+        assert_eq!(b.iter().collect::<Vec<_>>(), v);
+    }
+
+    #[test]
+    fn bitstring_get1() {
+        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
+        assert_eq!(b.get(17), true);
+    }
+    #[test]
+    fn bitstring_get2() {
+        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
+        assert_eq!(b.get(16), false);
+    }
+
+    #[test]
+    fn bitstring_set1() {
+        let mut b = BitString::from([false; 33]);
+        b.set(32);
+        assert_eq!(b.get(32), true);
+    }
+    #[test]
+    fn bitstring_set2() {
+        let mut b = BitString::from([true; 33]);
+        b.set(32);
+        assert_eq!(b.get(32), true);
+    }
+
+    #[test]
+    fn bitstring_unset1() {
+        let mut b = BitString::from([true; 33]);
+        b.unset(7);
+        assert_eq!(b.get(7), false);
+    }
+    #[test]
+    fn bitstring_unset2() {
+        let mut b = BitString::from([false; 33]);
+        b.unset(7);
+        assert_eq!(b.get(7), false);
     }
 }
