@@ -46,9 +46,6 @@ pub struct ExtendedTableau {
     /// This auxiliary row is assumed to be kept zeroed.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
-    /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
-    /// Must have length of at least 2^`c_cols` at all times.
-    output: Vec<Complex<f64>>,
 }
 impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
@@ -64,7 +61,6 @@ impl ExtendedTableau {
             c_cols: 0,
             tableau,
             row_pivots: vec![None; n],
-            output: vec![Complex::ZERO; 1 << capacity_log2],
         }
     }
 
@@ -181,7 +177,7 @@ impl ExtendedTableau {
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
     /// The output will have length exactly equal to [`Self::contained_states`].
-    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f64>] {
+    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> Vec<Complex<f64>> {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
@@ -198,6 +194,7 @@ impl ExtendedTableau {
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
+        let mut output = Vec::with_capacity(contained_states);
         for s in 0..contained_states {
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
@@ -266,21 +263,21 @@ impl ExtendedTableau {
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[s] = self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2);
+            output.push(self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2));
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
             let block_index = column_block_index(n, aux_block_index, j);
             self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
         }
-        &self.output[..contained_states]
+        output
     }
     /// Same as [`Self::coeff_ratios`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
     pub fn coeff_ratios_flipped_bit(
         &mut self,
         w1s: &BitStringArray,
         flipped_bit: usize,
-    ) -> &[Complex<f64>] {
+    ) -> Vec<Complex<f64>> {
         let n = self.n;
         let contained_states = self.contained_states();
 
@@ -296,9 +293,10 @@ impl ExtendedTableau {
             }
         }
 
+        let mut output = Vec::with_capacity(contained_states);
         match row {
             None => {
-                self.output[..contained_states].fill(Complex::ZERO);
+                output.resize(contained_states, Complex::ZERO);
             }
             Some(row) => {
                 for i in 0..contained_states {
@@ -307,11 +305,11 @@ impl ExtendedTableau {
                         .iter_string(i)
                         .enumerate()
                         .map(|(i, b)| if i == flipped_bit { !b } else { b });
-                    self.output[i] = self.stabilizer_matrix_entry(i, row, w1s.iter_string(i), w2);
+                    output.push(self.stabilizer_matrix_entry(i, row, w1s.iter_string(i), w2));
                 }
             }
         }
-        &self.output[..contained_states]
+        output
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
