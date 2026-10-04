@@ -951,4 +951,30 @@ mod tests {
         w2[42] = true;
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ZERO; 8]);
     }
+
+    #[test]
+    fn linear_cluster_state() {
+        let mut g = ExtendedTableau::zero(8, 0);
+        for q in 0..8 {
+            g.apply_h_gate(q);
+        }
+        for q in 0..7 {
+            g.apply_cz_gate(q, q + 1);
+        }
+
+        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let result = g.coeff_ratios(&w1, &w2);
+
+            let adjacent_pairs = (0..7).filter(|&q| w2[q] && w2[q + 1]).count();
+            let expected = if adjacent_pairs % 2 == 0 {
+                Complex::ONE
+            } else {
+                -Complex::ONE
+            };
+            assert_eq!(result[0], expected, "{i:008b}");
+        }
+    }
 }
