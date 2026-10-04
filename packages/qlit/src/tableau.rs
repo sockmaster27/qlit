@@ -292,11 +292,11 @@ impl ExtendedTableau {
                         *self.tableau.get_unchecked_mut(block_index) =
                             flip_bit(*self.tableau.get_unchecked(block_index), aux_bit_index);
                     }
-                }
 
-                // Compute the (w2, w1) entry in the stabilizer of the correct form.
-                *self.output.get_unchecked_mut(s) =
-                    self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
+                    // Compute the (w2, w1) entry in the stabilizer of the correct form.
+                    *self.output.get_unchecked_mut(s) =
+                        self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
+                }
             }
         }
         // Reset the auxiliary row.
