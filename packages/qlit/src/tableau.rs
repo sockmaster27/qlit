@@ -242,7 +242,7 @@ impl ExtendedTableau {
                     z1 ^= z2;
                 }
             }
-            let phase = 2 * phase_bit2.count_ones() + phase_bit1.count_ones();
+            let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
             debug_assert!(phase % 2 == 0, "Imaginary sign");
             if phase == 2 {
                 let block_index = r_column_block_index(n, aux_block_index);
