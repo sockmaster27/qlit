@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    f64::consts::{FRAC_1_SQRT_2, SQRT_2},
+    f32::consts::{FRAC_1_SQRT_2, SQRT_2},
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -23,21 +23,21 @@ const N_TOO_LARGE: &str = "Number of qubits too large";
 const INDEX_TOO_LARGE: &str = "Qubit index too large";
 
 // T = C_I*I + C_Z*Z
-const C_I: Complex<f64> = Complex {
+const C_I: Complex<f32> = Complex {
     re: 0.5 + 0.5 * FRAC_1_SQRT_2,
     im: 0.5 * FRAC_1_SQRT_2,
 };
-const C_Z: Complex<f64> = Complex {
+const C_Z: Complex<f32> = Complex {
     re: 0.5 - 0.5 * FRAC_1_SQRT_2,
     im: -0.5 * FRAC_1_SQRT_2,
 };
 
 // Tdg = C_I_DG*I + C_Z_DG*Z
-const C_I_DG: Complex<f64> = Complex {
+const C_I_DG: Complex<f32> = Complex {
     re: 0.5 + 0.5 * FRAC_1_SQRT_2,
     im: -0.5 * FRAC_1_SQRT_2,
 };
-const C_Z_DG: Complex<f64> = Complex {
+const C_Z_DG: Complex<f32> = Complex {
     re: 0.5 - 0.5 * FRAC_1_SQRT_2,
     im: 0.5 * FRAC_1_SQRT_2,
 };
@@ -52,7 +52,7 @@ const MAX_BATCH_SIZE_LOG2: usize = 20;
 ///
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
-pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f32> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -109,7 +109,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f32> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -139,7 +139,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f32> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -164,9 +164,9 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
 
     let mut gpu_sim = GpuSimulator::new(circuit, w, batch_size_log2);
 
-    let mut w_coeff_local = Complex::<f64>::ZERO;
+    let mut w_coeff_local = Complex::<f32>::ZERO;
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
-    let w_coeff = Mutex::new(Complex::<f64>::ZERO);
+    let w_coeff = Mutex::new(Complex::<f32>::ZERO);
     let done = AtomicBool::new(false);
 
     rayon::in_place_scope(|s| {
@@ -208,7 +208,7 @@ fn run_cpu(
     circuit: &CliffordTCircuit,
     path: &[bool],
     batch_size_log2: usize,
-) -> Complex<f64> {
+) -> Complex<f32> {
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
     let mut x_coeffs = vec![Complex::ONE];

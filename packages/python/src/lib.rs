@@ -155,7 +155,7 @@ fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<Vec<bool>> {
 fn py_simulate_circuit(
     w: &Bound<PyString>,
     circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+) -> PyResult<Complex<f32>> {
     Ok(simulate_circuit(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
@@ -167,7 +167,7 @@ fn py_simulate_circuit(
 fn py_simulate_circuit_gpu(
     w: &Bound<PyString>,
     circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+) -> PyResult<Complex<f32>> {
     Ok(simulate_circuit_gpu(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
@@ -179,7 +179,7 @@ fn py_simulate_circuit_gpu(
 fn py_simulate_circuit_hybrid(
     w: &Bound<PyString>,
     circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+) -> PyResult<Complex<f32>> {
     Ok(simulate_circuit_hybrid(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,

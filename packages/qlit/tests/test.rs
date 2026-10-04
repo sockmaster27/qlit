@@ -121,8 +121,8 @@ mod cpu {
             let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
-                0b1000_0000 => Complex::I / 2_f64.sqrt(),
+                0b0000_0000 => Complex::ONE / 2_f32.sqrt(),
+                0b1000_0000 => Complex::I / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -156,7 +156,7 @@ mod cpu {
             let result = simulate_circuit(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -199,8 +199,8 @@ mod cpu {
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
-                | 0b1011_0000 => Complex::I / 8_f64.sqrt(),
-                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+                | 0b1011_0000 => Complex::I / 8_f32.sqrt(),
+                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -272,8 +272,8 @@ mod cpu {
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 => Complex { re: 0.5, im: 0.0 },
                 0b1000_0000 | 0b1100_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
-                    im: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -311,11 +311,11 @@ mod cpu {
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
                 0b1000_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b0100_0000 => Complex {
-                    re: -0.125_f64.sqrt(),
+                    re: -0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b1100_0000 => Complex {
@@ -328,11 +328,11 @@ mod cpu {
                 },
                 0b1001_0000 => Complex {
                     re: 0.0,
-                    im: 0.125_f64.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 0b0101_0000 => Complex {
                     re: 0.0,
-                    im: -0.125_f64.sqrt(),
+                    im: -0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -372,12 +372,12 @@ mod cpu {
             let expected = match i {
                 0b0000_0000 => Complex { re: 0.0, im: -0.5 },
                 0b1100_0000 => Complex {
-                    re: 2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: 2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b1010_0000 => Complex {
-                    re: -2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: -2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b0110_0000 => Complex { re: 0.0, im: 0.5 },
                 _ => Complex::ZERO,
@@ -462,8 +462,8 @@ mod gpu {
             let result = simulate_circuit_gpu(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
-                0b1000_0000 => Complex::I / 2_f64.sqrt(),
+                0b0000_0000 => Complex::ONE / 2_f32.sqrt(),
+                0b1000_0000 => Complex::I / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -497,7 +497,7 @@ mod gpu {
             let result = simulate_circuit_gpu(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -540,8 +540,8 @@ mod gpu {
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
-                | 0b1011_0000 => Complex::I / 8_f64.sqrt(),
-                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+                | 0b1011_0000 => Complex::I / 8_f32.sqrt(),
+                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -613,8 +613,8 @@ mod gpu {
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 => Complex { re: 0.5, im: 0.0 },
                 0b1000_0000 | 0b1100_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
-                    im: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -652,11 +652,11 @@ mod gpu {
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
                 0b1000_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b0100_0000 => Complex {
-                    re: -0.125_f64.sqrt(),
+                    re: -0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b1100_0000 => Complex {
@@ -669,11 +669,11 @@ mod gpu {
                 },
                 0b1001_0000 => Complex {
                     re: 0.0,
-                    im: 0.125_f64.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 0b0101_0000 => Complex {
                     re: 0.0,
-                    im: -0.125_f64.sqrt(),
+                    im: -0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -713,12 +713,12 @@ mod gpu {
             let expected = match i {
                 0b0000_0000 => Complex { re: 0.0, im: -0.5 },
                 0b1100_0000 => Complex {
-                    re: 2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: 2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b1010_0000 => Complex {
-                    re: -2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: -2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b0110_0000 => Complex { re: 0.0, im: 0.5 },
                 _ => Complex::ZERO,
@@ -803,8 +803,8 @@ mod hybrid {
             let result = simulate_circuit_gpu(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 => Complex::ONE / 2_f64.sqrt(),
-                0b1000_0000 => Complex::I / 2_f64.sqrt(),
+                0b0000_0000 => Complex::ONE / 2_f32.sqrt(),
+                0b1000_0000 => Complex::I / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -838,7 +838,7 @@ mod hybrid {
             let result = simulate_circuit_gpu(&w, &circuit);
 
             let expected = match i {
-                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f64.sqrt(),
+                0b0000_0000 | 0b1100_0000 => Complex::ONE / 2_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -881,8 +881,8 @@ mod hybrid {
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
-                | 0b1011_0000 => Complex::I / 8_f64.sqrt(),
-                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f64.sqrt(),
+                | 0b1011_0000 => Complex::I / 8_f32.sqrt(),
+                0b1000_0000 | 0b1111_0000 => -Complex::I / 8_f32.sqrt(),
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, i);
@@ -954,8 +954,8 @@ mod hybrid {
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 => Complex { re: 0.5, im: 0.0 },
                 0b1000_0000 | 0b1100_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
-                    im: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -993,11 +993,11 @@ mod hybrid {
             let expected = match i {
                 0b0000_0000 | 0b1101_0000 => Complex { re: 0.25, im: 0.25 },
                 0b1000_0000 => Complex {
-                    re: 0.125_f64.sqrt(),
+                    re: 0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b0100_0000 => Complex {
-                    re: -0.125_f64.sqrt(),
+                    re: -0.125_f32.sqrt(),
                     im: 0.0,
                 },
                 0b1100_0000 => Complex {
@@ -1010,11 +1010,11 @@ mod hybrid {
                 },
                 0b1001_0000 => Complex {
                     re: 0.0,
-                    im: 0.125_f64.sqrt(),
+                    im: 0.125_f32.sqrt(),
                 },
                 0b0101_0000 => Complex {
                     re: 0.0,
-                    im: -0.125_f64.sqrt(),
+                    im: -0.125_f32.sqrt(),
                 },
                 _ => Complex::ZERO,
             };
@@ -1054,12 +1054,12 @@ mod hybrid {
             let expected = match i {
                 0b0000_0000 => Complex { re: 0.0, im: -0.5 },
                 0b1100_0000 => Complex {
-                    re: 2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: 2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b1010_0000 => Complex {
-                    re: -2_f64.sqrt() / 4.0,
-                    im: -2_f64.sqrt() / 4.0,
+                    re: -2_f32.sqrt() / 4.0,
+                    im: -2_f32.sqrt() / 4.0,
                 },
                 0b0110_0000 => Complex { re: 0.0, im: 0.5 },
                 _ => Complex::ZERO,
@@ -1069,7 +1069,7 @@ mod hybrid {
     }
 }
 
-fn assert_almost_eq(result: Complex<f64>, expected: Complex<f64>, i: u8) {
+fn assert_almost_eq(result: Complex<f32>, expected: Complex<f32>, i: u8) {
     let diff = (result - expected).norm();
     assert!(
         diff < 1e-6,

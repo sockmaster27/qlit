@@ -48,7 +48,7 @@ pub struct ExtendedTableau {
     row_pivots: Vec<Option<usize>>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
     /// Must have length of at least 2^`c_cols` at all times.
-    output: Vec<Complex<f64>>,
+    output: Vec<Complex<f32>>,
 }
 impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
@@ -181,7 +181,7 @@ impl ExtendedTableau {
     /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
     /// each respecting the state of the i'th state in the sequence.
     /// The output will have length exactly equal to [`Self::contained_states`].
-    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f64>] {
+    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &[bool]) -> &[Complex<f32>] {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
@@ -280,7 +280,7 @@ impl ExtendedTableau {
         &mut self,
         w1s: &BitStringArray,
         flipped_bit: usize,
-    ) -> &[Complex<f64>] {
+    ) -> &[Complex<f32>] {
         let n = self.n;
         let contained_states = self.contained_states();
 
@@ -407,7 +407,7 @@ impl ExtendedTableau {
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
     /// This will respect the state of the i'th tableau in the sequence.
-    fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
+    fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f32>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
         W2: IntoIterator<Item: Borrow<bool>>,

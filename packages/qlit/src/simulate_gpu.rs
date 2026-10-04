@@ -837,7 +837,7 @@ impl<'a> GpuSimulator<'a> {
         bind_groups
     }
 
-    pub fn run(&mut self, path: &[bool]) -> Complex<f64> {
+    pub fn run(&mut self, path: &[bool]) -> Complex<f32> {
         self.gpu
             .queue
             .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
@@ -1133,8 +1133,8 @@ fn encode_bitstring(bits: &[bool]) -> Vec<u8> {
 }
 
 /// Convert the contents of a slice of bytes into an iterator over Complex<f32> using native endianness.
-/// Note that the returned values are additionally converted to Complex<f64> for convenience, but the underlying data is still f32 precision.
-fn bytes_to_complex(bytes: &[u8]) -> impl Iterator<Item = Complex<f64>> {
+/// Note that the returned values are additionally converted to Complex<f32> for convenience, but the underlying data is still f32 precision.
+fn bytes_to_complex(bytes: &[u8]) -> impl Iterator<Item = Complex<f32>> {
     let (chunks, remainder) = bytes.as_chunks::<4>();
     debug_assert_eq!(remainder.len(), 0);
     let (chunks, remainder) = chunks.as_chunks::<2>();
