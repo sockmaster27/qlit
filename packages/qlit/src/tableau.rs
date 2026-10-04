@@ -5,7 +5,7 @@ use std::mem;
 use num_complex::Complex;
 
 use crate::bitstring::BitStringArray;
-use crate::utils::{align_bit_to, bit_indices, bitmask, unset_bit};
+use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -194,18 +194,88 @@ impl ExtendedTableau {
         let aux_row = n;
         let aux_block_index = aux_row / BLOCK_SIZE;
         let aux_bit_index = aux_row % BLOCK_SIZE;
-        let aux_bitmask: BitBlock = bitmask(aux_bit_index);
 
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
         for i in 0..contained_states {
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
+            let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
                     && w1s.get(i, q) != w2[q]
                 {
-                    self.multiply_rows_into(row, aux_row);
+                    let row_block_index = row / BLOCK_SIZE;
+                    let row_bit_index = row % BLOCK_SIZE;
+                    mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
+                }
+            }
+            for i in 0..column_block_length(n) {
+                let mask = mask[i];
+                // Determine phase change caused by multiplication of the individual Pauli matrices.
+                // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
+                // but in a bit block so we can operate on all rows in the block at once.
+                // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+                let mut phase_bit1: BitBlock = 0;
+                let mut phase_bit2: BitBlock = 0;
+                for col2 in 0..n {
+                    let mut x1 = self.tableau[x_column_block_index(n, i, col2)] & mask;
+                    let mut z1 = self.tableau[z_column_block_index(n, i, col2)] & mask;
+                    for e in 1..=BLOCK_SIZE.ilog2() {
+                        let shift = BLOCK_SIZE / 2usize.pow(e);
+                        let x2 = x1 >> shift;
+                        let z2 = z1 >> shift;
+                        x1 &= !0 >> shift;
+                        z1 &= !0 >> shift;
+
+                        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
+                            x & !z
+                        }
+                        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
+                            !x & z
+                        }
+                        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
+                            x & z
+                        }
+
+                        // XY = +iZ
+                        // YZ = +iX
+                        // ZX = +iY
+                        let add = (x(x1, z1) & y(x2, z2))
+                            | (y(x1, z1) & z(x2, z2))
+                            | (z(x1, z1) & x(x2, z2));
+                        phase_bit2 ^= add & phase_bit1;
+                        phase_bit1 ^= add;
+
+                        // YX = -iZ
+                        // ZY = -iX
+                        // XZ = -iY
+                        let sub = (y(x1, z1) & x(x2, z2))
+                            | (z(x1, z1) & y(x2, z2))
+                            | (x(x1, z1) & z(x2, z2));
+                        phase_bit2 ^= sub & !phase_bit1;
+                        phase_bit1 ^= sub;
+
+                        x1 ^= x2;
+                        z1 ^= z2;
+                    }
+                }
+                debug_assert!(phase_bit1.count_ones() % 2 == 0, "Imaginary sign");
+                let sign_flipped =
+                    ((phase_bit1.count_ones() / 2) + phase_bit2.count_ones()) % 2 != 0;
+                if sign_flipped {
+                    let block_index = r_column_block_index(n, aux_block_index);
+                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
+                }
+
+                // XOR
+                for j in 0..(n + n + 1 + c_cols) {
+                    let block = self.tableau[column_block_index(n, i, j)] & mask;
+                    if block.count_ones() % 2 != 0 {
+                        let block_index = column_block_index(n, aux_block_index, j);
+                        self.tableau[block_index] =
+                            flip_bit(self.tableau[block_index], aux_bit_index);
+                    }
                 }
             }
 
@@ -213,8 +283,9 @@ impl ExtendedTableau {
             self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1s.iter_string(i), w2);
 
             // Reset the auxiliary row.
-            for r in 0..(n + n + 1 + c_cols) {
-                self.tableau[column_block_index(n, aux_block_index, r)] &= !aux_bitmask;
+            for j in 0..(n + n + 1 + c_cols) {
+                let block_index = column_block_index(n, aux_block_index, j);
+                self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
             }
         }
         &self.output[..contained_states]
@@ -420,63 +491,6 @@ impl ExtendedTableau {
         res
     }
 
-    /// Set row with index `target` to be the product of the `source` and `target` rows.
-    ///
-    /// NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
-    fn multiply_rows_into(&mut self, source: usize, target: usize) {
-        let n = self.n;
-        let c_cols = self.c_cols;
-
-        let source_block_index = source / BLOCK_SIZE;
-        let target_block_index = target / BLOCK_SIZE;
-        let source_bit_index = source % BLOCK_SIZE;
-        let target_bit_index = target % BLOCK_SIZE;
-        let source_bitmask: BitBlock = bitmask(source_bit_index);
-        let target_bitmask: BitBlock = bitmask(target_bit_index);
-
-        // Determine phase shift.
-        let mut phase: i8 = 0;
-        for q in 0..n {
-            match (
-                self.tensor_element(source, q),
-                self.tensor_element(target, q),
-            ) {
-                (Pauli::X, Pauli::Y) => phase += 1,
-                (Pauli::X, Pauli::Z) => phase -= 1,
-
-                (Pauli::Y, Pauli::Z) => phase += 1,
-                (Pauli::Y, Pauli::X) => phase -= 1,
-
-                (Pauli::Z, Pauli::X) => phase += 1,
-                (Pauli::Z, Pauli::Y) => phase -= 1,
-
-                _ => {}
-            }
-            phase = phase.rem_euclid(4);
-        }
-        match phase {
-            0 => {
-                // Do nothing.
-            }
-            2 => {
-                // Negate the sign bit.
-                self.tableau[r_column_block_index(n, target_block_index)] ^= target_bitmask;
-            }
-            _ => unreachable!("No valid stabilizer can have imaginary phase: {phase}"),
-        };
-
-        // XOR
-        for j in 0..(n + n + 1 + c_cols) {
-            let source_block = column_block_index(n, source_block_index, j);
-            let target_block = column_block_index(n, target_block_index, j);
-            self.tableau[target_block] ^= align_bit_to(
-                self.tableau[source_block] & source_bitmask,
-                source_bit_index,
-                target_bit_index,
-            );
-        }
-    }
-
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
     /// This will respect the sign of the i'th state.
@@ -551,11 +565,15 @@ impl Debug for ExtendedTableau {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
         let c_cols = self.c_cols;
-        for row in 0..n {
+        for row in 0..(n + 1) {
             write!(
                 f,
                 "\n\t{} -> ",
-                self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
+                if row == n {
+                    "E".to_owned()
+                } else {
+                    self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
+                }
             )?;
             for q in 0..n {
                 write!(f, "{} ", if self.x_bit(row, q) { "1" } else { "0" })?;

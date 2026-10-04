@@ -88,18 +88,16 @@ pub fn unset_bit<B: BitBlock>(block: B, i: usize) -> B {
     block & !bitmask::<B>(i)
 }
 
-/// Bit-shift the given block such that the `from`th bit is moved to the `to`th position, e.g.
+/// Flips the i'th bit of the given block.
 /// ```text
-/// align_bit_to(01000000, 2, 6) -> 00000010
-///               ^                   >>>>^
+/// flip_bit(11111111, 0) -> 01111111
+/// flip_bit(00110111, 1) -> 01110111
+/// flip_bit(01100111, 6) -> 01100101
 /// ```
 #[inline]
-pub fn align_bit_to<B: BitBlock>(block: B, from: usize, to: usize) -> B {
-    if to < from {
-        block << (from - to)
-    } else {
-        block >> (to - from)
-    }
+pub fn flip_bit<B: BitBlock>(block: B, i: usize) -> B {
+    debug_assert!(i < B::SIZE);
+    block ^ bitmask::<B>(i)
 }
 
 #[cfg(test)]
@@ -177,21 +175,21 @@ mod test {
     }
 
     #[test]
-    fn test_align_bit_to1() {
+    fn test_flip_bit1() {
         let block: u64 =
             0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
         assert_eq!(
-            align_bit_to(block, 34, 30),
-            0b1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000_0000
+            flip_bit(block, 34),
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1000_1000_0000_0000_0000_0000_0000_0000
         );
     }
     #[test]
-    fn test_align_bit_to2() {
+    fn test_flip_bit2() {
         let block: u64 =
             0b1010_1000_0000_0000_0000_0000_0000_0000_1010_1000_0000_0000_0000_0000_0000_0000;
         assert_eq!(
-            align_bit_to(block, 0, 63),
-            0b0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0001
+            flip_bit(block, 35),
+            0b1010_1000_0000_0000_0000_0000_0000_0000_1011_1000_0000_0000_0000_0000_0000_0000
         );
     }
 }

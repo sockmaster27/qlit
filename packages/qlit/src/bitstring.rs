@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::utils::{bitmask, set_bit, unset_bit};
+use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
 
 type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -60,8 +60,7 @@ impl BitStringArray {
     #[inline]
     pub fn flip(&mut self, i: usize, j: usize) {
         let (block_index, bit_index) = self.index(i, j);
-        let bit_mask: BitBlock = bitmask(bit_index);
-        self.inner[block_index] ^= bit_mask;
+        self.inner[block_index] = flip_bit(self.inner[block_index], bit_index);
     }
     #[inline]
     pub fn copy_within(&mut self, src: usize, dst: usize) {
