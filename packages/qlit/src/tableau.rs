@@ -248,14 +248,14 @@ impl ExtendedTableau {
 
             // XOR
             for j in 0..(n + n + 1 + c_cols) {
+                let mut block: BitBlock = 0;
                 for i in 0..column_block_length(n) {
                     let mask = mask[i];
-                    let block = self.tableau[column_block_index(n, i, j)] & mask;
-                    if block.count_ones() % 2 != 0 {
-                        let block_index = column_block_index(n, aux_block_index, j);
-                        self.tableau[block_index] =
-                            flip_bit(self.tableau[block_index], aux_bit_index);
-                    }
+                    block ^= self.tableau[column_block_index(n, i, j)] & mask;
+                }
+                let block_index = column_block_index(n, aux_block_index, j);
+                if block.count_ones() % 2 != 0 {
+                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
                 }
             }
 
