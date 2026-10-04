@@ -210,6 +210,22 @@ impl ExtendedTableau {
                     mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
                 }
             }
+            // XOR
+            for j in 0..(n + n + 1 + c_cols) {
+                // Start by going block-wise, reducing to a single block
+                let mut block: BitBlock = 0;
+                for i in 0..column_block_length(n) {
+                    block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
+                }
+                // Reduce last block:
+                // The XOR of all bits in a block is just the parity
+                let block_index = column_block_index(n, aux_block_index, j);
+                self.tableau[block_index] = if block.count_ones() % 2 != 0 {
+                    set_bit(self.tableau[block_index], aux_bit_index)
+                } else {
+                    unset_bit(self.tableau[block_index], aux_bit_index)
+                };
+            }
             // Determine phase change caused by multiplication of the individual Pauli matrices.
             // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
             let mut phase_bit1: BitBlock = 0;
@@ -217,7 +233,7 @@ impl ExtendedTableau {
             for col in 0..n {
                 let mut x1 = 0;
                 let mut z1 = 0;
-                // Start by going block-wise reducing to a single block.
+                // Reduce block-wise
                 for i in 0..column_block_length(n) {
                     let x2 = self.tableau[x_column_block_index(n, i, col)] & mask[i];
                     let z2 = self.tableau[z_column_block_index(n, i, col)] & mask[i];
@@ -248,29 +264,14 @@ impl ExtendedTableau {
                 let block_index = r_column_block_index(n, aux_block_index);
                 self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
             }
-            // XOR
-            for j in 0..(n + n + 1 + c_cols) {
-                // Reduce block-wise
-                let mut block: BitBlock = 0;
-                for i in 0..column_block_length(n) {
-                    block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
-                }
-                // Reduce last block:
-                // The XOR of all bits in a block is just the parity
-                let block_index = column_block_index(n, aux_block_index, j);
-                if block.count_ones() % 2 != 0 {
-                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
-                }
-            }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
             self.output[s] = self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2);
-
-            // Reset the auxiliary row.
-            for j in 0..(n + n + 1 + c_cols) {
-                let block_index = column_block_index(n, aux_block_index, j);
-                self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
-            }
+        }
+        // Reset the auxiliary row.
+        for j in 0..(n + n + 1 + c_cols) {
+            let block_index = column_block_index(n, aux_block_index, j);
+            self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
         }
         &self.output[..contained_states]
     }
