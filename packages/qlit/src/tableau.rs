@@ -529,27 +529,29 @@ impl ExtendedTableau {
         } else {
             Complex::ONE
         };
-        for q in 0..n {
-            // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-            res *= match (
-                self.tensor_element(row, q),
-                w1.next().unwrap(),
-                w2.next().unwrap(),
-            ) {
-                (Pauli::I, false, false) => Complex::ONE,
-                (Pauli::I, true, true) => Complex::ONE,
+        unsafe {
+            for q in 0..n {
+                // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
+                res *= match (
+                    self.tensor_element(row, q),
+                    w1.next().unwrap_unchecked(),
+                    w2.next().unwrap_unchecked(),
+                ) {
+                    (Pauli::I, false, false) => Complex::ONE,
+                    (Pauli::I, true, true) => Complex::ONE,
 
-                (Pauli::X, false, true) => Complex::ONE,
-                (Pauli::X, true, false) => Complex::ONE,
+                    (Pauli::X, false, true) => Complex::ONE,
+                    (Pauli::X, true, false) => Complex::ONE,
 
-                (Pauli::Y, false, true) => Complex::I,
-                (Pauli::Y, true, false) => -Complex::I,
+                    (Pauli::Y, false, true) => Complex::I,
+                    (Pauli::Y, true, false) => -Complex::I,
 
-                (Pauli::Z, false, false) => Complex::ONE,
-                (Pauli::Z, true, true) => -Complex::ONE,
+                    (Pauli::Z, false, false) => Complex::ONE,
+                    (Pauli::Z, true, true) => -Complex::ONE,
 
-                _ => return Complex::ZERO,
-            };
+                    _ => return Complex::ZERO,
+                };
+            }
         }
         res
     }
