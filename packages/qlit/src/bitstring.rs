@@ -19,10 +19,10 @@ impl BitStringArray {
     }
 
     #[cfg(test)]
-    pub fn singleton_from_u8(s: u8) -> Self {
+    pub fn from_u8s(s: &[u8]) -> Self {
         Self {
             string_length: 8,
-            inner: vec![s],
+            inner: s.to_owned(),
         }
     }
 

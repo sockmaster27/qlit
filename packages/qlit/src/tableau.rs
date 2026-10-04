@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn zero() {
-        let w1 = BitStringArray::singleton_from_u8(0b0000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn imaginary() {
-        let w1 = BitStringArray::singleton_from_u8(0b0000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn negative_imaginary() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn flipped() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -708,7 +708,7 @@ mod tests {
 
     #[test]
     fn bell_state() {
-        let w1 = BitStringArray::singleton_from_u8(0b1100_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1100_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn larger_circuit() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn bitflip_ratio() {
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
         let mut g = ExtendedTableau::zero(8, 0);
         g.apply_h_gate(0);
         g.apply_h_gate(1);
@@ -829,7 +829,7 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        let w1 = BitStringArray::singleton_from_u8(0b1000_0000);
+        let w1 = BitStringArray::from_u8s(&[0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = bits_to_bools(i);
 
@@ -853,5 +853,101 @@ mod tests {
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
+    }
+
+    #[test]
+    fn fork_apply_z_gate() {
+        let mut g = ExtendedTableau::zero(8, 1);
+        g.apply_h_gate(0);
+        g.fork_apply_z_gate(0);
+
+        let w1 = BitStringArray::from_u8s(&[0b0000_0000, 0b1000_0000]);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = bits_to_bools(i);
+
+            let result = g.coeff_ratios(&w1, &w2);
+
+            let expected = if i == 0b0000_0000 {
+                [Complex::ONE, -Complex::ONE]
+            } else if i == 0b1000_0000 {
+                [Complex::ONE, Complex::ONE]
+            } else {
+                [Complex::ZERO, Complex::ZERO]
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn large_tableau() {
+        let mut g = ExtendedTableau::zero(300, 3);
+        g.apply_h_gate(1);
+        g.fork_apply_z_gate(1);
+        g.apply_h_gate(78);
+        g.fork_apply_z_gate(78);
+        g.apply_h_gate(123);
+        g.fork_apply_z_gate(123);
+
+        let w1 = BitStringArray::new(300, 8);
+        let mut w2 = [false; 300];
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE; 8]);
+        w2[1] = true;
+        assert_eq!(
+            g.coeff_ratios(&w1, &w2),
+            [
+                Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+            ]
+        );
+        w2[78] = true;
+        assert_eq!(
+            g.coeff_ratios(&w1, &w2),
+            [
+                Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+            ]
+        );
+        w2[123] = true;
+        assert_eq!(
+            g.coeff_ratios(&w1, &w2),
+            [
+                Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+            ]
+        );
+        w2[1] = false;
+        assert_eq!(
+            g.coeff_ratios(&w1, &w2),
+            [
+                Complex::ONE,
+                Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                -Complex::ONE,
+                Complex::ONE,
+                Complex::ONE,
+            ]
+        );
+        w2[42] = true;
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ZERO; 8]);
     }
 }
