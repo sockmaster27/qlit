@@ -211,22 +211,25 @@ impl ExtendedTableau {
                 }
             }
             // Determine phase change caused by multiplication of the individual Pauli matrices.
-            // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
-            // but in a bit block so we can operate on all rows in the block at once.
-            // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+            // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
             let mut phase_bit1: BitBlock = 0;
             let mut phase_bit2: BitBlock = 0;
             for col in 0..n {
                 let mut x1 = 0;
                 let mut z1 = 0;
+                // Start by going block-wise reducing to a single block.
                 for i in 0..column_block_length(n) {
-                    let mask = mask[i];
-                    let x2 = self.tableau[x_column_block_index(n, i, col)] & mask;
-                    let z2 = self.tableau[z_column_block_index(n, i, col)] & mask;
+                    let x2 = self.tableau[x_column_block_index(n, i, col)] & mask[i];
+                    let z2 = self.tableau[z_column_block_index(n, i, col)] & mask[i];
                     apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
                     x1 ^= x2;
                     z1 ^= z2;
                 }
+                // Reduce the final block by iteratively 'folding' it in half, e.g.
+                // X
+                // Y
+                // Z    ZX = +iY
+                // X -> XY = +iZ -> ZY = -iX
                 for e in 1..=BLOCK_SIZE.ilog2() {
                     let shift = BLOCK_SIZE / 2usize.pow(e);
                     let x2 = x1 >> shift;
@@ -239,20 +242,21 @@ impl ExtendedTableau {
                     z1 ^= z2;
                 }
             }
-            debug_assert!(phase_bit1.count_ones() % 2 == 0, "Imaginary sign");
-            let sign_flipped = ((phase_bit1.count_ones() / 2) + phase_bit2.count_ones()) % 2 != 0;
-            if sign_flipped {
+            let phase = 2 * phase_bit2.count_ones() + phase_bit1.count_ones();
+            debug_assert!(phase % 2 == 0, "Imaginary sign");
+            if phase == 2 {
                 let block_index = r_column_block_index(n, aux_block_index);
                 self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
             }
-
             // XOR
             for j in 0..(n + n + 1 + c_cols) {
+                // Reduce block-wise
                 let mut block: BitBlock = 0;
                 for i in 0..column_block_length(n) {
-                    let mask = mask[i];
-                    block ^= self.tableau[column_block_index(n, i, j)] & mask;
+                    block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
                 }
+                // Reduce last block:
+                // The XOR of all bits in a block is just the parity
                 let block_index = column_block_index(n, aux_block_index, j);
                 if block.count_ones() % 2 != 0 {
                     self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
@@ -359,9 +363,7 @@ impl ExtendedTableau {
                     }
 
                     // Determine phase change caused by multiplication of the individual Pauli matrices.
-                    // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
-                    // but in a bit block so we can operate on all rows in the block at once.
-                    // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+                    // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
                     let mut phase_bit1: BitBlock = 0;
                     let mut phase_bit2: BitBlock = 0;
                     for col2 in 0..n {
@@ -547,6 +549,15 @@ impl Debug for ExtendedTableau {
     }
 }
 
+/// Given two block-pairs encoding two vectors of Pauli operators, A and B,
+/// and the block-pair encoding a vector of phases,
+/// updates these phases entry-wise respective to the effect of multiplying A with B.
+///
+/// E.g. for some bit-entry in the blocks, if x1=1, z1=0 then the A=X and if x2=1 and z2=1 then B=Y.
+/// So we have XY = +iZ, so the phase is updated by this +i part.
+///
+/// These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
+/// Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
 #[inline]
 fn apply_phase_shift(
     x1: BitBlock,
