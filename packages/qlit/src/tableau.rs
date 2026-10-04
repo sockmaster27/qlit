@@ -225,8 +225,9 @@ impl ExtendedTableau {
                         let shift = BLOCK_SIZE / 2usize.pow(e);
                         let x2 = x1 >> shift;
                         let z2 = z1 >> shift;
-                        x1 &= !0 >> shift;
-                        z1 &= !0 >> shift;
+                        let low_mask = !0 >> (BLOCK_SIZE - shift);
+                        x1 &= low_mask;
+                        z1 &= low_mask;
 
                         Self::apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
 
