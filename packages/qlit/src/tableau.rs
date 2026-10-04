@@ -228,33 +228,7 @@ impl ExtendedTableau {
                         x1 &= !0 >> shift;
                         z1 &= !0 >> shift;
 
-                        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
-                            x & !z
-                        }
-                        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
-                            !x & z
-                        }
-                        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
-                            x & z
-                        }
-
-                        // XY = +iZ
-                        // YZ = +iX
-                        // ZX = +iY
-                        let add = (x(x1, z1) & y(x2, z2))
-                            | (y(x1, z1) & z(x2, z2))
-                            | (z(x1, z1) & x(x2, z2));
-                        phase_bit2 ^= add & phase_bit1;
-                        phase_bit1 ^= add;
-
-                        // YX = -iZ
-                        // ZY = -iX
-                        // XZ = -iY
-                        let sub = (y(x1, z1) & x(x2, z2))
-                            | (z(x1, z1) & y(x2, z2))
-                            | (x(x1, z1) & z(x2, z2));
-                        phase_bit2 ^= sub & !phase_bit1;
-                        phase_bit1 ^= sub;
+                        Self::apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
 
                         x1 ^= x2;
                         z1 ^= z2;
@@ -385,39 +359,13 @@ impl ExtendedTableau {
                     let mut phase_bit1: BitBlock = 0;
                     let mut phase_bit2: BitBlock = 0;
                     for col2 in 0..n {
-                        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
-                            x & !z
-                        }
-                        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
-                            !x & z
-                        }
-                        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
-                            x & z
-                        }
-
                         let x1 = self.tableau[x_column_block_index(n, i, col2)];
                         let z1 = self.tableau[z_column_block_index(n, i, col2)];
                         // Fill these blocks with the bits in the pivot row.
                         let x2 = if self.x_bit(pivot, col2) { !0 } else { 0 };
                         let z2 = if self.z_bit(pivot, col2) { !0 } else { 0 };
 
-                        // XY = +iZ
-                        // YZ = +iX
-                        // ZX = +iY
-                        let add = (x(x1, z1) & y(x2, z2))
-                            | (y(x1, z1) & z(x2, z2))
-                            | (z(x1, z1) & x(x2, z2));
-                        phase_bit2 ^= add & phase_bit1;
-                        phase_bit1 ^= add;
-
-                        // YX = -iZ
-                        // ZY = -iX
-                        // XZ = -iY
-                        let sub = (y(x1, z1) & x(x2, z2))
-                            | (z(x1, z1) & y(x2, z2))
-                            | (x(x1, z1) & z(x2, z2));
-                        phase_bit2 ^= sub & !phase_bit1;
-                        phase_bit1 ^= sub;
+                        Self::apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
                     }
                     // A valid stabilizer row can only ever have a prefix of +1 or -1.
                     // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
@@ -447,6 +395,40 @@ impl ExtendedTableau {
                 self.row_pivots[row] = None;
             }
         }
+    }
+
+    #[inline]
+    fn apply_phase_shift(
+        x1: BitBlock,
+        z1: BitBlock,
+        x2: BitBlock,
+        z2: BitBlock,
+        phase_bit1: &mut BitBlock,
+        phase_bit2: &mut BitBlock,
+    ) {
+        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
+            x & !z
+        }
+        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
+            !x & z
+        }
+        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
+            x & z
+        }
+
+        // XY = +iZ
+        // YZ = +iX
+        // ZX = +iY
+        let add = (x(x1, z1) & y(x2, z2)) | (y(x1, z1) & z(x2, z2)) | (z(x1, z1) & x(x2, z2));
+        *phase_bit2 ^= add & *phase_bit1;
+        *phase_bit1 ^= add;
+
+        // YX = -iZ
+        // ZY = -iX
+        // XZ = -iY
+        let sub = (y(x1, z1) & x(x2, z2)) | (z(x1, z1) & y(x2, z2)) | (x(x1, z1) & z(x2, z2));
+        *phase_bit2 ^= sub & !*phase_bit1;
+        *phase_bit1 ^= sub;
     }
 
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
