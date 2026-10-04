@@ -198,53 +198,58 @@ impl ExtendedTableau {
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
-        for i in 0..contained_states {
+        for s in 0..contained_states {
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
             let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
-                    && w1s.get(i, q) != w2[q]
+                    && w1s.get(s, q) != w2[q]
                 {
                     let row_block_index = row / BLOCK_SIZE;
                     let row_bit_index = row % BLOCK_SIZE;
                     mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
                 }
             }
-            for i in 0..column_block_length(n) {
-                let mask = mask[i];
-                // Determine phase change caused by multiplication of the individual Pauli matrices.
-                // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
-                // but in a bit block so we can operate on all rows in the block at once.
-                // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
-                let mut phase_bit1: BitBlock = 0;
-                let mut phase_bit2: BitBlock = 0;
-                for col2 in 0..n {
-                    let mut x1 = self.tableau[x_column_block_index(n, i, col2)] & mask;
-                    let mut z1 = self.tableau[z_column_block_index(n, i, col2)] & mask;
-                    for e in 1..=BLOCK_SIZE.ilog2() {
-                        let shift = BLOCK_SIZE / 2usize.pow(e);
-                        let x2 = x1 >> shift;
-                        let z2 = z1 >> shift;
-                        let low_mask = !0 >> (BLOCK_SIZE - shift);
-                        x1 &= low_mask;
-                        z1 &= low_mask;
-
-                        Self::apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
-
-                        x1 ^= x2;
-                        z1 ^= z2;
-                    }
+            // Determine phase change caused by multiplication of the individual Pauli matrices.
+            // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
+            // but in a bit block so we can operate on all rows in the block at once.
+            // Since i^phase works modulo 4, we can just use two bits and let additions/subtractions wrap around.
+            let mut phase_bit1: BitBlock = 0;
+            let mut phase_bit2: BitBlock = 0;
+            for col in 0..n {
+                let mut x1 = 0;
+                let mut z1 = 0;
+                for i in 0..column_block_length(n) {
+                    let mask = mask[i];
+                    let x2 = self.tableau[x_column_block_index(n, i, col)] & mask;
+                    let z2 = self.tableau[z_column_block_index(n, i, col)] & mask;
+                    apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                    x1 ^= x2;
+                    z1 ^= z2;
                 }
-                debug_assert!(phase_bit1.count_ones() % 2 == 0, "Imaginary sign");
-                let sign_flipped =
-                    ((phase_bit1.count_ones() / 2) + phase_bit2.count_ones()) % 2 != 0;
-                if sign_flipped {
-                    let block_index = r_column_block_index(n, aux_block_index);
-                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
+                for e in 1..=BLOCK_SIZE.ilog2() {
+                    let shift = BLOCK_SIZE / 2usize.pow(e);
+                    let x2 = x1 >> shift;
+                    let z2 = z1 >> shift;
+                    let low_mask = !0 >> (BLOCK_SIZE - shift);
+                    x1 &= low_mask;
+                    z1 &= low_mask;
+                    apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                    x1 ^= x2;
+                    z1 ^= z2;
                 }
+            }
+            debug_assert!(phase_bit1.count_ones() % 2 == 0, "Imaginary sign");
+            let sign_flipped = ((phase_bit1.count_ones() / 2) + phase_bit2.count_ones()) % 2 != 0;
+            if sign_flipped {
+                let block_index = r_column_block_index(n, aux_block_index);
+                self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
+            }
 
-                // XOR
-                for j in 0..(n + n + 1 + c_cols) {
+            // XOR
+            for j in 0..(n + n + 1 + c_cols) {
+                for i in 0..column_block_length(n) {
+                    let mask = mask[i];
                     let block = self.tableau[column_block_index(n, i, j)] & mask;
                     if block.count_ones() % 2 != 0 {
                         let block_index = column_block_index(n, aux_block_index, j);
@@ -255,7 +260,7 @@ impl ExtendedTableau {
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[i] = self.stabilizer_matrix_entry(i, aux_row, w1s.iter_string(i), w2);
+            self.output[s] = self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2);
 
             // Reset the auxiliary row.
             for j in 0..(n + n + 1 + c_cols) {
@@ -366,7 +371,7 @@ impl ExtendedTableau {
                         let x2 = if self.x_bit(pivot, col2) { !0 } else { 0 };
                         let z2 = if self.z_bit(pivot, col2) { !0 } else { 0 };
 
-                        Self::apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                        apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
                     }
                     // A valid stabilizer row can only ever have a prefix of +1 or -1.
                     // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
@@ -396,40 +401,6 @@ impl ExtendedTableau {
                 self.row_pivots[row] = None;
             }
         }
-    }
-
-    #[inline]
-    fn apply_phase_shift(
-        x1: BitBlock,
-        z1: BitBlock,
-        x2: BitBlock,
-        z2: BitBlock,
-        phase_bit1: &mut BitBlock,
-        phase_bit2: &mut BitBlock,
-    ) {
-        fn x(x: BitBlock, z: BitBlock) -> BitBlock {
-            x & !z
-        }
-        fn z(x: BitBlock, z: BitBlock) -> BitBlock {
-            !x & z
-        }
-        fn y(x: BitBlock, z: BitBlock) -> BitBlock {
-            x & z
-        }
-
-        // XY = +iZ
-        // YZ = +iX
-        // ZX = +iY
-        let add = (x(x1, z1) & y(x2, z2)) | (y(x1, z1) & z(x2, z2)) | (z(x1, z1) & x(x2, z2));
-        *phase_bit2 ^= add & *phase_bit1;
-        *phase_bit1 ^= add;
-
-        // YX = -iZ
-        // ZY = -iX
-        // XZ = -iY
-        let sub = (y(x1, z1) & x(x2, z2)) | (z(x1, z1) & y(x2, z2)) | (x(x1, z1) & z(x2, z2));
-        *phase_bit2 ^= sub & !*phase_bit1;
-        *phase_bit1 ^= sub;
     }
 
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
@@ -574,6 +545,40 @@ impl Debug for ExtendedTableau {
         }
         Ok(())
     }
+}
+
+#[inline]
+fn apply_phase_shift(
+    x1: BitBlock,
+    z1: BitBlock,
+    x2: BitBlock,
+    z2: BitBlock,
+    phase_bit1: &mut BitBlock,
+    phase_bit2: &mut BitBlock,
+) {
+    fn x(x: BitBlock, z: BitBlock) -> BitBlock {
+        x & !z
+    }
+    fn z(x: BitBlock, z: BitBlock) -> BitBlock {
+        !x & z
+    }
+    fn y(x: BitBlock, z: BitBlock) -> BitBlock {
+        x & z
+    }
+
+    // XY = +iZ
+    // YZ = +iX
+    // ZX = +iY
+    let add = (x(x1, z1) & y(x2, z2)) | (y(x1, z1) & z(x2, z2)) | (z(x1, z1) & x(x2, z2));
+    *phase_bit2 ^= add & *phase_bit1;
+    *phase_bit1 ^= add;
+
+    // YX = -iZ
+    // ZY = -iX
+    // XZ = -iY
+    let sub = (y(x1, z1) & x(x2, z2)) | (z(x1, z1) & y(x2, z2)) | (x(x1, z1) & z(x2, z2));
+    *phase_bit2 ^= sub & !*phase_bit1;
+    *phase_bit1 ^= sub;
 }
 
 /// Get the index of the i'th block of the `j`th column.
@@ -976,5 +981,31 @@ mod tests {
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
+    }
+
+    /// This test is here to ensure that coeff_ratios correctly handles phase shifts
+    /// resulting from row multiplication between rows across different BitBlocks.
+    #[test]
+    fn multi_block_phase() {
+        let mut g = ExtendedTableau::zero(70, 0);
+        for q in 0..70 {
+            g.apply_h_gate(q);
+        }
+        g.apply_cz_gate(0, 64);
+        g.apply_cz_gate(0, 69);
+
+        let w1 = BitStringArray::new(70, 1);
+        let mut w2 = [false; 70];
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        w2[0] = true;
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        w2[64] = true; // Edge 0-64.
+        assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
+        w2[69] = true; // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        w2[64] = false; // Edge 0-69.
+        assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
+        w2[0] = false; // No edges.
+        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
     }
 }
