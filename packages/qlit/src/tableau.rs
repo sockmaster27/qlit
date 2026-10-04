@@ -290,7 +290,7 @@ impl ExtendedTableau {
         // Identify the row with a set bit in the given position.
         let mut row = None;
         for r in 0..n {
-            if self.x_bit(r, flipped_bit) {
+            if self.row_pivots[r] == Some(flipped_bit) {
                 row = Some(r);
                 break;
             }
@@ -298,9 +298,7 @@ impl ExtendedTableau {
 
         match row {
             None => {
-                for i in 0..contained_states {
-                    self.output[i] = Complex::ZERO;
-                }
+                self.output[..contained_states].fill(Complex::ZERO);
             }
             Some(row) => {
                 for i in 0..contained_states {
