@@ -198,9 +198,10 @@ impl ExtendedTableau {
         // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
+        let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
         for s in 0..contained_states {
             // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
-            let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
+            mask.fill(0);
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
                     && w1s.get(s, q) != w2[q]
@@ -408,7 +409,7 @@ impl ExtendedTableau {
 
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
-    /// This will respect the state of the i'th tableau in the sequence.
+    /// This will respect the state of the i'th state in the sequence.
     fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
