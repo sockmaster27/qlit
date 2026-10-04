@@ -568,6 +568,23 @@ fn apply_phase_shift(
     phase_bit1: &mut BitBlock,
     phase_bit2: &mut BitBlock,
 ) {
+    let x1z2 = x1 & z2;
+    let ac = x1z2 ^ (z1 & x2);
+    let neg = (x1 ^ z1 ^ x2 ^ z2) ^ x1z2;
+    *phase_bit2 ^= ac & (*phase_bit1 ^ neg);
+    *phase_bit1 ^= ac;
+}
+/// This is the less clever version of [`apply_phase_shift`],
+/// used only in testing to validate the more optimized version.
+#[cfg(test)]
+fn apply_phase_shift_reference(
+    x1: BitBlock,
+    z1: BitBlock,
+    x2: BitBlock,
+    z2: BitBlock,
+    phase_bit1: &mut BitBlock,
+    phase_bit2: &mut BitBlock,
+) {
     fn x(x: BitBlock, z: BitBlock) -> BitBlock {
         x & !z
     }
@@ -636,6 +653,8 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus};
+
     use crate::utils::bits_to_bools;
 
     use super::*;
@@ -1019,5 +1038,23 @@ mod tests {
         assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
         w2[0] = false; // No edges.
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+    }
+
+    #[test]
+    fn compare_apply_phase_shift_reference() {
+        let mut rng = Xoshiro128PlusPlus::seed_from_u64(1234);
+        for _ in 0..2u64.pow(16) {
+            let x1: BitBlock = rng.random();
+            let z1: BitBlock = rng.random();
+            let x2: BitBlock = rng.random();
+            let z2: BitBlock = rng.random();
+            let p1: BitBlock = rng.random();
+            let p2: BitBlock = rng.random();
+            let (mut p1a, mut p2a) = (p1, p2);
+            let (mut p1b, mut p2b) = (p1, p2);
+            apply_phase_shift(x1, z1, x2, z2, &mut p1a, &mut p2a);
+            apply_phase_shift_reference(x1, z1, x2, z2, &mut p1b, &mut p2b);
+            assert_eq!((p1a, p2a), (p1b, p2b));
+        }
     }
 }
