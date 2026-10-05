@@ -63,12 +63,10 @@ impl BitStringArray {
         self.inner[block_index] = flip_bit(self.inner[block_index], bit_index);
     }
     #[inline]
-    pub fn copy_within(&mut self, src: usize, dst: usize) {
+    pub fn double(&mut self, len: usize) {
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
-        let src_start = src * string_block_length;
-        let dst_start = dst * string_block_length;
-        self.inner
-            .copy_within(src_start..src_start + string_block_length, dst_start);
+        let end = len * string_block_length;
+        self.inner.copy_within(..end, end);
     }
 
     #[inline]
