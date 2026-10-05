@@ -126,10 +126,8 @@ impl ExtendedTableau {
             let xb = x_column_block_index(n, i, b);
             let zb = z_column_block_index(n, i, b);
             let r = r_column_block_index(n, i);
-            // TODO: Simplify expression?
-            self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
-                ^ (self.tableau[xa] & self.tableau[xb] & !(self.tableau[zb] ^ self.tableau[za]))
-                ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
+            self.tableau[r] ^=
+                self.tableau[xa] & self.tableau[xb] & (self.tableau[za] ^ self.tableau[zb]);
             self.tableau[za] ^= self.tableau[xb];
             self.tableau[zb] ^= self.tableau[xa];
         }
