@@ -10,7 +10,7 @@ use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Pauli {
     I,
     X,
@@ -126,8 +126,10 @@ impl ExtendedTableau {
             let xb = x_column_block_index(n, i, b);
             let zb = z_column_block_index(n, i, b);
             let r = r_column_block_index(n, i);
-            self.tableau[r] ^=
-                self.tableau[xa] & self.tableau[xb] & (self.tableau[za] ^ self.tableau[zb]);
+            // TODO: Simplify expression?
+            self.tableau[r] ^= (self.tableau[xb] & self.tableau[zb])
+                ^ (self.tableau[xa] & self.tableau[xb] & !(self.tableau[zb] ^ self.tableau[za]))
+                ^ (self.tableau[xb] & (self.tableau[zb] ^ self.tableau[xa]));
             self.tableau[za] ^= self.tableau[xb];
             self.tableau[zb] ^= self.tableau[xa];
         }
@@ -278,7 +280,7 @@ impl ExtendedTableau {
         &mut self,
         w1s: &BitStringArray,
         flipped_bit: usize,
-    ) -> &[Complex<f64>] {
+    ) -> (Complex<f64>, Vec<bool>) {
         let n = self.n;
         let contained_states = self.contained_states();
 
@@ -295,21 +297,24 @@ impl ExtendedTableau {
         }
 
         match row {
-            None => {
-                self.output[..contained_states].fill(Complex::ZERO);
-            }
+            None => (Complex::ZERO, vec![]),
             Some(row) => {
-                for i in 0..contained_states {
-                    // Compute the (w2, w1) entry in the stabilizer of the correct form.
-                    let w2 = w1s
-                        .iter_string(i)
-                        .enumerate()
-                        .map(|(i, b)| if i == flipped_bit { !b } else { b });
-                    self.output[i] = self.stabilizer_matrix_entry(i, row, w1s.iter_string(i), w2);
+                let mut r = Complex::ONE;
+                for q in 0..n {
+                    if self.x_bit(row, q) != (q == flipped_bit) {
+                        return (Complex::ZERO, vec![]);
+                    }
+                    if self.tensor_element(row, q) == Pauli::Y {
+                        r *= Complex::I;
+                    }
                 }
+                let mut signs = vec![];
+                for i in 0..contained_states {
+                    signs.push(self.sign(w1s.iter_string(i), i, row));
+                }
+                (r, signs)
             }
         }
-        &self.output[..contained_states]
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
@@ -444,9 +449,6 @@ impl ExtendedTableau {
         res
     }
 
-    /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
-    ///
-    /// This will respect the sign of the i'th state.
     fn row_negative(&self, mut i: usize, row: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -462,6 +464,34 @@ impl ExtendedTableau {
             j += 1;
         }
         r & row_bitmask != 0
+    }
+
+    fn sign(&self, w: impl Iterator<Item = bool>, mut i: usize, row: usize) -> bool {
+        let n = self.n;
+        let row_block_index = row / BLOCK_SIZE;
+        let row_bit_index = row % BLOCK_SIZE;
+        let row_bitmask: BitBlock = bitmask(row_bit_index);
+
+        let mut sign = false;
+        for (q, b) in w.enumerate() {
+            if b && self.z_bit(row, q) {
+                sign = !sign;
+            }
+        }
+
+        let mut r = self.tableau[r_column_block_index(n, row_block_index)];
+        let mut j = 0;
+        while i != 0 {
+            if i % 2 != 0 {
+                r ^= self.tableau[c_column_block_index(n, row_block_index, j)];
+            }
+            i /= 2;
+            j += 1;
+        }
+        if r & row_bitmask != 0 {
+            sign = !sign;
+        }
+        sign
     }
 
     /// Get the Pauli matrix corresponding to the q'th tensor element in the `row`'th row.
@@ -833,9 +863,15 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 0), &[-Complex::ONE]);
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 1), &[-Complex::ONE]);
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 2), &[Complex::ZERO]);
+        assert_eq!(
+            g.coeff_ratios_flipped_bit(&w1, 0),
+            (Complex::ONE, vec![true])
+        );
+        assert_eq!(
+            g.coeff_ratios_flipped_bit(&w1, 1),
+            (Complex::ONE, vec![true])
+        );
+        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 2), (Complex::ZERO, vec![]));
     }
 
     #[test]
