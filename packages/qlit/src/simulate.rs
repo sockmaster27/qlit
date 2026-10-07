@@ -320,11 +320,11 @@ fn run_cpu(
                         }
                     }
                 } else {
+                    xs.double(g.contained_states());
+                    x_coeffs.extend_from_within(..);
                     for i in 0..g.contained_states() {
                         let index_i = i;
                         let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I;
 
@@ -355,11 +355,11 @@ fn run_cpu(
                         }
                     }
                 } else {
+                    xs.double(g.contained_states());
+                    x_coeffs.extend_from_within(..);
                     for i in 0..g.contained_states() {
                         let index_i = i;
                         let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
 
                         x_coeffs[index_i] *= C_I_DG;
 
