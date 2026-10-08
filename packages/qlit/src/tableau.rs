@@ -200,7 +200,7 @@ impl ExtendedTableau {
             let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
             for row in 0..n {
                 if let Some(q) = self.row_pivots[row]
-                    && w1s.get(i, q) != w2.get(q)
+                    && w1s.get(s, q) != w2.get(q)
                 {
                     let row_block_index = row / BLOCK_SIZE;
                     let row_bit_index = row % BLOCK_SIZE;
@@ -263,10 +263,8 @@ impl ExtendedTableau {
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[i] =
-                self.stabilizer_matrix_entry(i, aux_row, w1s.iter_string(i), w2.iter());
-          
-            self.output[s] = self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2);
+            self.output[s] =
+                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -896,7 +894,7 @@ mod tests {
 
         let w1 = BitStringArray::from_u8s(&[0b0000_0000, 0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 
@@ -922,9 +920,9 @@ mod tests {
         g.fork_apply_z_gate(123);
 
         let w1 = BitStringArray::new(300, 8);
-        let mut w2 = [false; 300];
+        let mut w2 = BitString::zero(300);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE; 8]);
-        w2[1] = true;
+        w2.set(1);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -938,7 +936,7 @@ mod tests {
                 -Complex::ONE,
             ]
         );
-        w2[78] = true;
+        w2.set(78);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -952,7 +950,7 @@ mod tests {
                 Complex::ONE,
             ]
         );
-        w2[123] = true;
+        w2.set(123);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -966,7 +964,7 @@ mod tests {
                 -Complex::ONE,
             ]
         );
-        w2[1] = false;
+        w2.unset(1);
         assert_eq!(
             g.coeff_ratios(&w1, &w2),
             [
@@ -980,7 +978,7 @@ mod tests {
                 Complex::ONE,
             ]
         );
-        w2[42] = true;
+        w2.set(42);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ZERO; 8]);
     }
 
@@ -996,11 +994,11 @@ mod tests {
 
         let w1 = BitStringArray::from_u8s(&[0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
-            let w2 = bits_to_bools(i);
+            let w2 = BitString::from_u8_ltr(i);
 
             let result = g.coeff_ratios(&w1, &w2);
 
-            let adjacent_pairs = (0..7).filter(|&q| w2[q] && w2[q + 1]).count();
+            let adjacent_pairs = (0..7).filter(|&q| w2.get(q) && w2.get(q + 1)).count();
             let expected = if adjacent_pairs % 2 == 0 {
                 Complex::ONE
             } else {
@@ -1022,17 +1020,17 @@ mod tests {
         g.apply_cz_gate(0, 69);
 
         let w1 = BitStringArray::new(70, 1);
-        let mut w2 = [false; 70];
+        let mut w2 = BitString::zero(70);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[0] = true;
+        w2.set(0);
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[64] = true; // Edge 0-64.
+        w2.set(64); // Edge 0-64.
         assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
-        w2[69] = true; // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
+        w2.set(69); // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
-        w2[64] = false; // Edge 0-69.
+        w2.unset(64); // Edge 0-69.
         assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
-        w2[0] = false; // No edges.
+        w2.unset(0); // No edges.
         assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
     }
 
