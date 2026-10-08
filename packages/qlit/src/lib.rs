@@ -6,6 +6,7 @@ mod simulate_gpu;
 mod tableau;
 mod utils;
 
+pub use bitstring::BitString;
 pub use circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate};
 
 pub use simulate::simulate_circuit;
