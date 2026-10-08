@@ -445,13 +445,13 @@ impl ExtendedTableau {
     fn stabilizer_matrix_entry_phase_part(&self, row: usize) -> Complex<f64> {
         let n = self.n;
 
-        let mut r = Complex::ONE;
+        let mut res = Complex::ONE;
         for q in 0..n {
             if self.tensor_element(row, q) == Pauli::Y {
-                r *= Complex::I
+                res *= Complex::I
             }
         }
-        r
+        res
     }
     /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by simple sign flips.
     ///
@@ -535,7 +535,6 @@ impl ExtendedTableau {
         }
         res
     }
-
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
     /// This will respect the sign of the i'th state.
