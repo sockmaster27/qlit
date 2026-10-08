@@ -1160,7 +1160,6 @@ mod tests {
             let row = rng.random_range(0..8);
             let w1: Vec<bool> = rng.random_iter().take(8).collect();
             let w2: Vec<bool> = rng.random_iter().take(8).collect();
-            println!("tableau: {:?}", tableau);
             assert_eq!(
                 tableau.stabilizer_matrix_entry(i, row, w1.iter().copied(), w2.iter().copied()),
                 tableau.stabilizer_matrix_entry_reference(
