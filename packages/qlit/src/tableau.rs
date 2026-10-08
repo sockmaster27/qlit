@@ -405,6 +405,7 @@ impl ExtendedTableau {
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
     /// This will respect the state of the i'th tableau in the sequence.
+    #[inline]
     fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: IntoIterator<Item: Borrow<bool>>,
@@ -447,6 +448,7 @@ impl ExtendedTableau {
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
     /// This will respect the sign of the i'th state.
+    #[inline]
     fn row_negative(&self, mut i: usize, row: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
@@ -465,6 +467,7 @@ impl ExtendedTableau {
     }
 
     /// Get the Pauli matrix corresponding to the q'th tensor element in the `row`'th row.
+    #[inline]
     fn tensor_element(&self, row: usize, q: usize) -> Pauli {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
