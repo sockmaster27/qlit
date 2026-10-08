@@ -72,7 +72,7 @@ impl BitStringArray {
     }
 
     #[inline]
-    pub fn iter_string<'a>(&'a self, i: usize) -> impl Iterator<Item = bool> + 'a {
+    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
         BitStringArrayIter {
             array: self,
             i,
@@ -81,6 +81,7 @@ impl BitStringArray {
     }
 }
 
+#[derive(Clone)]
 pub struct BitStringArrayIter<'a> {
     array: &'a BitStringArray,
     i: usize,
