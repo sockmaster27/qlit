@@ -423,6 +423,9 @@ impl ExtendedTableau {
         }
     }
 
+    /// Returns true if and only if [`Self::stabilizer_matrix_entry`] returns [`Complex::ZERO`].
+    ///
+    /// `w1_xor_w2` should be equal to the bitwise XOR of `w1` and `w2`, i.e. for each bit, whether they differ or not.
     fn stabilizer_matrix_entry_is_zero<W>(&self, row: usize, mut w1_xor_w2: W) -> bool
     where
         W: Iterator<Item = bool>,
@@ -437,6 +440,8 @@ impl ExtendedTableau {
         }
         false
     }
+    /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by the complex phase rotation
+    /// contributed by each [`Pauli::Y`] element in the tensor product.
     fn stabilizer_matrix_entry_phase_part(&self, row: usize) -> Complex<f64> {
         let n = self.n;
 
@@ -448,6 +453,10 @@ impl ExtendedTableau {
         }
         r
     }
+    /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by simple sign flips.
+    ///
+    /// This does *NOT* include the phase rotation caused by [`Pauli::Y`] elements,
+    /// computed by [`Self::stabilizer_matrix_entry_phase_part`].
     fn stabilizer_matrix_entry_sign_part<W1>(&self, i: usize, row: usize, mut w1: W1) -> bool
     where
         W1: Iterator<Item = bool>,
@@ -463,6 +472,9 @@ impl ExtendedTableau {
         }
         res
     }
+    /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
+    ///
+    /// This will respect the state of the i'th tableau in the sequence.
     fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
         W1: Iterator<Item = bool> + Clone,
