@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::mem;
 
 use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
@@ -78,6 +79,17 @@ impl BitStringArray {
             i,
             j: 0,
         }
+    }
+}
+impl Debug for BitStringArray {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries((0..self.len()).map(|i| {
+                self.iter_string(i)
+                    .map(|b| if b { '1' } else { '0' })
+                    .collect::<String>()
+            }))
+            .finish()
     }
 }
 
