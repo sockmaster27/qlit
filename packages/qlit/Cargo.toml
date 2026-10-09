@@ -23,3 +23,6 @@ criterion = "0.8.2"
 [[bench]]
 name = "bench"
 harness = false
+
+[profile.release]
+lto = "fat"
