@@ -71,6 +71,8 @@ impl BitStringArray {
             .copy_within(src_start..src_start + string_block_length, dst_start);
     }
 
+    /// Get whether or not the bitstring at the i'th position of the array is identical to the one at i-1.
+    /// Return false if i=0.
     pub fn equal_to_previous(&self, i: usize) -> bool {
         if i == 0 {
             return false;
