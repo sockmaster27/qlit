@@ -293,11 +293,15 @@ impl ExtendedTableau {
                             flip_bit(*self.tableau.get_unchecked(block_index), aux_bit_index);
                     }
                 }
-            }
 
-            // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[s] =
-                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter().copied());
+                // Compute the (w2, w1) entry in the stabilizer of the correct form.
+                *self.output.get_unchecked_mut(s) = self.stabilizer_matrix_entry(
+                    s,
+                    aux_row,
+                    w1s.iter_string(s),
+                    w2.iter().copied(),
+                );
+            }
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -605,11 +609,16 @@ impl ExtendedTableau {
     /// Get the value of the bit corresponding to the j'th column in the `row`'th row.
     #[inline]
     fn bit(&self, row: usize, j: usize) -> bool {
-        let n = self.n;
-        let row_block_index = row / BLOCK_SIZE;
-        let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask: BitBlock = bitmask(row_bit_index);
-        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+        unsafe {
+            let n = self.n;
+            let row_block_index = row / BLOCK_SIZE;
+            let row_bit_index = row % BLOCK_SIZE;
+            let row_bitmask: BitBlock = bitmask(row_bit_index);
+            self.tableau
+                .get_unchecked(column_block_index(n, row_block_index, j))
+                & row_bitmask
+                != 0
+        }
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
