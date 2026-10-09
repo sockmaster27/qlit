@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::mem;
 
@@ -10,7 +9,7 @@ use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Pauli {
     I,
     X,
@@ -62,6 +61,29 @@ impl ExtendedTableau {
         ExtendedTableau {
             n,
             c_cols: 0,
+            tableau,
+            row_pivots: vec![None; n],
+            output: vec![Complex::ZERO; 1 << capacity_log2],
+        }
+    }
+    #[cfg(test)]
+    pub fn random(n: usize, capacity_log2: usize, seed: u64) -> Self {
+        use rand::rngs::Xoshiro128PlusPlus;
+        use rand::{RngExt, SeedableRng};
+
+        let c_cols = capacity_log2;
+        let rng = Xoshiro128PlusPlus::seed_from_u64(seed);
+        let mut tableau: Vec<BitBlock> = rng
+            .random_iter()
+            .take(tableau_block_length(n, c_cols))
+            .collect();
+        for j in 0..(n + n + 1 + c_cols) {
+            let block_index = column_block_index(n, column_block_length(n) - 1, j);
+            tableau[block_index] &= !0 << (BLOCK_SIZE - (n % BLOCK_SIZE));
+        }
+        ExtendedTableau {
+            n,
+            c_cols,
             tableau,
             row_pivots: vec![None; n],
             output: vec![Complex::ZERO; 1 << capacity_log2],
@@ -264,7 +286,8 @@ impl ExtendedTableau {
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[s] = self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2);
+            self.output[s] =
+                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter().copied());
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -278,7 +301,7 @@ impl ExtendedTableau {
         &mut self,
         w1s: &BitStringArray,
         flipped_bit: usize,
-    ) -> &[Complex<f64>] {
+    ) -> (Complex<f64>, Vec<bool>) {
         let n = self.n;
         let contained_states = self.contained_states();
 
@@ -295,21 +318,19 @@ impl ExtendedTableau {
         }
 
         match row {
-            None => {
-                self.output[..contained_states].fill(Complex::ZERO);
-            }
+            None => (Complex::ZERO, vec![]),
             Some(row) => {
-                for i in 0..contained_states {
-                    // Compute the (w2, w1) entry in the stabilizer of the correct form.
-                    let w2 = w1s
-                        .iter_string(i)
-                        .enumerate()
-                        .map(|(i, b)| if i == flipped_bit { !b } else { b });
-                    self.output[i] = self.stabilizer_matrix_entry(i, row, w1s.iter_string(i), w2);
+                if self.stabilizer_matrix_entry_is_zero(row, (0..n).map(|i| i == flipped_bit)) {
+                    return (Complex::ZERO, vec![]);
                 }
+                let r = self.stabilizer_matrix_entry_phase_part(row);
+                let mut signs = vec![];
+                for s in 0..contained_states {
+                    signs.push(self.stabilizer_matrix_entry_sign_part(s, row, w1s.iter_string(s)));
+                }
+                (r, signs)
             }
         }
-        &self.output[..contained_states]
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
@@ -402,17 +423,88 @@ impl ExtendedTableau {
         }
     }
 
+    /// Returns true if and only if [`Self::stabilizer_matrix_entry`] returns [`Complex::ZERO`].
+    ///
+    /// `w1_xor_w2` should be equal to the bitwise XOR of `w1` and `w2`, i.e. for each bit, whether they differ or not.
+    fn stabilizer_matrix_entry_is_zero<W>(&self, row: usize, mut w1_xor_w2: W) -> bool
+    where
+        W: Iterator<Item = bool>,
+    {
+        let n = self.n;
+
+        for q in 0..n {
+            let different = w1_xor_w2.next().unwrap();
+            if self.x_bit(row, q) != different {
+                return true;
+            }
+        }
+        false
+    }
+    /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by the complex phase rotation
+    /// contributed by each [`Pauli::Y`] element in the tensor product.
+    fn stabilizer_matrix_entry_phase_part(&self, row: usize) -> Complex<f64> {
+        let n = self.n;
+
+        let mut res = Complex::ONE;
+        for q in 0..n {
+            if self.tensor_element(row, q) == Pauli::Y {
+                res *= Complex::I
+            }
+        }
+        res
+    }
+    /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by simple sign flips.
+    ///
+    /// This does *NOT* include the phase rotation caused by [`Pauli::Y`] elements,
+    /// computed by [`Self::stabilizer_matrix_entry_phase_part`].
+    fn stabilizer_matrix_entry_sign_part<W1>(&self, i: usize, row: usize, mut w1: W1) -> bool
+    where
+        W1: Iterator<Item = bool>,
+    {
+        let n = self.n;
+
+        let mut res = self.row_negative(i, row);
+        for q in 0..n {
+            let b1 = w1.next().unwrap();
+            if self.z_bit(row, q) && b1 {
+                res = !res;
+            }
+        }
+        res
+    }
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
     /// This will respect the state of the i'th tableau in the sequence.
     fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
     where
-        W1: IntoIterator<Item: Borrow<bool>>,
-        W2: IntoIterator<Item: Borrow<bool>>,
+        W1: Iterator<Item = bool> + Clone,
+        W2: Iterator<Item = bool>,
+    {
+        if self.stabilizer_matrix_entry_is_zero(row, w1.clone().zip(w2).map(|(b1, b2)| b1 != b2)) {
+            return Complex::ZERO;
+        }
+        let p = self.stabilizer_matrix_entry_phase_part(row);
+        if self.stabilizer_matrix_entry_sign_part(i, row, w1) {
+            -p
+        } else {
+            p
+        }
+    }
+    /// This is the less clever version of [`Self::stabilizer_matrix_entry`],
+    /// used only in testing to validate the more optimized version.
+    #[cfg(test)]
+    fn stabilizer_matrix_entry_reference<W1, W2>(
+        &self,
+        i: usize,
+        row: usize,
+        mut w1: W1,
+        mut w2: W2,
+    ) -> Complex<f64>
+    where
+        W1: Iterator<Item = bool>,
+        W2: Iterator<Item = bool>,
     {
         let n = self.n;
-        let mut w1 = w1.into_iter();
-        let mut w2 = w2.into_iter();
 
         let mut res = if self.row_negative(i, row) {
             -Complex::ONE
@@ -423,8 +515,8 @@ impl ExtendedTableau {
             // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
             res *= match (
                 self.tensor_element(row, q),
-                w1.next().unwrap().borrow(),
-                w2.next().unwrap().borrow(),
+                w1.next().unwrap(),
+                w2.next().unwrap(),
             ) {
                 (Pauli::I, false, false) => Complex::ONE,
                 (Pauli::I, true, true) => Complex::ONE,
@@ -443,7 +535,6 @@ impl ExtendedTableau {
         }
         res
     }
-
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
     /// This will respect the sign of the i'th state.
@@ -649,9 +740,9 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus};
-
     use crate::utils::bits_to_bools;
+    use rand::rngs::Xoshiro128PlusPlus;
+    use rand::{RngExt, SeedableRng};
 
     use super::*;
 
@@ -833,9 +924,15 @@ mod tests {
         g.apply_h_gate(1);
         g.apply_cnot_gate(3, 1);
 
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 0), &[-Complex::ONE]);
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 1), &[-Complex::ONE]);
-        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 2), &[Complex::ZERO]);
+        assert_eq!(
+            g.coeff_ratios_flipped_bit(&w1, 0),
+            (Complex::ONE, vec![true])
+        );
+        assert_eq!(
+            g.coeff_ratios_flipped_bit(&w1, 1),
+            (Complex::ONE, vec![true])
+        );
+        assert_eq!(g.coeff_ratios_flipped_bit(&w1, 2), (Complex::ZERO, vec![]));
     }
 
     #[test]
@@ -1051,6 +1148,27 @@ mod tests {
             apply_phase_shift(x1, z1, x2, z2, &mut p1a, &mut p2a);
             apply_phase_shift_reference(x1, z1, x2, z2, &mut p1b, &mut p2b);
             assert_eq!((p1a, p2a), (p1b, p2b));
+        }
+    }
+
+    #[test]
+    fn compare_stabilizer_matrix_entry_reference() {
+        let rng = &mut Xoshiro128PlusPlus::seed_from_u64(1234);
+        let tableau = ExtendedTableau::random(8, 3, 12345);
+        for _ in 0..2u64.pow(16) {
+            let i = rng.random_range(0..8);
+            let row = rng.random_range(0..8);
+            let w1: Vec<bool> = rng.random_iter().take(8).collect();
+            let w2: Vec<bool> = rng.random_iter().take(8).collect();
+            assert_eq!(
+                tableau.stabilizer_matrix_entry(i, row, w1.iter().copied(), w2.iter().copied()),
+                tableau.stabilizer_matrix_entry_reference(
+                    i,
+                    row,
+                    w1.iter().copied(),
+                    w2.iter().copied()
+                )
+            );
         }
     }
 }

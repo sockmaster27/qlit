@@ -285,9 +285,13 @@ fn run_cpu(
             CliffordTGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
-                let rs = g.coeff_ratios_flipped_bit(&xs, a);
+                let (r, signs) = g.coeff_ratios_flipped_bit(&xs, a);
                 for i in 0..contained_states {
-                    let r = rs[i];
+                    let r = if r != Complex::ZERO && signs[i] {
+                        -r
+                    } else {
+                        r
+                    };
                     if r != -Complex::ONE {
                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
                         xs.unset(i, a);
