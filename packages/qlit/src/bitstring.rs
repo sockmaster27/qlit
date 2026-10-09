@@ -71,6 +71,21 @@ impl BitStringArray {
             .copy_within(src_start..src_start + string_block_length, dst_start);
     }
 
+    pub fn equal_to_previous(&self, i: usize) -> bool {
+        if i == 0 {
+            return false;
+        }
+        let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
+        for j in 0..string_block_length {
+            let block_index = i * string_block_length + j / BLOCK_SIZE;
+            let block_index_prev = (i - 1) * string_block_length + j / BLOCK_SIZE;
+            if self.inner[block_index_prev] != self.inner[block_index] {
+                return false;
+            }
+        }
+        true
+    }
+
     #[inline]
     pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
         BitStringArrayIter {
