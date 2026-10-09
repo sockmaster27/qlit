@@ -219,77 +219,89 @@ impl ExtendedTableau {
         self.bring_into_rref();
 
         for s in 0..contained_states {
-            if !w1s.equal_to_previous(s) {
-                // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
-                let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
-                for row in 0..n {
-                    if let Some(q) = self.row_pivots[row]
-                        && w1s.get(s, q) != w2[q]
-                    {
-                        let row_block_index = row / BLOCK_SIZE;
-                        let row_bit_index = row % BLOCK_SIZE;
-                        mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
+            unsafe {
+                if !w1s.equal_to_previous(s) {
+                    // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
+                    let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
+                    for row in 0..n {
+                        if let &Some(q) = self.row_pivots.get_unchecked(row)
+                            && w1s.get(s, q) != *w2.get_unchecked(q)
+                        {
+                            let row_block_index = row / BLOCK_SIZE;
+                            let row_bit_index = row % BLOCK_SIZE;
+                            *mask.get_unchecked_mut(row_block_index) =
+                                set_bit(*mask.get_unchecked(row_block_index), row_bit_index);
+                        }
+                    }
+                    // XOR
+                    for j in 0..(n + n + 1 + c_cols) {
+                        // Start by going block-wise, reducing to a single block
+                        let mut block: BitBlock = 0;
+                        for i in 0..column_block_length(n) {
+                            block ^= *self.tableau.get_unchecked(column_block_index(n, i, j))
+                                & mask.get_unchecked(i);
+                        }
+                        // Reduce last block:
+                        // The XOR of all bits in a block is just the parity
+                        let block_index = column_block_index(n, aux_block_index, j);
+                        *self.tableau.get_unchecked_mut(block_index) =
+                            if block.count_ones() % 2 != 0 {
+                                set_bit(*self.tableau.get_unchecked(block_index), aux_bit_index)
+                            } else {
+                                unset_bit(*self.tableau.get_unchecked(block_index), aux_bit_index)
+                            };
+                    }
+                    // Determine phase change caused by multiplication of the individual Pauli matrices.
+                    // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
+                    let mut phase_bit1: BitBlock = 0;
+                    let mut phase_bit2: BitBlock = 0;
+                    for col in 0..n {
+                        let mut x1 = 0;
+                        let mut z1 = 0;
+                        // Reduce block-wise
+                        for i in 0..column_block_length(n) {
+                            let x2 = *self.tableau.get_unchecked(x_column_block_index(n, i, col))
+                                & mask.get_unchecked(i);
+                            let z2 = *self.tableau.get_unchecked(z_column_block_index(n, i, col))
+                                & mask.get_unchecked(i);
+                            apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                            x1 ^= x2;
+                            z1 ^= z2;
+                        }
+                        // Reduce the final block by iteratively 'folding' it in half, e.g.
+                        // X
+                        // Y
+                        // Z    ZX = +iY
+                        // X -> XY = +iZ -> ZY = -iX
+                        for e in 1..=BLOCK_SIZE.ilog2() {
+                            let shift = BLOCK_SIZE / 2usize.pow(e);
+                            let x2 = x1 >> shift;
+                            let z2 = z1 >> shift;
+                            let low_mask = !0 >> (BLOCK_SIZE - shift);
+                            x1 &= low_mask;
+                            z1 &= low_mask;
+                            apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                            x1 ^= x2;
+                            z1 ^= z2;
+                        }
+                    }
+                    let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
+                    debug_assert!(phase % 2 == 0, "Imaginary sign");
+                    if phase == 2 {
+                        let block_index = r_column_block_index(n, aux_block_index);
+                        *self.tableau.get_unchecked_mut(block_index) =
+                            flip_bit(*self.tableau.get_unchecked(block_index), aux_bit_index);
                     }
                 }
-                // XOR
-                for j in 0..(n + n + 1 + c_cols) {
-                    // Start by going block-wise, reducing to a single block
-                    let mut block: BitBlock = 0;
-                    for i in 0..column_block_length(n) {
-                        block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
-                    }
-                    // Reduce last block:
-                    // The XOR of all bits in a block is just the parity
-                    let block_index = column_block_index(n, aux_block_index, j);
-                    self.tableau[block_index] = if block.count_ones() % 2 != 0 {
-                        set_bit(self.tableau[block_index], aux_bit_index)
-                    } else {
-                        unset_bit(self.tableau[block_index], aux_bit_index)
-                    };
-                }
-                // Determine phase change caused by multiplication of the individual Pauli matrices.
-                // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
-                let mut phase_bit1: BitBlock = 0;
-                let mut phase_bit2: BitBlock = 0;
-                for col in 0..n {
-                    let mut x1 = 0;
-                    let mut z1 = 0;
-                    // Reduce block-wise
-                    for i in 0..column_block_length(n) {
-                        let x2 = self.tableau[x_column_block_index(n, i, col)] & mask[i];
-                        let z2 = self.tableau[z_column_block_index(n, i, col)] & mask[i];
-                        apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
-                        x1 ^= x2;
-                        z1 ^= z2;
-                    }
-                    // Reduce the final block by iteratively 'folding' it in half, e.g.
-                    // X
-                    // Y
-                    // Z    ZX = +iY
-                    // X -> XY = +iZ -> ZY = -iX
-                    for e in 1..=BLOCK_SIZE.ilog2() {
-                        let shift = BLOCK_SIZE / 2usize.pow(e);
-                        let x2 = x1 >> shift;
-                        let z2 = z1 >> shift;
-                        let low_mask = !0 >> (BLOCK_SIZE - shift);
-                        x1 &= low_mask;
-                        z1 &= low_mask;
-                        apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
-                        x1 ^= x2;
-                        z1 ^= z2;
-                    }
-                }
-                let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
-                debug_assert!(phase % 2 == 0, "Imaginary sign");
-                if phase == 2 {
-                    let block_index = r_column_block_index(n, aux_block_index);
-                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
-                }
-            }
 
-            // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[s] =
-                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter().copied());
+                // Compute the (w2, w1) entry in the stabilizer of the correct form.
+                *self.output.get_unchecked_mut(s) = self.stabilizer_matrix_entry(
+                    s,
+                    aux_row,
+                    w1s.iter_string(s),
+                    w2.iter().copied(),
+                );
+            }
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -432,15 +444,17 @@ impl ExtendedTableau {
     where
         W: Iterator<Item = bool>,
     {
-        let n = self.n;
+        unsafe {
+            let n = self.n;
 
-        for q in 0..n {
-            let different = w1_xor_w2.next().unwrap();
-            if self.x_bit(row, q) != different {
-                return true;
+            for q in 0..n {
+                let different = w1_xor_w2.next().unwrap_unchecked();
+                if self.x_bit(row, q) != different {
+                    return true;
+                }
             }
+            false
         }
-        false
     }
     /// Computes the factor of [`Self::stabilizer_matrix_entry`] caused by the complex phase rotation
     /// contributed by each [`Pauli::Y`] element in the tensor product.
@@ -463,16 +477,18 @@ impl ExtendedTableau {
     where
         W1: Iterator<Item = bool>,
     {
-        let n = self.n;
+        unsafe {
+            let n = self.n;
 
-        let mut res = self.row_negative(i, row);
-        for q in 0..n {
-            let b1 = w1.next().unwrap();
-            if self.z_bit(row, q) && b1 {
-                res = !res;
+            let mut res = self.row_negative(i, row);
+            for q in 0..n {
+                let b1 = w1.next().unwrap_unchecked();
+                if self.z_bit(row, q) && b1 {
+                    res = !res;
+                }
             }
+            res
         }
-        res
     }
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
@@ -545,16 +561,22 @@ impl ExtendedTableau {
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask: BitBlock = bitmask(row_bit_index);
-        let mut r = self.tableau[r_column_block_index(n, row_block_index)];
-        let mut j = 0;
-        while i != 0 {
-            if i % 2 != 0 {
-                r ^= self.tableau[c_column_block_index(n, row_block_index, j)];
+        unsafe {
+            let mut r = *self
+                .tableau
+                .get_unchecked(r_column_block_index(n, row_block_index));
+            let mut j = 0;
+            while i != 0 {
+                if i % 2 != 0 {
+                    r ^= *self
+                        .tableau
+                        .get_unchecked(c_column_block_index(n, row_block_index, j));
+                }
+                i /= 2;
+                j += 1;
             }
-            i /= 2;
-            j += 1;
+            r & row_bitmask != 0
         }
-        r & row_bitmask != 0
     }
 
     /// Get the Pauli matrix corresponding to the q'th tensor element in the `row`'th row.
@@ -563,26 +585,40 @@ impl ExtendedTableau {
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask: BitBlock = bitmask(row_bit_index);
+        unsafe {
+            let x = *self
+                .tableau
+                .get_unchecked(x_column_block_index(n, row_block_index, q))
+                & row_bitmask
+                != 0;
+            let z = *self
+                .tableau
+                .get_unchecked(z_column_block_index(n, row_block_index, q))
+                & row_bitmask
+                != 0;
 
-        let x = self.tableau[x_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
-        let z = self.tableau[z_column_block_index(n, row_block_index, q)] & row_bitmask != 0;
-
-        match (x, z) {
-            (false, false) => Pauli::I,
-            (true, false) => Pauli::X,
-            (true, true) => Pauli::Y,
-            (false, true) => Pauli::Z,
+            match (x, z) {
+                (false, false) => Pauli::I,
+                (true, false) => Pauli::X,
+                (true, true) => Pauli::Y,
+                (false, true) => Pauli::Z,
+            }
         }
     }
 
     /// Get the value of the bit corresponding to the j'th column in the `row`'th row.
     #[inline]
     fn bit(&self, row: usize, j: usize) -> bool {
-        let n = self.n;
-        let row_block_index = row / BLOCK_SIZE;
-        let row_bit_index = row % BLOCK_SIZE;
-        let row_bitmask: BitBlock = bitmask(row_bit_index);
-        self.tableau[column_block_index(n, row_block_index, j)] & row_bitmask != 0
+        unsafe {
+            let n = self.n;
+            let row_block_index = row / BLOCK_SIZE;
+            let row_bit_index = row % BLOCK_SIZE;
+            let row_bitmask: BitBlock = bitmask(row_bit_index);
+            self.tableau
+                .get_unchecked(column_block_index(n, row_block_index, j))
+                & row_bitmask
+                != 0
+        }
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
