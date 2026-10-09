@@ -324,20 +324,30 @@ fn run_cpu(
                         }
                     }
                 } else {
-                    for i in 0..g.contained_states() {
-                        let index_i = i;
-                        let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
+                    let contained_states = g.contained_states();
+                    let duplicate = g.try_fork_apply_z_gate(a);
+                    if duplicate {
+                        for i in 0..contained_states {
+                            let index_i = i;
+                            let index_z = i + contained_states;
+                            xs.copy_within(index_i, index_z);
+                            x_coeffs.push(x_coeffs[index_i]);
 
-                        x_coeffs[index_i] *= C_I;
+                            x_coeffs[index_i] *= C_I;
 
-                        if xs.get(index_z, a) {
-                            x_coeffs[index_z] *= -Complex::ONE;
+                            if xs.get(index_z, a) {
+                                x_coeffs[index_z] *= -Complex::ONE;
+                            }
+                            x_coeffs[index_z] *= C_Z;
                         }
-                        x_coeffs[index_z] *= C_Z;
+                    } else {
+                        for i in 0..contained_states {
+                            let c = x_coeffs[i];
+                            let ci = c * C_I;
+                            let cz = c * if xs.get(i, a) { -C_Z } else { C_Z };
+                            x_coeffs[i] = ci + cz;
+                        }
                     }
-                    g.fork_apply_z_gate(a);
                 }
 
                 seen_t_gates += 1;
@@ -359,20 +369,30 @@ fn run_cpu(
                         }
                     }
                 } else {
-                    for i in 0..g.contained_states() {
-                        let index_i = i;
-                        let index_z = i + g.contained_states();
-                        xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
+                    let contained_states = g.contained_states();
+                    let duplicate = g.try_fork_apply_z_gate(a);
+                    if duplicate {
+                        for i in 0..contained_states {
+                            let index_i = i;
+                            let index_z = i + contained_states;
+                            xs.copy_within(index_i, index_z);
+                            x_coeffs.push(x_coeffs[index_i]);
 
-                        x_coeffs[index_i] *= C_I_DG;
+                            x_coeffs[index_i] *= C_I_DG;
 
-                        if xs.get(index_z, a) {
-                            x_coeffs[index_z] *= -Complex::ONE;
+                            if xs.get(index_z, a) {
+                                x_coeffs[index_z] *= -Complex::ONE;
+                            }
+                            x_coeffs[index_z] *= C_Z_DG;
                         }
-                        x_coeffs[index_z] *= C_Z_DG;
+                    } else {
+                        for i in 0..contained_states {
+                            let c = x_coeffs[i];
+                            let ci = c * C_I_DG;
+                            let cz = c * if xs.get(i, a) { -C_Z_DG } else { C_Z_DG };
+                            x_coeffs[i] = ci + cz;
+                        }
                     }
-                    g.fork_apply_z_gate(a);
                 }
 
                 seen_t_gates += 1;
