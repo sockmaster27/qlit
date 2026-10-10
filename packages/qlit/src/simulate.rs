@@ -16,7 +16,7 @@ use crate::simulate_gpu::GpuSimulator;
 use crate::{
     bitstring::BitStringArray,
     circuit::{CliffordTCircuit, CliffordTGate},
-    tableau::ExtendedTableau,
+    tableau::{ExtendedTableau, ForkResult},
 };
 
 const N_TOO_LARGE: &str = "Number of qubits too large";
@@ -325,28 +325,29 @@ fn run_cpu(
                     }
                 } else {
                     let contained_states = g.contained_states();
-                    let duplicate = g.try_fork_apply_z_gate(a);
-                    if duplicate {
+                    for i in 0..contained_states {
+                        let index_i = i;
+                        let index_z = i + contained_states;
+                        xs.copy_within(index_i, index_z);
+                        x_coeffs.push(x_coeffs[index_i]);
+
+                        x_coeffs[index_i] *= C_I;
+
+                        if xs.get(index_z, a) {
+                            x_coeffs[index_z] *= -Complex::ONE;
+                        }
+                        x_coeffs[index_z] *= C_Z;
+                    }
+                    let fork_result = g.try_fork_apply_z_gate(a);
+                    if let ForkResult::Redundant(c) = fork_result {
                         for i in 0..contained_states {
                             let index_i = i;
-                            let index_z = i + contained_states;
-                            xs.copy_within(index_i, index_z);
-                            x_coeffs.push(x_coeffs[index_i]);
-
-                            x_coeffs[index_i] *= C_I;
-
-                            if xs.get(index_z, a) {
-                                x_coeffs[index_z] *= -Complex::ONE;
-                            }
-                            x_coeffs[index_z] *= C_Z;
+                            let index_z = (i ^ c) + contained_states;
+                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
+                            // even though their tableaus (and thereby their underlying states) are identical?
+                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
                         }
-                    } else {
-                        for i in 0..contained_states {
-                            let c = x_coeffs[i];
-                            let ci = c * C_I;
-                            let cz = c * if xs.get(i, a) { -C_Z } else { C_Z };
-                            x_coeffs[i] = ci + cz;
-                        }
+                        x_coeffs.truncate(contained_states);
                     }
                 }
 
@@ -370,28 +371,29 @@ fn run_cpu(
                     }
                 } else {
                     let contained_states = g.contained_states();
-                    let duplicate = g.try_fork_apply_z_gate(a);
-                    if duplicate {
+                    for i in 0..contained_states {
+                        let index_i = i;
+                        let index_z = i + contained_states;
+                        xs.copy_within(index_i, index_z);
+                        x_coeffs.push(x_coeffs[index_i]);
+
+                        x_coeffs[index_i] *= C_I_DG;
+
+                        if xs.get(index_z, a) {
+                            x_coeffs[index_z] *= -Complex::ONE;
+                        }
+                        x_coeffs[index_z] *= C_Z_DG;
+                    }
+                    let fork_result = g.try_fork_apply_z_gate(a);
+                    if let ForkResult::Redundant(c) = fork_result {
                         for i in 0..contained_states {
                             let index_i = i;
-                            let index_z = i + contained_states;
-                            xs.copy_within(index_i, index_z);
-                            x_coeffs.push(x_coeffs[index_i]);
-
-                            x_coeffs[index_i] *= C_I_DG;
-
-                            if xs.get(index_z, a) {
-                                x_coeffs[index_z] *= -Complex::ONE;
-                            }
-                            x_coeffs[index_z] *= C_Z_DG;
+                            let index_z = (i ^ c) + contained_states;
+                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
+                            // even though their tableaus (and thereby their underlying states) are identical?
+                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
                         }
-                    } else {
-                        for i in 0..contained_states {
-                            let c = x_coeffs[i];
-                            let ci = c * C_I_DG;
-                            let cz = c * if xs.get(i, a) { -C_Z_DG } else { C_Z_DG };
-                            x_coeffs[i] = ci + cz;
-                        }
+                        x_coeffs.truncate(contained_states);
                     }
                 }
 
