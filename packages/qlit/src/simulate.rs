@@ -16,7 +16,7 @@ use crate::simulate_gpu::GpuSimulator;
 use crate::{
     bitstring::BitStringArray,
     circuit::{CliffordTCircuit, CliffordTGate},
-    tableau::ExtendedTableau,
+    tableau::{ExtendedTableau, ForkResult},
 };
 
 const N_TOO_LARGE: &str = "Number of qubits too large";
@@ -324,9 +324,10 @@ fn run_cpu(
                         }
                     }
                 } else {
-                    for i in 0..g.contained_states() {
+                    let contained_states = g.contained_states();
+                    for i in 0..contained_states {
                         let index_i = i;
-                        let index_z = i + g.contained_states();
+                        let index_z = i + contained_states;
                         xs.copy_within(index_i, index_z);
                         x_coeffs.push(x_coeffs[index_i]);
 
@@ -337,7 +338,17 @@ fn run_cpu(
                         }
                         x_coeffs[index_z] *= C_Z;
                     }
-                    g.fork_apply_z_gate(a);
+                    let fork_result = g.try_fork_apply_z_gate(a);
+                    if let ForkResult::Redundant(c) = fork_result {
+                        for i in 0..contained_states {
+                            let index_i = i;
+                            let index_z = (i ^ c) + contained_states;
+                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
+                            // even though their tableaus (and thereby their underlying states) are identical?
+                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
+                        }
+                        x_coeffs.truncate(contained_states);
+                    }
                 }
 
                 seen_t_gates += 1;
@@ -359,9 +370,10 @@ fn run_cpu(
                         }
                     }
                 } else {
-                    for i in 0..g.contained_states() {
+                    let contained_states = g.contained_states();
+                    for i in 0..contained_states {
                         let index_i = i;
-                        let index_z = i + g.contained_states();
+                        let index_z = i + contained_states;
                         xs.copy_within(index_i, index_z);
                         x_coeffs.push(x_coeffs[index_i]);
 
@@ -372,7 +384,17 @@ fn run_cpu(
                         }
                         x_coeffs[index_z] *= C_Z_DG;
                     }
-                    g.fork_apply_z_gate(a);
+                    let fork_result = g.try_fork_apply_z_gate(a);
+                    if let ForkResult::Redundant(c) = fork_result {
+                        for i in 0..contained_states {
+                            let index_i = i;
+                            let index_z = (i ^ c) + contained_states;
+                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
+                            // even though their tableaus (and thereby their underlying states) are identical?
+                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
+                        }
+                        x_coeffs.truncate(contained_states);
+                    }
                 }
 
                 seen_t_gates += 1;

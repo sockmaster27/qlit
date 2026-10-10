@@ -16,6 +16,11 @@ enum Pauli {
     Y,
     Z,
 }
+#[derive(Debug, PartialEq, Eq)]
+pub enum ForkResult {
+    Forked,
+    Redundant(usize),
+}
 
 /// An extended stabilizer tableau.
 ///
@@ -180,16 +185,56 @@ impl ExtendedTableau {
         }
     }
 
-    /// Fork the extended tableau such that it represents the current sequence of states,
+    /// Attempts to fork the extended tableau such that it represents the current sequence of states,
     /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
     /// doubling the number of states represented by the tableau.
-    pub fn fork_apply_z_gate(&mut self, a: usize) {
+    ///
+    /// If this forking would introduce redundancy, the tableau is not mutated.
+    ///
+    /// Returns a boolean indicating whether or not the operation was carried out.
+    pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
         let n = self.n;
         let c_cols = self.c_cols;
         let x = x_column_block_index(n, 0, a);
         let c = c_column_block_index(n, 0, c_cols);
+
+        // Return false iff. the existing c columns can be bitwise XOR'ed to derive the new one (the current x column).
+        // This is determined by Gaussian elimination over GF(2), building a basis of the span of the c columns,
+        // where each basis vector has a unique pivot bit that is unset in all basis vectors added after it.
+        let mut basis: Vec<(usize, Vec<BitBlock>, usize)> = Vec::with_capacity(c_cols);
+        let reduce = |basis: &[(usize, Vec<BitBlock>, usize)], v: (&mut [BitBlock], &mut usize)| {
+            for (pivot, b, i) in basis {
+                if v.0[pivot / BLOCK_SIZE] & bitmask::<BitBlock>(pivot % BLOCK_SIZE) != 0 {
+                    for (vi, bi) in v.0.iter_mut().zip(b) {
+                        *vi ^= bi;
+                    }
+                    *v.1 ^= i;
+                }
+            }
+        };
+        let first_set_bit = |v: &[BitBlock]| {
+            v.iter()
+                .position(|&block| block != 0)
+                .map(|i| BLOCK_SIZE * i + v[i].leading_zeros() as usize)
+        };
+        let mut i = 0;
+        for j in 0..c_cols {
+            let cj = c_column_block_index(n, 0, j);
+            let mut v = self.tableau[cj..(cj + column_block_length(n))].to_vec();
+            reduce(&basis, (&mut v, &mut i));
+            if let Some(pivot) = first_set_bit(&v) {
+                basis.push((pivot, v, 1 << j));
+            }
+        }
+        let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
+        reduce(&basis, (&mut v, &mut i));
+        if first_set_bit(&v).is_none() {
+            return ForkResult::Redundant(i);
+        }
+
         self.tableau.copy_within(x..(x + column_block_length(n)), c);
         self.c_cols += 1;
+        ForkResult::Forked
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that
@@ -988,10 +1033,10 @@ mod tests {
     }
 
     #[test]
-    fn fork_apply_z_gate() {
+    fn try_fork_apply_z_gate() {
         let mut g = ExtendedTableau::zero(8, 1);
         g.apply_h_gate(0);
-        g.fork_apply_z_gate(0);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
 
         let w1 = BitStringArray::from_u8s(&[0b0000_0000, 0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -1011,14 +1056,40 @@ mod tests {
     }
 
     #[test]
+    fn try_fork_apply_z_gate_redundant() {
+        let mut g = ExtendedTableau::zero(100, 3);
+        // Zero x column is trivially derivable.
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b0));
+        assert_eq!(g.contained_states(), 1);
+
+        g.apply_h_gate(0);
+        g.apply_h_gate(70);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b1));
+        assert_eq!(g.try_fork_apply_z_gate(70), ForkResult::Forked);
+        assert_eq!(g.contained_states(), 4);
+
+        // x column of qubit 70 becomes the XOR of the two existing c columns.
+        g.apply_cnot_gate(0, 70);
+        let before = g.tableau.clone();
+        assert_eq!(g.try_fork_apply_z_gate(70), ForkResult::Redundant(0b11));
+        assert_eq!(g.contained_states(), 4);
+        assert_eq!(g.tableau, before);
+
+        g.apply_h_gate(99);
+        assert_eq!(g.try_fork_apply_z_gate(99), ForkResult::Forked);
+        assert_eq!(g.contained_states(), 8);
+    }
+
+    #[test]
     fn large_tableau() {
         let mut g = ExtendedTableau::zero(300, 3);
         g.apply_h_gate(1);
-        g.fork_apply_z_gate(1);
+        assert_eq!(g.try_fork_apply_z_gate(1), ForkResult::Forked);
         g.apply_h_gate(78);
-        g.fork_apply_z_gate(78);
+        assert_eq!(g.try_fork_apply_z_gate(78), ForkResult::Forked);
         g.apply_h_gate(123);
-        g.fork_apply_z_gate(123);
+        assert_eq!(g.try_fork_apply_z_gate(123), ForkResult::Forked);
 
         let w1 = BitStringArray::new(300, 8);
         let mut w2 = [false; 300];
