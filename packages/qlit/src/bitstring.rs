@@ -6,6 +6,7 @@ use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
 type BitBlock = u8;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
+#[derive(PartialEq, Eq)]
 pub struct BitStringArray {
     string_length: usize,
     inner: Vec<BitBlock>,
@@ -24,6 +25,13 @@ impl BitStringArray {
         Self {
             string_length: 8,
             inner: s.to_owned(),
+        }
+    }
+    #[cfg(test)]
+    pub fn from_u16s(s: &[u16]) -> Self {
+        Self {
+            string_length: 16,
+            inner: s.iter().map(|x| x.to_be_bytes()).flatten().collect(),
         }
     }
 
@@ -80,8 +88,8 @@ impl BitStringArray {
         }
         let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
         for j in 0..string_block_length {
-            let block_index = i * string_block_length + j / BLOCK_SIZE;
-            let block_index_prev = (i - 1) * string_block_length + j / BLOCK_SIZE;
+            let block_index = i * string_block_length + j;
+            let block_index_prev = (i - 1) * string_block_length + j;
             if self.inner[block_index_prev] != self.inner[block_index] {
                 return false;
             }
@@ -127,5 +135,71 @@ impl<'a> Iterator for BitStringArrayIter<'a> {
         let r = self.array.get(self.i, self.j);
         self.j += 1;
         Some(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copy_within() {
+        let mut array = BitStringArray::from_u16s(&[
+            0b0000_0000_0000_0000,
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+            0b0000_0000_0000_0000,
+        ]);
+        array.copy_within(1, 2);
+        assert_eq!(
+            array,
+            BitStringArray::from_u16s(&[
+                0b0000_0000_0000_0000,
+                0b0110_1001_1001_0110,
+                0b0110_1001_1001_0110,
+                0b0000_0000_0000_0000,
+            ])
+        );
+    }
+
+    #[test]
+    fn equal_to_previous1() {
+        let array = BitStringArray::from_u16s(&[
+            0b0000_0000_0000_0000,
+            0b0110_1001_1001_0110,
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+        ]);
+        assert_eq!(array.equal_to_previous(0), false);
+    }
+    #[test]
+    fn equal_to_previous2() {
+        let array = BitStringArray::from_u16s(&[
+            0b0110_1001_0110_1001,
+            0b0110_1001_1001_0110,
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+        ]);
+        assert_eq!(array.equal_to_previous(1), false);
+    }
+    #[test]
+    fn equal_to_previous3() {
+        let array = BitStringArray::from_u16s(&[
+            0b1001_0110_1001_0110,
+            0b0110_1001_1001_0110,
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+        ]);
+        assert_eq!(array.equal_to_previous(2), true);
+    }
+    #[test]
+    fn equal_to_previous4() {
+        let array = BitStringArray::from_u16s(&[
+            0b0000_0000_0000_0000,
+            0b0110_1001_1001_0110,
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+        ]);
+        assert_eq!(array.equal_to_previous(2), true);
     }
 }
