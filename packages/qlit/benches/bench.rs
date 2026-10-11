@@ -24,7 +24,7 @@ mod cpu {
     }
 
     pub fn cpu_large(c: &mut Criterion) {
-        let (w, circuit) = setup(32, 512, 15);
+        let (w, circuit) = setup(8, 256, 10);
         c.bench_function("cpu_large", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });

@@ -288,6 +288,17 @@ impl BitStringArray {
         }
         true
     }
+    pub fn equal_within(&self, x: usize, y: usize) -> bool {
+        let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
+        for i in 0..string_block_length {
+            let x_block_index = x * string_block_length + i;
+            let y_block_index = y * string_block_length + i;
+            if self.inner[x_block_index] != self.inner[y_block_index] {
+                return false;
+            }
+        }
+        true
+    }
 
     #[inline]
     pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {

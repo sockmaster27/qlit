@@ -217,15 +217,16 @@ impl ExtendedTableau {
                 .position(|&block| block != 0)
                 .map(|i| BLOCK_SIZE * i + v[i].leading_zeros() as usize)
         };
-        let mut i = 0;
         for j in 0..c_cols {
             let cj = c_column_block_index(n, 0, j);
             let mut v = self.tableau[cj..(cj + column_block_length(n))].to_vec();
-            reduce(&basis, (&mut v, &mut i));
+            let mut tag = 1 << j;
+            reduce(&basis, (&mut v, &mut tag));
             if let Some(pivot) = first_set_bit(&v) {
-                basis.push((pivot, v, 1 << j));
+                basis.push((pivot, v, tag));
             }
         }
+        let mut i = 0;
         let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
         reduce(&basis, (&mut v, &mut i));
         if first_set_bit(&v).is_none() {
@@ -1049,6 +1050,21 @@ mod test {
         g.apply_h_gate(99);
         assert_eq!(g.try_fork_apply_z_gate(99), ForkResult::Forked);
         assert_eq!(g.contained_states(), 8);
+    }
+
+    #[test]
+    fn try_fork_apply_z_gate_redundant_reduced_basis() {
+        let mut g = ExtendedTableau::zero(2, 2);
+        g.apply_h_gate(0);
+        // c0 = [1, 0]
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.apply_h_gate(1);
+        g.apply_cnot_gate(1, 0);
+        // c1 = [1, 1], which must be reduced by c0 when building the basis.
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.apply_cnot_gate(1, 0);
+        // x column of qubit 0 is [1, 0] = c0.
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b01));
     }
 
     #[test]
