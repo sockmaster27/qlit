@@ -1,13 +1,18 @@
 use criterion::Criterion;
-use qlit::{BitString, CliffordTCircuit, initialize_global};
+use qlit::{CliffordTCircuit, initialize_global};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::{hint::black_box, time::Duration};
 
-fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, CliffordTCircuit) {
+fn setup(qubits: u32, gates: usize, t_gates: usize) -> (Vec<bool>, CliffordTCircuit) {
     let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
     let seed = 123;
-    let w = BitString::random(qubits.try_into().unwrap(), seed);
+    let rng = SmallRng::seed_from_u64(seed);
+    let w = rng
+        .random_iter()
+        .take(usize::try_from(qubits).unwrap())
+        .collect();
     let circuit = CliffordTCircuit::random(qubits, gates, t_gates, seed);
     (w, circuit)
 }
@@ -18,6 +23,8 @@ mod cpu {
 
     pub fn cpu_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
+        // TODO: Setup bitstring directly
+        let w = w[..].into();
         c.bench_function("cpu_small", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });
@@ -25,6 +32,7 @@ mod cpu {
 
     pub fn cpu_large(c: &mut Criterion) {
         let (w, circuit) = setup(32, 512, 15);
+        let w = w[..].into();
         c.bench_function("cpu_large", |b| {
             b.iter(|| simulate_circuit(black_box(&w), black_box(&circuit)))
         });
@@ -38,6 +46,7 @@ mod gpu {
 
     pub fn gpu_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
+        let w = w[..].into();
         c.bench_function("gpu_small", |b| {
             b.iter(|| simulate_circuit_gpu(black_box(&w), black_box(&circuit)))
         });
@@ -45,6 +54,7 @@ mod gpu {
 
     pub fn gpu_large(c: &mut Criterion) {
         let (w, circuit) = setup(32, 512, 15);
+        let w = w[..].into();
         c.bench_function("gpu_large", |b| {
             b.iter(|| simulate_circuit_gpu(black_box(&w), black_box(&circuit)))
         });
@@ -58,6 +68,7 @@ mod hybrid {
 
     pub fn hybrid_small(c: &mut Criterion) {
         let (w, circuit) = setup(8, 64, 5);
+        let w = w[..].into();
         c.bench_function("hybrid_small", |b| {
             b.iter(|| simulate_circuit_hybrid(black_box(&w), black_box(&circuit)))
         });
@@ -65,6 +76,7 @@ mod hybrid {
 
     pub fn hybrid_large(c: &mut Criterion) {
         let (w, circuit) = setup(32, 512, 15);
+        let w = w[..].into();
         c.bench_function("hybrid_large", |b| {
             b.iter(|| simulate_circuit_hybrid(black_box(&w), black_box(&circuit)))
         });
