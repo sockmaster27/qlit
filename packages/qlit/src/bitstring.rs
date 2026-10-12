@@ -70,6 +70,10 @@ impl BitString {
         self.length
     }
 
+    /// Returns (block_index, bit_index) pair for the i'th bit in the string.
+    ///
+    /// # Panics
+    /// If `i >= self.length`. It can therefore be trusted that the returned block_index is inside the bounds of 'self.inner'.
     #[inline]
     fn index(&self, i: usize) -> (usize, usize) {
         let len = self.length;
@@ -86,17 +90,26 @@ impl BitString {
     pub fn get(&self, i: usize) -> bool {
         let (block_index, bit_index) = self.index(i);
         let bit_mask: BitBlock = bitmask(bit_index);
-        (self.inner[block_index] & bit_mask) != 0
+        // SAFETY: Bounds check performed by self.index
+        unsafe { (self.inner.get_unchecked(block_index) & bit_mask) != 0 }
     }
     #[inline]
     pub fn set(&mut self, i: usize) {
         let (block_index, bit_index) = self.index(i);
-        self.inner[block_index] = set_bit(self.inner[block_index], bit_index);
+        // SAFETY: Bounds check performed by self.index
+        unsafe {
+            *self.inner.get_unchecked_mut(block_index) =
+                set_bit(*self.inner.get_unchecked(block_index), bit_index);
+        }
     }
     #[inline]
     pub fn unset(&mut self, i: usize) {
         let (block_index, bit_index) = self.index(i);
-        self.inner[block_index] = unset_bit(self.inner[block_index], bit_index);
+        // SAFETY: Bounds check performed by self.index
+        unsafe {
+            *self.inner.get_unchecked_mut(block_index) =
+                unset_bit(*self.inner.get_unchecked(block_index), bit_index);
+        }
     }
 
     #[inline]
