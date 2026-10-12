@@ -224,7 +224,7 @@ impl ExtendedTableau {
                 let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
                 for row in 0..n {
                     if let Some(q) = self.row_pivots[row]
-                        && w1s.get(s, q) != w2.get(s)
+                        && w1s.get(s, q) != w2.get(q)
                     {
                         let row_block_index = row / BLOCK_SIZE;
                         let row_bit_index = row % BLOCK_SIZE;

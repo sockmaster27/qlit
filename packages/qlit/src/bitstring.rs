@@ -102,6 +102,24 @@ impl<T: AsRef<[bool]>> From<T> for BitString {
         r
     }
 }
+#[derive(Clone)]
+pub struct BitStringIter<'a> {
+    inner: &'a BitString,
+    i: usize,
+}
+impl<'a> Iterator for BitStringIter<'a> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i >= self.inner.length {
+            return None;
+        }
+        let r = self.inner.get(self.i);
+        self.i += 1;
+        Some(r)
+    }
+}
 
 #[derive(PartialEq, Eq)]
 pub struct BitStringArray {
@@ -203,26 +221,19 @@ impl BitStringArray {
         }
     }
 }
-
-#[derive(Clone)]
-pub struct BitStringIter<'a> {
-    inner: &'a BitString,
-    i: usize,
-}
-impl<'a> Iterator for BitStringIter<'a> {
-    type Item = bool;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.i >= self.inner.length {
-            return None;
-        }
-        let r = self.inner.get(self.i);
-        self.i += 1;
-        Some(r)
+impl Debug for BitStringArray {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries((0..self.len()).map(|i| {
+                self.iter_string(i)
+                    .map(|b| if b { '1' } else { '0' })
+                    .collect::<String>()
+            }))
+            .finish()
     }
 }
 
+#[derive(Clone)]
 pub struct BitStringArrayIter<'a> {
     inner: &'a BitStringArray,
     i: usize,
@@ -239,17 +250,6 @@ impl<'a> Iterator for BitStringArrayIter<'a> {
         let r = self.inner.get(self.i, self.j);
         self.j += 1;
         Some(r)
-    }
-}
-impl Debug for BitStringArray {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list()
-            .entries((0..self.len()).map(|i| {
-                self.iter_string(i)
-                    .map(|b| if b { '1' } else { '0' })
-                    .collect::<String>()
-            }))
-            .finish()
     }
 }
 
