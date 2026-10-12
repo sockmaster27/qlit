@@ -58,7 +58,10 @@ impl BitString {
         let rng = Xoshiro128PlusPlus::seed_from_u64(seed);
         Self {
             length,
-            inner: rng.random_iter().collect(),
+            inner: rng
+                .random_iter()
+                .take(length.div_ceil(BLOCK_SIZE))
+                .collect(),
         }
     }
 
