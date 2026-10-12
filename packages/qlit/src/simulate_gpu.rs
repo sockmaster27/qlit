@@ -11,7 +11,7 @@ use std::{
 use num_complex::Complex;
 use wgpu::util::DeviceExt;
 
-use crate::{CliffordTCircuit, CliffordTGate};
+use crate::{BitString, CliffordTCircuit, CliffordTGate};
 
 type BitBlock = u32;
 const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
@@ -459,7 +459,7 @@ pub struct GpuSimulator<'a> {
     compute_output_bind_group: wgpu::BindGroup,
 }
 impl<'a> GpuSimulator<'a> {
-    pub fn new(circuit: &'a CliffordTCircuit, w: &[bool], batch_size_log2: usize) -> Self {
+    pub fn new(circuit: &'a CliffordTCircuit, w: &BitString, batch_size_log2: usize) -> Self {
         let gpu = get_gpu();
 
         let n: u32 = circuit.qubits();
@@ -565,7 +565,7 @@ impl<'a> GpuSimulator<'a> {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("w_target"),
-                contents: &encode_bitstring(w),
+                contents: &encode_bitstring(w.iter()),
                 usage: wgpu::BufferUsages::STORAGE,
             });
         let output_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -840,7 +840,7 @@ impl<'a> GpuSimulator<'a> {
     pub fn run(&mut self, path: &[bool]) -> Complex<f64> {
         self.gpu
             .queue
-            .write_buffer(&self.path_buf, 0, &encode_bitstring(path));
+            .write_buffer(&self.path_buf, 0, &encode_bitstring(path.iter().copied()));
         self.zero();
         let mut seen_t_gates = 0;
         for &gate in self.circuit.gates() {
@@ -1125,9 +1125,11 @@ fn tableau_block_length(n: u32, max_batches: u32) -> u32 {
     column_block_length(n, max_batches) * (n + n + 1)
 }
 
-fn encode_bitstring(bits: &[bool]) -> Vec<u8> {
-    bits.iter()
-        .map(|&b| if b { 1u32 } else { 0u32 })
+fn encode_bitstring<T>(bits: T) -> Vec<u8>
+where
+    T: Iterator<Item = bool>,
+{
+    bits.map(|b| if b { 1u32 } else { 0u32 })
         .flat_map(|b| b.to_ne_bytes())
         .collect()
 }

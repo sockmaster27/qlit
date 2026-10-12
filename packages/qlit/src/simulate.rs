@@ -109,7 +109,7 @@ pub fn simulate_circuit(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f6
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_gpu(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -139,7 +139,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_hybrid(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -181,7 +181,7 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                w_coeff_local += run_cpu(&w.into(), circuit, &path, batch_size_log2);
+                w_coeff_local += run_cpu(w, circuit, &path, batch_size_log2);
             }
 
             *w_coeff.lock().unwrap() += w_coeff_local;
