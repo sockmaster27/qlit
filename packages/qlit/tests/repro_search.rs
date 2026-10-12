@@ -139,3 +139,45 @@ fn search() {
         std::panic::set_hook(Box::new(|_| {}));
     }
 }
+
+#[test]
+#[ignore]
+fn remaining() {
+    let gates = [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Tdg(1)];
+    let circuit = CliffordTCircuit::new(2, gates).unwrap();
+    let expected = dense(2, &gates);
+    println!("expected {expected:?}");
+    for k in 0..4usize {
+        let w: Vec<bool> = (0..2).map(|q| k >> q & 1 == 1).collect();
+        println!("{k}: {}", simulate_circuit(&w, &circuit));
+    }
+}
+
+#[test]
+#[ignore]
+fn known() {
+    std::panic::set_hook(Box::new(|_| {}));
+    for gates in [
+        vec![H(0), H(1), Tdg(0), Tdg(1), Cnot(0, 1), H(0), Tdg(0)],
+        vec![Cnot(0, 1), H(0), Tdg(0), H(1), Tdg(1), Tdg(0)],
+        vec![H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Tdg(1)],
+    ] {
+        println!("{:?}: {gates:?}", check(2, &gates));
+    }
+}
+
+#[test]
+#[ignore]
+fn bench_circuit() {
+    let circuit = CliffordTCircuit::random(8, 256, 10, 123);
+    simulate_circuit(&[false; 8], &circuit);
+}
+
+#[test]
+#[ignore]
+fn variant() {
+    let gates = [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)];
+    println!("expected {:?}", dense(2, &gates));
+    std::panic::set_hook(Box::new(|_| {}));
+    println!("{:?}", check(2, &gates));
+}
