@@ -757,10 +757,9 @@ mod tests {
             let mut g = ExtendedTableau::zero(8, 0);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if i == 0b0000_0000 {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -777,12 +776,10 @@ mod tests {
             g.apply_s_gate(0);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if i == 0b0000_0000 {
-                Complex::ONE
-            } else if i == 0b1000_0000 {
-                Complex::I
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 => Complex::ONE,
+                0b1000_0000 => Complex::I,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -799,12 +796,10 @@ mod tests {
             g.apply_s_gate(0);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if i == 0b0000_0000 {
-                -Complex::I
-            } else if i == 0b1000_0000 {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 => -Complex::I,
+                0b1000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -823,10 +818,9 @@ mod tests {
             g.apply_h_gate(0);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if i == 0b1000_0000 {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b1000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -843,10 +837,9 @@ mod tests {
             g.apply_cnot_gate(0, 1);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if [0b0000_0000, 0b1100_0000].contains(&i) {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 | 0b1100_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -881,21 +874,11 @@ mod tests {
             g.apply_cnot_gate(3, 1);
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if [
-                0b0000_0000,
-                0b0100_0000,
-                0b1100_0000,
-                0b0011_0000,
-                0b0111_0000,
-                0b1011_0000,
-            ]
-            .contains(&i)
-            {
-                -Complex::ONE
-            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
+                | 0b1011_0000 => -Complex::ONE,
+                0b1000_0000 | 0b1111_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -967,21 +950,11 @@ mod tests {
 
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if [
-                0b0000_0000,
-                0b0100_0000,
-                0b1100_0000,
-                0b0011_0000,
-                0b0111_0000,
-                0b1011_0000,
-            ]
-            .contains(&i)
-            {
-                -Complex::ONE
-            } else if [0b1000_0000, 0b1111_0000].contains(&i) {
-                Complex::ONE
-            } else {
-                Complex::ZERO
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
+                | 0b1011_0000 => -Complex::ONE,
+                0b1000_0000 | 0b1111_0000 => Complex::ONE,
+                _ => Complex::ZERO,
             };
             assert_eq!(result[0], expected, "{i:008b}");
         }
@@ -999,12 +972,10 @@ mod tests {
 
             let result = g.coeff_ratios(&w1, &w2);
 
-            let expected = if i == 0b0000_0000 {
-                [Complex::ONE, -Complex::ONE]
-            } else if i == 0b1000_0000 {
-                [Complex::ONE, Complex::ONE]
-            } else {
-                [Complex::ZERO, Complex::ZERO]
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, -Complex::ONE],
+                0b1000_0000 => [Complex::ONE, Complex::ONE],
+                _ => [Complex::ZERO, Complex::ZERO],
             };
             assert_eq!(result, expected, "{i:008b}");
         }
