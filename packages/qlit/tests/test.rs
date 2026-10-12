@@ -146,6 +146,17 @@ mod bitstring {
         let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
         assert_eq!(b.get(16), false);
     }
+    #[test]
+    fn bitstring_get3() {
+        let b = BitString::zero(13);
+        assert_eq!(b.get(12), false);
+    }
+    #[test]
+    #[should_panic = "index out of bounds: the len is 13 but the index is 13"]
+    fn bitstring_get4() {
+        let b = BitString::zero(13);
+        b.get(13);
+    }
 
     #[test]
     fn bitstring_set1() {
@@ -159,6 +170,12 @@ mod bitstring {
         b.set(32);
         assert_eq!(b.get(32), true);
     }
+    #[test]
+    #[should_panic = "index out of bounds: the len is 33 but the index is 33"]
+    fn bitstring_set3() {
+        let mut b = BitString::from([true; 33]);
+        b.set(33);
+    }
 
     #[test]
     fn bitstring_unset1() {
@@ -171,6 +188,12 @@ mod bitstring {
         let mut b = BitString::from([false; 33]);
         b.unset(7);
         assert_eq!(b.get(7), false);
+    }
+    #[test]
+    #[should_panic = "index out of bounds: the len is 33 but the index is 33"]
+    fn bitstring_unset3() {
+        let mut b = BitString::from([false; 33]);
+        b.unset(33);
     }
 }
 

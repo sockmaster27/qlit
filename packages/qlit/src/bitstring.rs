@@ -73,7 +73,7 @@ impl BitString {
     #[inline]
     fn index(&self, i: usize) -> (usize, usize) {
         let len = self.length;
-        debug_assert!(
+        assert!(
             i < len,
             "index out of bounds: the len is {len} but the index is {i}"
         );
