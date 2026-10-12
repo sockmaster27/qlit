@@ -712,7 +712,7 @@ mod cpu {
     }
 
     #[test]
-    fn convergent_branches_with_different_reference_strings() {
+    fn convergent_branches_with_different_basis_states() {
         let circuit =
             CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
                 .unwrap();
@@ -1149,7 +1149,7 @@ mod gpu {
     }
 
     #[test]
-    fn convergent_branches_with_different_reference_strings() {
+    fn convergent_branches_with_different_basis_states() {
         let circuit =
             CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
                 .unwrap();
@@ -1586,7 +1586,7 @@ mod hybrid {
     }
 
     #[test]
-    fn convergent_branches_with_different_reference_strings() {
+    fn convergent_branches_with_different_basis_states() {
         let circuit =
             CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
                 .unwrap();
