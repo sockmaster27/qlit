@@ -741,7 +741,7 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use rand::rngs::Xoshiro128PlusPlus;
     use rand::{RngExt, SeedableRng};
 

@@ -6,99 +6,271 @@ use qlit::{BitString, CircuitCreationError, CliffordTCircuit, CliffordTGate::*};
 const DELTA: f64 = 1e-6;
 const ABS_DELTA: f64 = 1e-12;
 
-#[test]
-fn invalid_qubit_index() {
-    assert_eq!(
-        CliffordTCircuit::new(8, [X(165)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 165,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [X(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Y(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Z(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [H(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [S(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Sdg(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [T(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Tdg(8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Cnot(8, 4)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Cnot(4, 8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Cz(8, 4)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
-    assert_eq!(
-        CliffordTCircuit::new(8, [Cz(4, 8)]),
-        Err(CircuitCreationError::InvalidQubitIndex {
-            index: 8,
-            qubits: 8
-        })
-    );
+mod bitstring {
+    use super::*;
+
+    #[test]
+    fn bitstring_zero() {
+        let b = BitString::zero(20);
+        assert_eq!(b.len(), 20);
+        assert_eq!(b.iter().collect::<Vec<_>>(), vec![false; 20]);
+    }
+
+    #[test]
+    fn bitstring_from_u8_ltr() {
+        let b = BitString::from_u8_ltr(0b011_01001);
+        assert_eq!(b.len(), 8);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![false, true, true, false, true, false, false, true]
+        );
+    }
+    #[test]
+    fn bitstring_from_u16_ltr() {
+        let b = BitString::from_u16_ltr(0b0110_1001_0110_1001);
+        assert_eq!(b.len(), 16);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u32_ltr() {
+        let b = BitString::from_u32_ltr(0b0110_1001_0110_1001_0110_1001_0110_1001);
+        assert_eq!(b.len(), 32);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u64_ltr() {
+        let b = BitString::from_u64_ltr(
+            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
+        );
+        assert_eq!(b.len(), 64);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true, false, true, true, false, true, false, false, true, false, true, true,
+                false, true, false, false, true, false, true, true, false, true, false, false,
+                true,
+            ]
+        );
+    }
+    #[test]
+    fn bitstring_from_u128_ltr() {
+        let b = BitString::from_u128_ltr(
+            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
+        );
+        assert_eq!(b.len(), 128);
+        assert_eq!(
+            b.iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true, false, true, true, false, true, false, false, true, false, true, true,
+                false, true, false, false, true, false, true, true, false, true, false, false,
+                true, false, true, true, false, true, false, false, true, false, true, true, false,
+                true, false, false, true, false, true, true, false, true, false, false, true,
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true,
+            ]
+        );
+    }
+
+    #[test]
+    fn bitstring_into_iter() {
+        let b = BitString::from_u128_ltr(
+            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
+        );
+        assert_eq!(b.len(), 128);
+        assert_eq!(
+            b.into_iter().collect::<Vec<_>>(),
+            vec![
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true, false, true, true, false, true, false, false, true, false, true, true,
+                false, true, false, false, true, false, true, true, false, true, false, false,
+                true, false, true, true, false, true, false, false, true, false, true, true, false,
+                true, false, false, true, false, true, true, false, true, false, false, true,
+                false, true, true, false, true, false, false, true, false, true, true, false, true,
+                false, false, true, false, true, true, false, true, false, false, true, false,
+                true, true, false, true, false, false, true, false, true, true, false, true, false,
+                false, true,
+            ]
+        );
+    }
+
+    #[test]
+    fn bitstring_from_iter() {
+        let v: Vec<bool> = (0..29).map(|i| i % 3 == 0).collect();
+        let b: BitString = v.iter().collect();
+        assert_eq!(b.len(), v.len());
+        assert_eq!(b.iter().collect::<Vec<_>>(), v);
+        let all_true: BitString = std::iter::repeat_n(true, 8).chain([false; 4]).collect();
+        assert!(!all_true.get(8));
+    }
+
+    #[test]
+    fn bitstring_from_bool_vec() {
+        let v = vec![
+            false, true, true, false, true, false, false, true, false, false,
+        ];
+        let b: BitString = From::from(&v);
+        assert_eq!(b.len(), 10);
+        assert_eq!(b.iter().collect::<Vec<_>>(), v);
+    }
+
+    #[test]
+    fn bitstring_get1() {
+        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
+        assert_eq!(b.get(17), true);
+    }
+    #[test]
+    fn bitstring_get2() {
+        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
+        assert_eq!(b.get(16), false);
+    }
+
+    #[test]
+    fn bitstring_set1() {
+        let mut b = BitString::from([false; 33]);
+        b.set(32);
+        assert_eq!(b.get(32), true);
+    }
+    #[test]
+    fn bitstring_set2() {
+        let mut b = BitString::from([true; 33]);
+        b.set(32);
+        assert_eq!(b.get(32), true);
+    }
+
+    #[test]
+    fn bitstring_unset1() {
+        let mut b = BitString::from([true; 33]);
+        b.unset(7);
+        assert_eq!(b.get(7), false);
+    }
+    #[test]
+    fn bitstring_unset2() {
+        let mut b = BitString::from([false; 33]);
+        b.unset(7);
+        assert_eq!(b.get(7), false);
+    }
+}
+
+mod circuit {
+    use super::*;
+
+    #[test]
+    fn invalid_qubit_index() {
+        assert_eq!(
+            CliffordTCircuit::new(8, [X(165)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 165,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [X(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Y(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Z(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [H(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [S(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Sdg(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [T(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Tdg(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Cnot(8, 4)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Cnot(4, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Cz(8, 4)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            CliffordTCircuit::new(8, [Cz(4, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+    }
 }
 
 mod cpu {

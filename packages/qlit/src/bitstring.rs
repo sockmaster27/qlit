@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use std::mem;
+use std::{borrow::Borrow, fmt::Debug};
 
 use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus};
 
@@ -101,25 +101,74 @@ impl BitString {
         BitStringIter { inner: &self, i: 0 }
     }
 }
+impl<B: Borrow<bool>> FromIterator<B> for BitString {
+    fn from_iter<T: IntoIterator<Item = B>>(iter: T) -> Self {
+        let iter = iter.into_iter();
+        let (s, _) = iter.size_hint();
+        let mut inner = Vec::with_capacity(s.div_ceil(BLOCK_SIZE));
+        let mut length = 0;
+        let mut block = 0;
+        let mut bit_index = 0;
+        for b in iter {
+            length += 1;
+            if *b.borrow() {
+                block = set_bit(block, bit_index);
+            }
+            bit_index += 1;
+            if bit_index == BLOCK_SIZE {
+                inner.push(block);
+                block = 0;
+                bit_index = 0;
+            }
+        }
+        if bit_index != 0 {
+            inner.push(block);
+        }
+        inner.shrink_to_fit();
+        Self { length, inner }
+    }
+}
 impl<T: AsRef<[bool]>> From<T> for BitString {
     #[inline]
     fn from(value: T) -> Self {
-        let slice = value.as_ref();
-        let mut r = Self::zero(slice.len());
-        for (i, &b) in slice.iter().enumerate() {
-            if b {
-                r.set(i);
-            }
-        }
-        r
+        Self::from_iter(value.as_ref())
     }
 }
+impl IntoIterator for BitString {
+    type Item = bool;
+
+    type IntoIter = BitStringIntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::into_iter(vec![true]);
+        BitStringIntoIter { inner: self, i: 0 }
+    }
+}
+
 #[derive(Clone)]
 pub struct BitStringIter<'a> {
     inner: &'a BitString,
     i: usize,
 }
 impl<'a> Iterator for BitStringIter<'a> {
+    type Item = bool;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i >= self.inner.length {
+            return None;
+        }
+        let r = self.inner.get(self.i);
+        self.i += 1;
+        Some(r)
+    }
+}
+#[derive(Clone)]
+pub struct BitStringIntoIter {
+    inner: BitString,
+    i: usize,
+}
+impl Iterator for BitStringIntoIter {
     type Item = bool;
 
     #[inline]
@@ -267,141 +316,6 @@ impl<'a> Iterator for BitStringArrayIter<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
-    #[test]
-    fn bitstring_zero() {
-        let b = BitString::zero(20);
-        assert_eq!(b.len(), 20);
-        assert_eq!(b.iter().collect::<Vec<_>>(), vec![false; 20]);
-    }
-
-    #[test]
-    fn bitstring_from_u8_ltr() {
-        let b = BitString::from_u8_ltr(0b011_01001);
-        assert_eq!(b.len(), 8);
-        assert_eq!(
-            b.iter().collect::<Vec<_>>(),
-            vec![false, true, true, false, true, false, false, true]
-        );
-    }
-    #[test]
-    fn bitstring_from_u16_ltr() {
-        let b = BitString::from_u16_ltr(0b0110_1001_0110_1001);
-        assert_eq!(b.len(), 16);
-        assert_eq!(
-            b.iter().collect::<Vec<_>>(),
-            vec![
-                false, true, true, false, true, false, false, true, false, true, true, false, true,
-                false, false, true,
-            ]
-        );
-    }
-    #[test]
-    fn bitstring_from_u32_ltr() {
-        let b = BitString::from_u32_ltr(0b0110_1001_0110_1001_0110_1001_0110_1001);
-        assert_eq!(b.len(), 32);
-        assert_eq!(
-            b.iter().collect::<Vec<_>>(),
-            vec![
-                false, true, true, false, true, false, false, true, false, true, true, false, true,
-                false, false, true, false, true, true, false, true, false, false, true, false,
-                true, true, false, true, false, false, true,
-            ]
-        );
-    }
-    #[test]
-    fn bitstring_from_u64_ltr() {
-        let b = BitString::from_u64_ltr(
-            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
-        );
-        assert_eq!(b.len(), 64);
-        assert_eq!(
-            b.iter().collect::<Vec<_>>(),
-            vec![
-                false, true, true, false, true, false, false, true, false, true, true, false, true,
-                false, false, true, false, true, true, false, true, false, false, true, false,
-                true, true, false, true, false, false, true, false, true, true, false, true, false,
-                false, true, false, true, true, false, true, false, false, true, false, true, true,
-                false, true, false, false, true, false, true, true, false, true, false, false,
-                true,
-            ]
-        );
-    }
-    #[test]
-    fn bitstring_from_u128_ltr() {
-        let b = BitString::from_u128_ltr(
-            0b0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001_0110_1001,
-        );
-        assert_eq!(b.len(), 128);
-        assert_eq!(
-            b.iter().collect::<Vec<_>>(),
-            vec![
-                false, true, true, false, true, false, false, true, false, true, true, false, true,
-                false, false, true, false, true, true, false, true, false, false, true, false,
-                true, true, false, true, false, false, true, false, true, true, false, true, false,
-                false, true, false, true, true, false, true, false, false, true, false, true, true,
-                false, true, false, false, true, false, true, true, false, true, false, false,
-                true, false, true, true, false, true, false, false, true, false, true, true, false,
-                true, false, false, true, false, true, true, false, true, false, false, true,
-                false, true, true, false, true, false, false, true, false, true, true, false, true,
-                false, false, true, false, true, true, false, true, false, false, true, false,
-                true, true, false, true, false, false, true, false, true, true, false, true, false,
-                false, true,
-            ]
-        );
-    }
-
-    #[test]
-    fn bitstring_from_bool_vec() {
-        let v = vec![
-            false, true, true, false, true, false, false, true, false, false,
-        ];
-        let b: BitString = From::from(&v);
-        assert_eq!(b.len(), 10);
-        assert_eq!(b.iter().collect::<Vec<_>>(), v);
-    }
-
-    #[test]
-    fn bitstring_get1() {
-        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
-        assert_eq!(b.get(17), true);
-    }
-    #[test]
-    fn bitstring_get2() {
-        let b = BitString::from_u32_ltr(0b0000_0000_0000_0000_0100_0000_0000_0000);
-        assert_eq!(b.get(16), false);
-    }
-
-    #[test]
-    fn bitstring_set1() {
-        let mut b = BitString::from([false; 33]);
-        b.set(32);
-        assert_eq!(b.get(32), true);
-    }
-    #[test]
-    fn bitstring_set2() {
-        let mut b = BitString::from([true; 33]);
-        b.set(32);
-        assert_eq!(b.get(32), true);
-    }
-
-    #[test]
-    fn bitstring_unset1() {
-        let mut b = BitString::from([true; 33]);
-        b.unset(7);
-        assert_eq!(b.get(7), false);
-    }
-    #[test]
-    fn bitstring_unset2() {
-        let mut b = BitString::from([false; 33]);
-        b.unset(7);
-        assert_eq!(b.get(7), false);
-    }
-}
-
-#[cfg(test)]
-mod tests {
     use super::*;
 
     #[test]
