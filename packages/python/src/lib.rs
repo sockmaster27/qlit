@@ -1,8 +1,8 @@
 use num_complex::Complex;
 use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
 use qlit::{
-    CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit, simulate_circuit_gpu,
-    simulate_circuit_hybrid,
+    BitString, CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit,
+    simulate_circuit_gpu, simulate_circuit_hybrid,
 };
 
 #[pyclass(from_py_object)]
@@ -129,7 +129,7 @@ impl PyCliffordTCircuit {
     }
 }
 
-fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<Vec<bool>> {
+fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<BitString> {
     let w_str = w.to_cow()?;
     let w_len = w_str.len();
     if w_len.try_into() != Ok(n) {
@@ -137,7 +137,7 @@ fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<Vec<bool>> {
             "Basis state with length {w_len} does not match circuit with {n} qubits"
         )));
     }
-    let res: Result<Vec<bool>, PyErr> = w_str
+    let res: Result<BitString, PyErr> = w_str
         .chars()
         .map(|c| match c {
             '0' => Ok(false),
