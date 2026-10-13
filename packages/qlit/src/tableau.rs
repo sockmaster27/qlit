@@ -841,64 +841,64 @@ mod test {
 
     #[test]
     fn zero() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
+        let w1 = BitString::from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn imaginary() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
+        let w1 = BitString::from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
                 0b1000_0000 => Complex::I,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn negative_imaginary() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
+        let w1 = BitString::from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b0000_0000 => -Complex::I,
                 0b1000_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn flipped() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
+        let w1 = BitString::from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
@@ -907,38 +907,38 @@ mod test {
             g.apply_s_gate(0);
             g.apply_s_gate(0);
             g.apply_h_gate(0);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn bell_state() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b1100_0000]);
+        let w1 = BitString::from_u8_ltr(0b1100_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_cnot_gate(0, 1);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
     #[test]
     fn larger_circuit() {
-        let w1 = BitStringArray::from_u8s_ltr(&[0b1000_0000]);
+        let w1 = BitString::from_u8_ltr(0b1000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
@@ -963,7 +963,7 @@ mod test {
             g.apply_cnot_gate(3, 2);
             g.apply_h_gate(1);
             g.apply_cnot_gate(3, 1);
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -971,7 +971,7 @@ mod test {
                 0b1000_0000 | 0b1111_0000 => Complex::ONE,
                 _ => Complex::ZERO,
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
@@ -1196,11 +1196,11 @@ mod test {
             g.apply_cz_gate(q, q + 1);
         }
 
-        let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000]);
+        let w1 = BitString::from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
-            let result = g.coeff_ratios(&w1, &w2.slice());
+            let result = g.coeff_ratio(&w1.slice(), &w2.slice(), 0);
 
             let adjacent_pairs = (0..7).filter(|&q| w2.get(q) && w2.get(q + 1)).count();
             let expected = if adjacent_pairs % 2 == 0 {
@@ -1208,11 +1208,11 @@ mod test {
             } else {
                 -Complex::ONE
             };
-            assert_eq!(result[0], expected, "{i:008b}");
+            assert_eq!(result, expected, "{i:008b}");
         }
     }
 
-    /// This test is here to ensure that coeff_ratios correctly handles phase shifts
+    /// This test is here to ensure that coeff_ratio correctly handles phase shifts
     /// resulting from row multiplication between rows across different BitBlocks.
     #[test]
     fn multi_block_phase() {
@@ -1223,19 +1223,116 @@ mod test {
         g.apply_cz_gate(0, 64);
         g.apply_cz_gate(0, 69);
 
-        let w1 = BitStringArray::new(70, 1);
+        let w1 = BitString::zero(70);
         let mut w2 = BitString::zero(70);
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), Complex::ONE);
         w2.set(0);
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), Complex::ONE);
         w2.set(64); // Edge 0-64.
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [-Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), -Complex::ONE);
         w2.set(69); // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), Complex::ONE);
         w2.unset(64); // Edge 0-69.
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [-Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), -Complex::ONE);
         w2.unset(0); // No edges.
-        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
+        assert_eq!(g.coeff_ratio(&w1.slice(), &w2.slice(), 0), Complex::ONE);
+    }
+
+    #[test]
+    fn coeff_ratio_forked() {
+        let mut g = ExtendedTableau::zero(8, 1);
+        g.apply_h_gate(0);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+
+        let w1 = BitString::from_u8_ltr(0b0000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = BitString::from_u8_ltr(i);
+
+            let result = [
+                g.coeff_ratio(&w1.slice(), &w2.slice(), 0),
+                g.coeff_ratio(&w1.slice(), &w2.slice(), 1),
+            ];
+
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, Complex::ONE],
+                0b1000_0000 => [Complex::ONE, -Complex::ONE],
+                _ => [Complex::ZERO, Complex::ZERO],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn coeff_ratio_forked_imaginary() {
+        let mut g = ExtendedTableau::zero(8, 1);
+        g.apply_h_gate(0);
+        g.apply_s_gate(0);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+
+        let w1 = BitString::from_u8_ltr(0b0000_0000);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = BitString::from_u8_ltr(i);
+
+            let result = [
+                g.coeff_ratio(&w1.slice(), &w2.slice(), 0),
+                g.coeff_ratio(&w1.slice(), &w2.slice(), 1),
+            ];
+
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, Complex::ONE],
+                0b1000_0000 => [Complex::I, -Complex::I],
+                _ => [Complex::ZERO, Complex::ZERO],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn coeff_ratios_bell_states() {
+        let mut g = ExtendedTableau::zero(8, 1);
+        g.apply_h_gate(0);
+        g.apply_cnot_gate(0, 1);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+
+        let w1 = BitStringArray::from_u8s_ltr(&[0b1100_0000, 0b0000_0000]);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = BitString::from_u8_ltr(i);
+
+            let result = g.coeff_ratios(&w1, &w2.slice());
+
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, Complex::ONE],
+                0b1100_0000 => [Complex::ONE, -Complex::ONE],
+                _ => [Complex::ZERO, Complex::ZERO],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
+    }
+
+    #[test]
+    fn coeff_ratios_repeated_w1s() {
+        let mut g = ExtendedTableau::zero(8, 2);
+        g.apply_h_gate(0);
+        g.apply_h_gate(1);
+        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        assert_eq!(g.try_fork_apply_z_gate(1), ForkResult::Forked);
+
+        let w1 =
+            BitStringArray::from_u8s_ltr(&[0b0000_0000, 0b0000_0000, 0b1100_0000, 0b1100_0000]);
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w2 = BitString::from_u8_ltr(i);
+
+            let result = g.coeff_ratios(&w1, &w2.slice());
+
+            let expected = match i {
+                0b0000_0000 => [Complex::ONE, Complex::ONE, -Complex::ONE, Complex::ONE],
+                0b1000_0000 => [Complex::ONE, -Complex::ONE, -Complex::ONE, -Complex::ONE],
+                0b0100_0000 => [Complex::ONE, Complex::ONE, Complex::ONE, -Complex::ONE],
+                0b1100_0000 => [Complex::ONE, -Complex::ONE, Complex::ONE, Complex::ONE],
+                _ => [Complex::ZERO; 4],
+            };
+            assert_eq!(result, expected, "{i:008b}");
+        }
     }
 
     #[test]
