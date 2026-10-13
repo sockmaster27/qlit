@@ -299,6 +299,7 @@ impl ExtendedTableau {
                     self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
             }
         }
+
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
             let block_index = column_block_index(n, aux_block_index, j);
