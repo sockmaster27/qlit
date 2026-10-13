@@ -14,7 +14,7 @@ use num_complex::Complex;
 use crate::simulate_gpu::GpuSimulator;
 
 use crate::{
-    bitstring::BitStringArray,
+    bitstring::{BitString, BitStringArray},
     circuit::{CliffordTCircuit, CliffordTGate},
     tableau::ExtendedTableau,
 };
@@ -52,7 +52,7 @@ const MAX_BATCH_SIZE_LOG2: usize = 20;
 ///
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
-pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -109,7 +109,7 @@ pub fn simulate_circuit(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> 
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_gpu(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -139,7 +139,7 @@ pub fn simulate_circuit_gpu(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
-pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Complex<f64> {
+pub fn simulate_circuit_hybrid(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f64> {
     let w_len = w.len();
     let n = circuit.qubits();
     let t = circuit.t_gates();
@@ -204,7 +204,7 @@ pub fn simulate_circuit_hybrid(w: &[bool], circuit: &CliffordTCircuit) -> Comple
 }
 
 fn run_cpu(
-    w: &[bool],
+    w: &BitString,
     circuit: &CliffordTCircuit,
     path: &[bool],
     batch_size_log2: usize,
@@ -285,9 +285,13 @@ fn run_cpu(
             CliffordTGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
-                let rs = g.coeff_ratios_flipped_bit(&xs, a);
+                let (r, signs) = g.coeff_ratios_flipped_bit(&xs, a);
                 for i in 0..contained_states {
-                    let r = rs[i];
+                    let r = if r != Complex::ZERO && signs[i] {
+                        -r
+                    } else {
+                        r
+                    };
                     if r != -Complex::ONE {
                         x_coeffs[i] *= (r + 1.0) / SQRT_2;
                         xs.unset(i, a);
