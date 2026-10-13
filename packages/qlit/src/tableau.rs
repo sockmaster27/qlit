@@ -16,9 +16,18 @@ enum Pauli {
     Y,
     Z,
 }
-#[derive(Debug, PartialEq, Eq)]
+
+/// Result returned by [`ExtendedTableau::try_fork_apply_z_gate`], indicating whether fork operation was carried out.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForkResult {
+    /// The tableau was forked and [`ExtendedTableau::contained_states`] is now doubled.
     Forked,
+    /// The tableau was not forked as it would introduce duplicate states.
+    /// The contained value, `c`, indicates that applying the Z-gate to the
+    /// state at index `i` would result in a state identical to the one
+    /// currently contained in index `i ^ c`, (`i` bitwise XOR'ed by `c`).
+    ///
+    /// [`ExtendedTableau::contained_states`] remains unchanged.
     Redundant(usize),
 }
 
@@ -189,29 +198,29 @@ impl ExtendedTableau {
     /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
     /// doubling the number of states represented by the tableau.
     ///
-    /// If this forking would introduce redundancy, the tableau is not mutated.
+    /// If this forking would introduce duplicate state, the tableau is not mutated.
     ///
-    /// Returns a boolean indicating whether or not the operation was carried out.
+    /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
+    /// in which case the information about which states would be duplicates is included.
     pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
         let n = self.n;
         let c_cols = self.c_cols;
         let x = x_column_block_index(n, 0, a);
         let c = c_column_block_index(n, 0, c_cols);
 
-        // Return false iff. the existing c columns can be bitwise XOR'ed to derive the new one (the current x column).
-        // This is determined by Gaussian elimination over GF(2), building a basis of the span of the c columns,
-        // where each basis vector has a unique pivot bit that is unset in all basis vectors added after it.
+        // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
+        // If it is, the tag is a bit-vector indicating which columns are part of his combination.
         let mut basis: Vec<(usize, Vec<BitBlock>, usize)> = Vec::with_capacity(c_cols);
-        let reduce = |basis: &[(usize, Vec<BitBlock>, usize)], v: (&mut [BitBlock], &mut usize)| {
-            for (pivot, b, i) in basis {
+        fn reduce(basis: &[(usize, Vec<BitBlock>, usize)], v: (&mut [BitBlock], &mut usize)) {
+            for (pivot, b, tag) in basis {
                 if v.0[pivot / BLOCK_SIZE] & bitmask::<BitBlock>(pivot % BLOCK_SIZE) != 0 {
                     for (vi, bi) in v.0.iter_mut().zip(b) {
                         *vi ^= bi;
                     }
-                    *v.1 ^= i;
+                    *v.1 ^= tag;
                 }
             }
-        };
+        }
         let first_set_bit = |v: &[BitBlock]| {
             v.iter()
                 .position(|&block| block != 0)
@@ -226,11 +235,11 @@ impl ExtendedTableau {
                 basis.push((pivot, v, tag));
             }
         }
-        let mut i = 0;
+        let mut tag = 0;
         let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
-        reduce(&basis, (&mut v, &mut i));
+        reduce(&basis, (&mut v, &mut tag));
         if first_set_bit(&v).is_none() {
-            return ForkResult::Redundant(i);
+            return ForkResult::Redundant(tag);
         }
 
         self.tableau.copy_within(x..(x + column_block_length(n)), c);
