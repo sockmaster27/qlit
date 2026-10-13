@@ -2,7 +2,11 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use num_complex::Complex;
-use qlit::{CliffordTCircuit, CliffordTGate, CliffordTGate::*, simulate_circuit};
+use qlit::{
+    BitString, CliffordTCircuit,
+    CliffordTGate::{self, *},
+    simulate_circuit,
+};
 
 fn dense(n: u32, gates: &[CliffordTGate]) -> Vec<Complex<f64>> {
     let n = n as usize;
@@ -29,7 +33,11 @@ fn dense(n: u32, gates: &[CliffordTGate]) -> Vec<Complex<f64>> {
                 let s2 = s.clone();
                 for k in 0..s.len() {
                     let src = s2[k ^ (1 << a)];
-                    s[k] = if k >> a & 1 == 1 { src * Complex::I } else { src * -Complex::I };
+                    s[k] = if k >> a & 1 == 1 {
+                        src * Complex::I
+                    } else {
+                        src * -Complex::I
+                    };
                 }
             }
             Z(a) => phase(&mut s, a, -Complex::ONE),
@@ -52,7 +60,11 @@ fn dense(n: u32, gates: &[CliffordTGate]) -> Vec<Complex<f64>> {
             Cnot(a, b) => {
                 let s2 = s.clone();
                 for k in 0..s.len() {
-                    s[k] = if k >> a & 1 == 1 { s2[k ^ (1 << b)] } else { s2[k] };
+                    s[k] = if k >> a & 1 == 1 {
+                        s2[k ^ (1 << b)]
+                    } else {
+                        s2[k]
+                    };
                 }
             }
             Cz(a, b) => {
@@ -80,14 +92,21 @@ fn check(n: u32, gates: &[CliffordTGate]) -> Outcome {
     let r = catch_unwind(AssertUnwindSafe(|| {
         (0..1usize << n)
             .map(|k| {
-                let w: Vec<bool> = (0..n).map(|q| k >> q & 1 == 1).collect();
+                let w = (0..n).map(|q| k >> q & 1 == 1).collect();
                 simulate_circuit(&w, &circuit)
             })
             .collect::<Vec<_>>()
     }));
     match r {
         Err(_) => Outcome::Panic,
-        Ok(got) if got.iter().zip(&expected).all(|(a, b)| (a - b).norm() < 1e-9) => Outcome::Ok,
+        Ok(got)
+            if got
+                .iter()
+                .zip(&expected)
+                .all(|(a, b)| (a - b).norm() < 1e-9) =>
+        {
+            Outcome::Ok
+        }
         Ok(_) => Outcome::Wrong,
     }
 }
@@ -148,7 +167,7 @@ fn remaining() {
     let expected = dense(2, &gates);
     println!("expected {expected:?}");
     for k in 0..4usize {
-        let w: Vec<bool> = (0..2).map(|q| k >> q & 1 == 1).collect();
+        let w = (0..2).map(|q| k >> q & 1 == 1).collect();
         println!("{k}: {}", simulate_circuit(&w, &circuit));
     }
 }
@@ -170,7 +189,7 @@ fn known() {
 #[ignore]
 fn bench_circuit() {
     let circuit = CliffordTCircuit::random(8, 256, 10, 123);
-    simulate_circuit(&[false; 8], &circuit);
+    simulate_circuit(&BitString::zero(8), &circuit);
 }
 
 #[test]

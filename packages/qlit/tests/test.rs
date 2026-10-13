@@ -718,7 +718,7 @@ mod cpu {
                 .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit(&w, &circuit);
 
@@ -727,7 +727,7 @@ mod cpu {
                 0b1000_0000 => Complex { re: -0.5, im: 0.0 },
                 _ => Complex::ZERO,
             };
-            assert_almost_eq(result, expected, i);
+            assert_almost_eq(result, expected, &w);
         }
     }
 }
@@ -1155,7 +1155,7 @@ mod gpu {
                 .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
             let result = simulate_circuit_gpu(&w, &circuit);
 
@@ -1164,7 +1164,7 @@ mod gpu {
                 0b1000_0000 => Complex { re: -0.5, im: 0.0 },
                 _ => Complex::ZERO,
             };
-            assert_almost_eq(result, expected, i);
+            assert_almost_eq(result, expected, &w);
         }
     }
 }
@@ -1592,16 +1592,16 @@ mod hybrid {
                 .unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
-            let w = bits_to_bools(i);
+            let w = BitString::from_u8_ltr(i);
 
-            let result = simulate_circuit_gpu(&w, &circuit);
+            let result = simulate_circuit_hybrid(&w, &circuit);
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 => Complex { re: 0.5, im: 0.0 },
                 0b1000_0000 => Complex { re: -0.5, im: 0.0 },
                 _ => Complex::ZERO,
             };
-            assert_almost_eq(result, expected, i);
+            assert_almost_eq(result, expected, &w);
         }
     }
 }
