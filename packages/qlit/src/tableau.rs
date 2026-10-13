@@ -221,24 +221,28 @@ impl ExtendedTableau {
                 }
             }
         }
-        let first_set_bit = |v: &[BitBlock]| {
-            v.iter()
-                .position(|&block| block != 0)
-                .map(|i| BLOCK_SIZE * i + v[i].leading_zeros() as usize)
-        };
+        fn pivot(v: &[BitBlock]) -> Option<usize> {
+            v.iter().position(|&block| block != 0).map(|i| {
+                let leading_zeros: usize = v[i]
+                    .leading_zeros()
+                    .try_into()
+                    .expect("u32 does not fit into usize");
+                BLOCK_SIZE * i + leading_zeros
+            })
+        }
         for j in 0..c_cols {
             let cj = c_column_block_index(n, 0, j);
             let mut v = self.tableau[cj..(cj + column_block_length(n))].to_vec();
             let mut tag = 1 << j;
             reduce(&basis, (&mut v, &mut tag));
-            if let Some(pivot) = first_set_bit(&v) {
+            if let Some(pivot) = pivot(&v) {
                 basis.push((pivot, v, tag));
             }
         }
         let mut tag = 0;
         let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
         reduce(&basis, (&mut v, &mut tag));
-        if first_set_bit(&v).is_none() {
+        if pivot(&v).is_none() {
             return ForkResult::Redundant(tag);
         }
 
