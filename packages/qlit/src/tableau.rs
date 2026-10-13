@@ -258,13 +258,8 @@ impl ExtendedTableau {
         let aux_block_index = aux_row / BLOCK_SIZE;
         let aux_bit_index = aux_row % BLOCK_SIZE;
 
-        // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
-
-        // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
         self.derive_ratio_stabilizer(w1, w2);
-
-        // Compute the (w2, w1) entry in the stabilizer of the correct form.
         let output = self.stabilizer_matrix_entry(aux_row, w1, w2, s);
 
         // Reset the auxiliary row.
@@ -274,7 +269,7 @@ impl ExtendedTableau {
         }
         output
     }
-    /// Same as [`Self::coeff_ratios`] but for computing the individual ratios betwen an array of `w1s` corresponding to a state eahc, and a single `w2`.
+    /// Same as [`Self::coeff_ratios`] but for computing the individual ratios betwen an array of `w1s` corresponding to a state each, and a single `w2`.
     ///
     /// This function takes an array of basis states `w1s` with length at least equal to [`Self::contained_states`],
     /// and returns a slice of the coeff. ratios between each `w1s[s]` and `w2`,
@@ -294,16 +289,13 @@ impl ExtendedTableau {
         let aux_block_index = aux_row / BLOCK_SIZE;
         let aux_bit_index = aux_row % BLOCK_SIZE;
 
-        // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
         for s in 0..contained_states {
             if !w1s.equal_to_previous(s) {
-                // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
                 self.derive_ratio_stabilizer(&w1s.slice_string(s), w2);
             }
 
-            // Compute the (w2, w1) entry in the stabilizer of the correct form.
             self.output[s] = self.stabilizer_matrix_entry(aux_row, &w1s.slice_string(s), w2, s);
         }
         // Reset the auxiliary row.
@@ -313,7 +305,7 @@ impl ExtendedTableau {
         }
         &self.output[..contained_states]
     }
-    /// Same as [`Self::coeff_ratios`], but for the special case where `w2` is equal to `w1` except for a single flipped bit.
+    /// Same as [`Self::coeff_ratios`], but for when each `w2` is equal to `w1s[s]` except for a single flipped bit.
     pub fn coeff_ratios_flipped_bit(
         &mut self,
         w1s: &BitStringArray,
@@ -322,7 +314,6 @@ impl ExtendedTableau {
         let n = self.n;
         let contained_states = self.contained_states();
 
-        // Bring tableau's x part into reduced row echelon form.
         self.bring_into_rref();
 
         // Identify the row with a set bit in the given position.
@@ -443,6 +434,9 @@ impl ExtendedTableau {
             }
         }
     }
+    /// Derive a stabilizer which encodes the coeff. ratio between `w1` and `w2` and store it in the auxiliary row.
+    ///
+    /// Assumes that the tableau is in reduced row echelon form, established via [`Self::bring_into_rref`].
     fn derive_ratio_stabilizer(&mut self, w1: &BitStringSlice, w2: &BitStringSlice) {
         let n = self.n;
         let c_cols = self.c_cols;
