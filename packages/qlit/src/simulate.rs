@@ -66,7 +66,6 @@ pub fn simulate_circuit(w: &BitString, circuit: &CliffordTCircuit) -> Complex<f6
         rayon::current_num_threads(),
         2usize.saturating_pow(t.try_into().unwrap_or(u32::MAX)),
     );
-    let threads: usize = 1;
     let threads_log2 = threads
         .next_power_of_two()
         .ilog2()
@@ -344,20 +343,13 @@ fn run_cpu(
                         for i in 0..contained_states {
                             let index_i = i;
                             let index_z = (i ^ c) + contained_states;
-                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
-                            // even though their tableaus (and thereby their underlying states) are identical?
-                            let ib = xs
-                                .iter_string(index_i)
-                                .map(|b| if b { '1' } else { '0' })
-                                .collect::<String>();
-                            let zb = xs
-                                .iter_string(index_z)
-                                .map(|b| if b { '1' } else { '0' })
-                                .collect::<String>();
-                            assert!(
-                                xs.equal_within(index_i, index_z),
-                                "{g:?}\n{index_i}:{ib} {index_z}:{zb}"
-                            );
+                            if !xs.equal_within(index_i, index_z) {
+                                x_coeffs[index_z] *= g.coeff_ratio(
+                                    &xs.slice_string(index_z),
+                                    &xs.slice_string(index_i),
+                                    index_i,
+                                );
+                            }
                             x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
                         }
                         x_coeffs.truncate(contained_states);
@@ -402,20 +394,13 @@ fn run_cpu(
                         for i in 0..contained_states {
                             let index_i = i;
                             let index_z = (i ^ c) + contained_states;
-                            // FIXME: Could it ever be the case that xs[index_i] != xs[index_z]
-                            // even though their tableaus (and thereby their underlying states) are identical?
-                            let ib = xs
-                                .iter_string(index_i)
-                                .map(|b| if b { '1' } else { '0' })
-                                .collect::<String>();
-                            let zb = xs
-                                .iter_string(index_z)
-                                .map(|b| if b { '1' } else { '0' })
-                                .collect::<String>();
-                            assert!(
-                                xs.equal_within(index_i, index_z),
-                                "{g:?}\n{index_i}:{ib} {index_z}:{zb}"
-                            );
+                            if !xs.equal_within(index_i, index_z) {
+                                x_coeffs[index_z] *= g.coeff_ratio(
+                                    &xs.slice_string(index_z),
+                                    &xs.slice_string(index_i),
+                                    index_i,
+                                );
+                            }
                             x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
                         }
                         x_coeffs.truncate(contained_states);
@@ -429,7 +414,7 @@ fn run_cpu(
 
     let mut w_coeff = Complex::ZERO;
     let contained_states = g.contained_states();
-    let rs = g.coeff_ratios(&xs, w);
+    let rs = g.coeff_ratios(&xs, &w.slice());
     for i in 0..contained_states {
         w_coeff += x_coeffs[i] * rs[i];
     }

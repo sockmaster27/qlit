@@ -3,7 +3,7 @@ use std::mem;
 
 use num_complex::Complex;
 
-use crate::bitstring::{BitString, BitStringArray};
+use crate::bitstring::{BitStringArray, BitStringSlice};
 use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 
 type BitBlock = u64;
@@ -242,20 +242,53 @@ impl ExtendedTableau {
     /// ```text
     /// coeff_ratio(w1, w2) * coeff(w1) = coeff(w2)
     /// ```
+    /// Respects the sign of the s'th state.
+    pub fn coeff_ratio(
+        &mut self,
+        w1: &BitStringSlice,
+        w2: &BitStringSlice,
+        s: usize,
+    ) -> Complex<f64> {
+        let n = self.n;
+        let c_cols = self.c_cols;
+        debug_assert_eq!(w1.len(), n, "w1 must have length {n}");
+        debug_assert_eq!(w2.len(), n, "w2 must have length {n}");
+
+        let aux_row = n;
+        let aux_block_index = aux_row / BLOCK_SIZE;
+        let aux_bit_index = aux_row % BLOCK_SIZE;
+
+        // Bring tableau's x part into reduced row echelon form.
+        self.bring_into_rref();
+
+        // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
+        self.derive_ratio_stabilizer(w1, w2);
+
+        // Compute the (w2, w1) entry in the stabilizer of the correct form.
+        let output = self.stabilizer_matrix_entry(aux_row, w1, w2, s);
+
+        // Reset the auxiliary row.
+        for j in 0..(n + n + 1 + c_cols) {
+            let block_index = column_block_index(n, aux_block_index, j);
+            self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
+        }
+        output
+    }
+    /// Same as [`Self::coeff_ratios`] but for computing the individual ratios betwen an array of `w1s` corresponding to a state eahc, and a single `w2`.
     ///
     /// This function takes an array of basis states `w1s` with length at least equal to [`Self::contained_states`],
-    /// and returns a slice of the coeff. ratios between each `w1s[i]` and `w2`,
-    /// each respecting the state of the i'th state in the sequence.
+    /// and returns a slice of the coeff. ratios between each `w1s[s]` and `w2`,
+    /// each respecting the state of the s'th state in the sequence.
     /// The output will have length exactly equal to [`Self::contained_states`].
-    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &BitString) -> &[Complex<f64>] {
+    pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &BitStringSlice) -> &[Complex<f64>] {
         let n = self.n;
         let c_cols = self.c_cols;
         let contained_states = self.contained_states();
         debug_assert!(
             w1s.len() >= contained_states,
-            "Basis state 1 must have length at least {contained_states}"
+            "w1s must have length at least {contained_states}"
         );
-        debug_assert_eq!(w2.len(), n, "Basis state 2 must have length {n}");
+        debug_assert_eq!(w2.len(), n, "w2 must have length {n}");
 
         let aux_row = n;
         let aux_block_index = aux_row / BLOCK_SIZE;
@@ -267,75 +300,11 @@ impl ExtendedTableau {
         for s in 0..contained_states {
             if !w1s.equal_to_previous(s) {
                 // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
-                let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
-                for row in 0..n {
-                    if let Some(q) = self.row_pivots[row]
-                        && w1s.get(s, q) != w2.get(q)
-                    {
-                        let row_block_index = row / BLOCK_SIZE;
-                        let row_bit_index = row % BLOCK_SIZE;
-                        mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
-                    }
-                }
-                // XOR
-                for j in 0..(n + n + 1 + c_cols) {
-                    // Start by going block-wise, reducing to a single block
-                    let mut block: BitBlock = 0;
-                    for i in 0..column_block_length(n) {
-                        block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
-                    }
-                    // Reduce last block:
-                    // The XOR of all bits in a block is just the parity
-                    let block_index = column_block_index(n, aux_block_index, j);
-                    self.tableau[block_index] = if block.count_ones() % 2 != 0 {
-                        set_bit(self.tableau[block_index], aux_bit_index)
-                    } else {
-                        unset_bit(self.tableau[block_index], aux_bit_index)
-                    };
-                }
-                // Determine phase change caused by multiplication of the individual Pauli matrices.
-                // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
-                let mut phase_bit1: BitBlock = 0;
-                let mut phase_bit2: BitBlock = 0;
-                for col in 0..n {
-                    let mut x1 = 0;
-                    let mut z1 = 0;
-                    // Reduce block-wise
-                    for i in 0..column_block_length(n) {
-                        let x2 = self.tableau[x_column_block_index(n, i, col)] & mask[i];
-                        let z2 = self.tableau[z_column_block_index(n, i, col)] & mask[i];
-                        apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
-                        x1 ^= x2;
-                        z1 ^= z2;
-                    }
-                    // Reduce the final block by iteratively 'folding' it in half, e.g.
-                    // X
-                    // Y
-                    // Z    ZX = +iY
-                    // X -> XY = +iZ -> ZY = -iX
-                    for e in 1..=BLOCK_SIZE.ilog2() {
-                        let shift = BLOCK_SIZE / 2usize.pow(e);
-                        let x2 = x1 >> shift;
-                        let z2 = z1 >> shift;
-                        let low_mask = !0 >> (BLOCK_SIZE - shift);
-                        x1 &= low_mask;
-                        z1 &= low_mask;
-                        apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
-                        x1 ^= x2;
-                        z1 ^= z2;
-                    }
-                }
-                let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
-                debug_assert!(phase % 2 == 0, "Imaginary sign");
-                if phase == 2 {
-                    let block_index = r_column_block_index(n, aux_block_index);
-                    self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
-                }
+                self.derive_ratio_stabilizer(&w1s.slice_string(s), w2);
             }
 
             // Compute the (w2, w1) entry in the stabilizer of the correct form.
-            self.output[s] =
-                self.stabilizer_matrix_entry(s, aux_row, w1s.iter_string(s), w2.iter());
+            self.output[s] = self.stabilizer_matrix_entry(aux_row, &w1s.slice_string(s), w2, s);
         }
         // Reset the auxiliary row.
         for j in 0..(n + n + 1 + c_cols) {
@@ -374,7 +343,11 @@ impl ExtendedTableau {
                 let r = self.stabilizer_matrix_entry_phase_part(row);
                 let mut signs = vec![];
                 for s in 0..contained_states {
-                    signs.push(self.stabilizer_matrix_entry_sign_part(s, row, w1s.iter_string(s)));
+                    signs.push(self.stabilizer_matrix_entry_sign_part(
+                        s,
+                        row,
+                        &w1s.slice_string(s),
+                    ));
                 }
                 (r, signs)
             }
@@ -470,6 +443,79 @@ impl ExtendedTableau {
             }
         }
     }
+    fn derive_ratio_stabilizer(&mut self, w1: &BitStringSlice, w2: &BitStringSlice) {
+        let n = self.n;
+        let c_cols = self.c_cols;
+
+        let aux_row = n;
+        let aux_block_index = aux_row / BLOCK_SIZE;
+        let aux_bit_index = aux_row % BLOCK_SIZE;
+
+        let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
+        for row in 0..n {
+            if let Some(q) = self.row_pivots[row]
+                && w1.get(q) != w2.get(q)
+            {
+                let row_block_index = row / BLOCK_SIZE;
+                let row_bit_index = row % BLOCK_SIZE;
+                mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
+            }
+        }
+        // XOR
+        for j in 0..(n + n + 1 + c_cols) {
+            // Start by going block-wise, reducing to a single block
+            let mut block: BitBlock = 0;
+            for i in 0..column_block_length(n) {
+                block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
+            }
+            // Reduce last block:
+            // The XOR of all bits in a block is just the parity
+            let block_index = column_block_index(n, aux_block_index, j);
+            self.tableau[block_index] = if block.count_ones() % 2 != 0 {
+                set_bit(self.tableau[block_index], aux_bit_index)
+            } else {
+                unset_bit(self.tableau[block_index], aux_bit_index)
+            };
+        }
+        // Determine phase change caused by multiplication of the individual Pauli matrices.
+        // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
+        let mut phase_bit1: BitBlock = 0;
+        let mut phase_bit2: BitBlock = 0;
+        for col in 0..n {
+            let mut x1 = 0;
+            let mut z1 = 0;
+            // Reduce block-wise
+            for i in 0..column_block_length(n) {
+                let x2 = self.tableau[x_column_block_index(n, i, col)] & mask[i];
+                let z2 = self.tableau[z_column_block_index(n, i, col)] & mask[i];
+                apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                x1 ^= x2;
+                z1 ^= z2;
+            }
+            // Reduce the final block by iteratively 'folding' it in half, e.g.
+            // X
+            // Y
+            // Z    ZX = +iY
+            // X -> XY = +iZ -> ZY = -iX
+            for e in 1..=BLOCK_SIZE.ilog2() {
+                let shift = BLOCK_SIZE / 2usize.pow(e);
+                let x2 = x1 >> shift;
+                let z2 = z1 >> shift;
+                let low_mask = !0 >> (BLOCK_SIZE - shift);
+                x1 &= low_mask;
+                z1 &= low_mask;
+                apply_phase_shift(x1, z1, x2, z2, &mut phase_bit1, &mut phase_bit2);
+                x1 ^= x2;
+                z1 ^= z2;
+            }
+        }
+        let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
+        debug_assert!(phase % 2 == 0, "Imaginary sign");
+        if phase == 2 {
+            let block_index = r_column_block_index(n, aux_block_index);
+            self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
+        }
+    }
 
     /// Returns true if and only if [`Self::stabilizer_matrix_entry`] returns [`Complex::ZERO`].
     ///
@@ -505,15 +551,9 @@ impl ExtendedTableau {
     ///
     /// This does *NOT* include the phase rotation caused by [`Pauli::Y`] elements,
     /// computed by [`Self::stabilizer_matrix_entry_phase_part`].
-    fn stabilizer_matrix_entry_sign_part<W1>(&self, i: usize, row: usize, mut w1: W1) -> bool
-    where
-        W1: Iterator<Item = bool>,
-    {
-        let n = self.n;
-
+    fn stabilizer_matrix_entry_sign_part(&self, i: usize, row: usize, w1: &BitStringSlice) -> bool {
         let mut res = self.row_negative(i, row);
-        for q in 0..n {
-            let b1 = w1.next().unwrap();
+        for (q, b1) in w1.iter().enumerate() {
             if self.z_bit(row, q) && b1 {
                 res = !res;
             }
@@ -522,17 +562,21 @@ impl ExtendedTableau {
     }
     /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
     ///
-    /// This will respect the state of the i'th tableau in the sequence.
-    fn stabilizer_matrix_entry<W1, W2>(&self, i: usize, row: usize, w1: W1, w2: W2) -> Complex<f64>
-    where
-        W1: Iterator<Item = bool> + Clone,
-        W2: Iterator<Item = bool>,
-    {
-        if self.stabilizer_matrix_entry_is_zero(row, w1.clone().zip(w2).map(|(b1, b2)| b1 != b2)) {
+    /// This will respect the state of the s'th staate in the sequence.
+    fn stabilizer_matrix_entry(
+        &self,
+        row: usize,
+        w1: &BitStringSlice,
+        w2: &BitStringSlice,
+        s: usize,
+    ) -> Complex<f64> {
+        if self
+            .stabilizer_matrix_entry_is_zero(row, w1.iter().zip(w2.iter()).map(|(b1, b2)| b1 != b2))
+        {
             return Complex::ZERO;
         }
         let p = self.stabilizer_matrix_entry_phase_part(row);
-        if self.stabilizer_matrix_entry_sign_part(i, row, w1) {
+        if self.stabilizer_matrix_entry_sign_part(s, row, w1) {
             -p
         } else {
             p
@@ -541,24 +585,22 @@ impl ExtendedTableau {
     /// This is the less clever version of [`Self::stabilizer_matrix_entry`],
     /// used only in testing to validate the more optimized version.
     #[cfg(test)]
-    fn stabilizer_matrix_entry_reference<W1, W2>(
+    fn stabilizer_matrix_entry_reference(
         &self,
-        i: usize,
         row: usize,
-        mut w1: W1,
-        mut w2: W2,
-    ) -> Complex<f64>
-    where
-        W1: Iterator<Item = bool>,
-        W2: Iterator<Item = bool>,
-    {
+        w1: &BitStringSlice,
+        w2: &BitStringSlice,
+        s: usize,
+    ) -> Complex<f64> {
         let n = self.n;
 
-        let mut res = if self.row_negative(i, row) {
+        let mut res = if self.row_negative(s, row) {
             -Complex::ONE
         } else {
             Complex::ONE
         };
+        let mut w1 = w1.iter();
+        let mut w2 = w2.iter();
         for q in 0..n {
             // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
             res *= match (
@@ -585,19 +627,19 @@ impl ExtendedTableau {
     }
     /// Get whether the given row is negative or not, i.e. the contents of the sign bit.
     ///
-    /// This will respect the sign of the i'th state.
-    fn row_negative(&self, mut i: usize, row: usize) -> bool {
+    /// This will respect the sign of the s'th state.
+    fn row_negative(&self, mut s: usize, row: usize) -> bool {
         let n = self.n;
         let row_block_index = row / BLOCK_SIZE;
         let row_bit_index = row % BLOCK_SIZE;
         let row_bitmask: BitBlock = bitmask(row_bit_index);
         let mut r = self.tableau[r_column_block_index(n, row_block_index)];
         let mut j = 0;
-        while i != 0 {
-            if i % 2 != 0 {
+        while s != 0 {
+            if s % 2 != 0 {
                 r ^= self.tableau[c_column_block_index(n, row_block_index, j)];
             }
-            i /= 2;
+            s /= 2;
             j += 1;
         }
         r & row_bitmask != 0
@@ -788,6 +830,7 @@ fn tableau_block_length(n: usize, c_cols: usize) -> usize {
 
 #[cfg(test)]
 mod test {
+    use crate::BitString;
     use rand::rngs::Xoshiro128PlusPlus;
     use rand::{RngExt, SeedableRng};
 
@@ -800,7 +843,7 @@ mod test {
             let w2 = BitString::from_u8_ltr(i);
 
             let mut g = ExtendedTableau::zero(8, 0);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -819,7 +862,7 @@ mod test {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
@@ -839,7 +882,7 @@ mod test {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_s_gate(0);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 => -Complex::I,
@@ -861,7 +904,7 @@ mod test {
             g.apply_s_gate(0);
             g.apply_s_gate(0);
             g.apply_h_gate(0);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b1000_0000 => Complex::ONE,
@@ -880,7 +923,7 @@ mod test {
             let mut g = ExtendedTableau::zero(8, 0);
             g.apply_h_gate(0);
             g.apply_cnot_gate(0, 1);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 | 0b1100_0000 => Complex::ONE,
@@ -917,7 +960,7 @@ mod test {
             g.apply_cnot_gate(3, 2);
             g.apply_h_gate(1);
             g.apply_cnot_gate(3, 1);
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -993,7 +1036,7 @@ mod test {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 | 0b0100_0000 | 0b1100_0000 | 0b0011_0000 | 0b0111_0000
@@ -1015,7 +1058,7 @@ mod test {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let expected = match i {
                 0b0000_0000 => [Complex::ONE, -Complex::ONE],
@@ -1079,10 +1122,10 @@ mod test {
 
         let w1 = BitStringArray::new(300, 8);
         let mut w2 = BitString::zero(300);
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE; 8]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE; 8]);
         w2.set(1);
         assert_eq!(
-            g.coeff_ratios(&w1, &w2),
+            g.coeff_ratios(&w1, &w2.slice()),
             [
                 Complex::ONE,
                 -Complex::ONE,
@@ -1096,7 +1139,7 @@ mod test {
         );
         w2.set(78);
         assert_eq!(
-            g.coeff_ratios(&w1, &w2),
+            g.coeff_ratios(&w1, &w2.slice()),
             [
                 Complex::ONE,
                 -Complex::ONE,
@@ -1110,7 +1153,7 @@ mod test {
         );
         w2.set(123);
         assert_eq!(
-            g.coeff_ratios(&w1, &w2),
+            g.coeff_ratios(&w1, &w2.slice()),
             [
                 Complex::ONE,
                 -Complex::ONE,
@@ -1124,7 +1167,7 @@ mod test {
         );
         w2.unset(1);
         assert_eq!(
-            g.coeff_ratios(&w1, &w2),
+            g.coeff_ratios(&w1, &w2.slice()),
             [
                 Complex::ONE,
                 Complex::ONE,
@@ -1137,7 +1180,7 @@ mod test {
             ]
         );
         w2.set(42);
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ZERO; 8]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ZERO; 8]);
     }
 
     #[test]
@@ -1154,7 +1197,7 @@ mod test {
         for i in 0b0000_0000..=0b1111_1111 {
             let w2 = BitString::from_u8_ltr(i);
 
-            let result = g.coeff_ratios(&w1, &w2);
+            let result = g.coeff_ratios(&w1, &w2.slice());
 
             let adjacent_pairs = (0..7).filter(|&q| w2.get(q) && w2.get(q + 1)).count();
             let expected = if adjacent_pairs % 2 == 0 {
@@ -1179,17 +1222,17 @@ mod test {
 
         let w1 = BitStringArray::new(70, 1);
         let mut w2 = BitString::zero(70);
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
         w2.set(0);
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
         w2.set(64); // Edge 0-64.
-        assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [-Complex::ONE]);
         w2.set(69); // Edges 0-64 and 0-69: this is the case that needs the cross-block phase.
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
         w2.unset(64); // Edge 0-69.
-        assert_eq!(g.coeff_ratios(&w1, &w2), [-Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [-Complex::ONE]);
         w2.unset(0); // No edges.
-        assert_eq!(g.coeff_ratios(&w1, &w2), [Complex::ONE]);
+        assert_eq!(g.coeff_ratios(&w1, &w2.slice()), [Complex::ONE]);
     }
 
     #[test]
@@ -1214,19 +1257,14 @@ mod test {
     fn compare_stabilizer_matrix_entry_reference() {
         let rng = &mut Xoshiro128PlusPlus::seed_from_u64(1234);
         let tableau = ExtendedTableau::random(8, 3, 12345);
-        for _ in 0..2u64.pow(16) {
-            let i = rng.random_range(0..8);
+        for i in 0..2u64.pow(16) {
+            let s = rng.random_range(0..8);
             let row = rng.random_range(0..8);
-            let w1: Vec<bool> = rng.random_iter().take(8).collect();
-            let w2: Vec<bool> = rng.random_iter().take(8).collect();
+            let w1 = BitString::random(8, 123456 + i);
+            let w2 = BitString::random(8, 654321 + i);
             assert_eq!(
-                tableau.stabilizer_matrix_entry(i, row, w1.iter().copied(), w2.iter().copied()),
-                tableau.stabilizer_matrix_entry_reference(
-                    i,
-                    row,
-                    w1.iter().copied(),
-                    w2.iter().copied()
-                )
+                tableau.stabilizer_matrix_entry(row, &w1.slice(), &w2.slice(), s),
+                tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s,)
             );
         }
     }

@@ -113,7 +113,14 @@ impl BitString {
     }
 
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = bool> {
+    pub fn slice(&self) -> BitStringSlice<'_> {
+        BitStringSlice {
+            length: self.length,
+            inner: &self.inner,
+        }
+    }
+    #[inline]
+    pub fn iter(&self) -> BitStringIter<'_> {
         BitStringIter { inner: &self, i: 0 }
     }
 }
@@ -160,8 +167,6 @@ impl IntoIterator for BitString {
         BitStringIntoIter { inner: self, i: 0 }
     }
 }
-
-#[derive(Clone)]
 pub struct BitStringIter<'a> {
     inner: &'a BitString,
     i: usize,
@@ -301,11 +306,12 @@ impl BitStringArray {
     }
 
     #[inline]
-    pub fn iter_string<'a>(&'a self, i: usize) -> BitStringArrayIter<'a> {
-        BitStringArrayIter {
-            inner: self,
-            i,
-            j: 0,
+    pub fn slice_string(&self, i: usize) -> BitStringSlice<'_> {
+        let string_block_length = self.string_length.div_ceil(BLOCK_SIZE);
+        let start = i * string_block_length;
+        BitStringSlice {
+            length: self.string_length,
+            inner: &self.inner[start..start + string_block_length],
         }
     }
 }
@@ -313,7 +319,8 @@ impl Debug for BitStringArray {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries((0..self.len()).map(|i| {
-                self.iter_string(i)
+                self.slice_string(i)
+                    .iter()
                     .map(|b| if b { '1' } else { '0' })
                     .collect::<String>()
             }))
@@ -321,22 +328,60 @@ impl Debug for BitStringArray {
     }
 }
 
-#[derive(Clone)]
-pub struct BitStringArrayIter<'a> {
-    inner: &'a BitStringArray,
-    i: usize,
-    j: usize,
+#[derive(Clone, PartialEq, Eq)]
+pub struct BitStringSlice<'a> {
+    length: usize,
+    inner: &'a [BitBlock],
 }
-impl<'a> Iterator for BitStringArrayIter<'a> {
+impl<'a> BitStringSlice<'a> {
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    /// Returns (block_index, bit_index) pair for the i'th bit in the string.
+    ///
+    /// # Panics
+    /// If `i >= self.length`. It can therefore be trusted that the returned block_index is inside the bounds of 'self.inner'.
+    #[inline]
+    fn index(&self, i: usize) -> (usize, usize) {
+        let len = self.length;
+        assert!(
+            i < len,
+            "index out of bounds: the len is {len} but the index is {i}"
+        );
+        let block_index = i / BLOCK_SIZE;
+        let bit_index = i % BLOCK_SIZE;
+        (block_index, bit_index)
+    }
+
+    #[inline]
+    pub fn get(&self, i: usize) -> bool {
+        let (block_index, bit_index) = self.index(i);
+        let bit_mask: BitBlock = bitmask(bit_index);
+        // SAFETY: Bounds check performed by self.index
+        unsafe { (self.inner.get_unchecked(block_index) & bit_mask) != 0 }
+    }
+
+    #[inline]
+    pub fn iter(&self) -> BitStringSliceIter<'_> {
+        BitStringSliceIter { inner: &self, i: 0 }
+    }
+}
+#[derive(Clone)]
+pub struct BitStringSliceIter<'a> {
+    inner: &'a BitStringSlice<'a>,
+    i: usize,
+}
+impl<'a> Iterator for BitStringSliceIter<'a> {
     type Item = bool;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.j >= self.inner.string_length {
+        if self.i >= self.inner.length {
             return None;
         }
-        let r = self.inner.get(self.i, self.j);
-        self.j += 1;
+        let r = self.inner.get(self.i);
+        self.i += 1;
         Some(r)
     }
 }
