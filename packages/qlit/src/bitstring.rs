@@ -333,19 +333,39 @@ mod test {
     use super::*;
 
     #[test]
-    fn copy_within() {
+    fn double1() {
         let mut array = BitStringArray::from_u16s_ltr(&[
-            0b0000_0000_0000_0000,
             0b0110_1001_1001_0110,
             0b0000_0000_0000_0000,
             0b0000_0000_0000_0000,
+            0b0000_0000_0000_0000,
         ]);
-        array.copy_within(1, 2);
+        array.double(1);
         assert_eq!(
             array,
             BitStringArray::from_u16s_ltr(&[
-                0b0000_0000_0000_0000,
                 0b0110_1001_1001_0110,
+                0b0110_1001_1001_0110,
+                0b0000_0000_0000_0000,
+                0b0000_0000_0000_0000,
+            ])
+        );
+    }
+
+    #[test]
+    fn double2() {
+        let mut array = BitStringArray::from_u16s_ltr(&[
+            0b0110_1001_1001_0110,
+            0b0000_0000_0000_0000,
+            0b0000_0000_0000_0000,
+            0b0000_0000_0000_0000,
+        ]);
+        array.double(2);
+        assert_eq!(
+            array,
+            BitStringArray::from_u16s_ltr(&[
+                0b0110_1001_1001_0110,
+                0b0000_0000_0000_0000,
                 0b0110_1001_1001_0110,
                 0b0000_0000_0000_0000,
             ])
