@@ -197,7 +197,7 @@ fn run_cpu(
     let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
     let mut x_coeffs = vec![Complex::ONE];
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
-    let mut seen_t_gates = 0;
+    let mut seen_p_gates = 0;
     for &gate in circuit.gates() {
         match gate {
             CliffordPGate::X(a) => {
@@ -293,8 +293,8 @@ fn run_cpu(
 
             CliffordPGate::Piz(ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                if seen_t_gates < path.len() {
-                    if path[seen_t_gates] {
+                if seen_p_gates < path.len() {
+                    if path[seen_p_gates] {
                         for i in 0..g.contained_states() {
                             if xs.get(i, a) {
                                 x_coeffs[i] *= -Complex::ONE;
@@ -340,7 +340,7 @@ fn run_cpu(
                     }
                 }
 
-                seen_t_gates += 1;
+                seen_p_gates += 1;
             }
         }
     }

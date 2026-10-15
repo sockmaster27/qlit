@@ -1,6 +1,5 @@
 use std::{
     cmp::max,
-    f64::consts::FRAC_1_SQRT_2,
     mem,
     sync::{
         Arc, OnceLock,
@@ -45,14 +44,14 @@ struct GpuContext {
 
     global_bind_group_layout: wgpu::BindGroupLayout,
     single_qubit_bind_group_layout: wgpu::BindGroupLayout,
+    apply_piz_gate_parallel_bind_group_layout: wgpu::BindGroupLayout,
     apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
     compute_output_bind_group_layout: wgpu::BindGroupLayout,
 
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
-    apply_t_gate_parallel_pipeline: wgpu::ComputePipeline,
-    apply_tdg_gate_parallel_pipeline: wgpu::ComputePipeline,
+    apply_piz_gate_parallel_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     update_before_h_pipeline: wgpu::ComputePipeline,
@@ -176,6 +175,45 @@ impl GpuContext {
                     },
                 ],
             });
+        let apply_piz_gate_parallel_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Apply Piz Gate"),
+                entries: &[
+                    // qubit
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // ci
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // cz
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
         let apply_gates_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Apply Gates"),
@@ -202,9 +240,31 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // initial_seen_t_gates
+                    // ci_params
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // cz_params
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // initial_seen_p_gates
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -316,30 +376,21 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
 
-        let apply_gate_parallel_pipeline_layout =
+        let apply_piz_gate_parallel_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply T(dg) Gate in Parallel"),
+                label: Some("Apply Piz Gate in Parallel"),
                 bind_group_layouts: &[
                     Some(&global_bind_group_layout),
-                    Some(&single_qubit_bind_group_layout),
+                    Some(&apply_piz_gate_parallel_bind_group_layout),
                 ],
                 immediate_size: 0,
             });
-        let apply_t_gate_parallel_pipeline =
+        let apply_piz_gate_parallel_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply T Gate in Parallel"),
-                layout: Some(&apply_gate_parallel_pipeline_layout),
+                label: Some("Apply Piz Gate in Parallel"),
+                layout: Some(&apply_piz_gate_parallel_pipeline_layout),
                 module: &shader_module,
-                entry_point: Some("apply_t_gate_parallel"),
-                cache: None,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            });
-        let apply_tdg_gate_parallel_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Tdg Gate in Parallel"),
-                layout: Some(&apply_gate_parallel_pipeline_layout),
-                module: &shader_module,
-                entry_point: Some("apply_tdg_gate_parallel"),
+                entry_point: Some("apply_piz_gate_parallel"),
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
@@ -414,15 +465,15 @@ impl GpuContext {
             queue,
 
             global_bind_group_layout,
-            apply_gates_bind_group_layout,
             single_qubit_bind_group_layout,
+            apply_piz_gate_parallel_bind_group_layout,
+            apply_gates_bind_group_layout,
             bring_into_rref_bind_group_layout,
             compute_output_bind_group_layout,
 
             zero_pipeline,
             apply_gates_pipeline,
-            apply_t_gate_parallel_pipeline,
-            apply_tdg_gate_parallel_pipeline,
+            apply_piz_gate_parallel_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             update_before_h_pipeline,
@@ -447,7 +498,7 @@ pub struct GpuSimulator<'a> {
     path_buf: wgpu::Buffer,
     tableau_buf: wgpu::Buffer,
     active_batches_buf: wgpu::Buffer,
-    seen_t_gates_buf: wgpu::Buffer,
+    seen_p_gates_buf: wgpu::Buffer,
     ws_buf: wgpu::Buffer,
     w_coeffs_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
@@ -513,8 +564,8 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        let seen_t_gates_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("seen_t_gates"),
+        let seen_p_gates_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("seen_p_gates"),
             size: U32_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -615,7 +666,7 @@ impl<'a> GpuSimulator<'a> {
             path_buf,
             tableau_buf,
             active_batches_buf,
-            seen_t_gates_buf,
+            seen_p_gates_buf,
             ws_buf,
             w_coeffs_buf,
             global_bind_group,
@@ -688,11 +739,43 @@ impl<'a> GpuSimulator<'a> {
         let mut gates = Vec::new();
         let mut qubit_params = Vec::new();
 
+        // The coefficients of every P gate on the path, indexed by seen_p_gates in the shader.
+        let (mut ci_params, mut cz_params): (Vec<_>, Vec<_>) = circuit
+            .gates()
+            .iter()
+            .filter_map(|&gate| match gate {
+                CliffordPGate::Piz(ci, cz, _) => Some((ci, cz)),
+                _ => None,
+            })
+            .take(path_length as usize)
+            .unzip();
+        // Buffers must not be zero-sized, so we allocate at least 1 element even if path_length is 0.
+        if ci_params.is_empty() {
+            ci_params.push(Complex::ZERO);
+            cz_params.push(Complex::ZERO);
+        }
+        let ci_params_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ci_params"),
+                contents: &encode_complex(ci_params),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let cz_params_buf = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("cz_params"),
+                contents: &encode_complex(cz_params),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+
         fn commit_buffer(
             gpu: &GpuContext,
             gates: &mut Vec<u32>,
             qubit_params: &mut Vec<u32>,
-            initial_seen_t_gates: u32,
+            ci_params_buf: &wgpu::Buffer,
+            cz_params_buf: &wgpu::Buffer,
+            initial_seen_p_gates: u32,
             bind_groups: &mut Vec<Option<wgpu::BindGroup>>,
         ) {
             if gates.is_empty() {
@@ -720,11 +803,11 @@ impl<'a> GpuSimulator<'a> {
                             .collect::<Vec<u8>>(),
                         usage: wgpu::BufferUsages::STORAGE,
                     });
-            let initial_seen_t_gates_buf =
+            let initial_seen_p_gates_buf =
                 gpu.device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("initial_seen_t_gates"),
-                        contents: &initial_seen_t_gates.to_ne_bytes(),
+                        label: Some("initial_seen_p_gates"),
+                        contents: &initial_seen_p_gates.to_ne_bytes(),
                         usage: wgpu::BufferUsages::UNIFORM,
                     });
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -741,7 +824,15 @@ impl<'a> GpuSimulator<'a> {
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: initial_seen_t_gates_buf.as_entire_binding(),
+                        resource: ci_params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: cz_params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: initial_seen_p_gates_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -750,8 +841,8 @@ impl<'a> GpuSimulator<'a> {
             qubit_params.clear();
         }
 
-        let mut initial_seen_t_gates = 0;
-        let mut seen_t_gates: u32 = 0;
+        let mut initial_seen_p_gates = 0;
+        let mut seen_p_gates: u32 = 0;
         for &gate in circuit.gates() {
             match gate {
                 CliffordPGate::Cnot(a, b) => {
@@ -789,67 +880,43 @@ impl<'a> GpuSimulator<'a> {
                         gpu,
                         &mut gates,
                         &mut qubit_params,
-                        initial_seen_t_gates,
+                        &ci_params_buf,
+                        &cz_params_buf,
+                        initial_seen_p_gates,
                         &mut bind_groups,
                     );
-                    initial_seen_t_gates = seen_t_gates;
+                    initial_seen_p_gates = seen_p_gates;
 
                     gates.push(7);
                     qubit_params.push(a);
                 }
-                // TODO: Pass ci and cz
-                CliffordPGate::Piz(ci, cz, a)
-                    if (ci, cz)
-                        == (
-                            (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
-                            (1.0 - FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
-                        ) =>
-                {
-                    if seen_t_gates < path_length {
+                CliffordPGate::Piz(_, _, a) => {
+                    if seen_p_gates < path_length {
                         gates.push(8);
                         qubit_params.push(a);
-                        seen_t_gates += 1;
+                        seen_p_gates += 1;
                     } else {
                         commit_buffer(
                             gpu,
                             &mut gates,
                             &mut qubit_params,
-                            initial_seen_t_gates,
+                            &ci_params_buf,
+                            &cz_params_buf,
+                            initial_seen_p_gates,
                             &mut bind_groups,
                         );
-                        initial_seen_t_gates = seen_t_gates;
+                        initial_seen_p_gates = seen_p_gates;
                     }
                 }
-                CliffordPGate::Piz(ci, cz, a)
-                    if (ci, cz)
-                        == (
-                            (1.0 + FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
-                            (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
-                        ) =>
-                {
-                    if seen_t_gates < path_length {
-                        gates.push(9);
-                        qubit_params.push(a);
-                        seen_t_gates += 1;
-                    } else {
-                        commit_buffer(
-                            gpu,
-                            &mut gates,
-                            &mut qubit_params,
-                            initial_seen_t_gates,
-                            &mut bind_groups,
-                        );
-                        initial_seen_t_gates = seen_t_gates;
-                    }
-                }
-                _ => unreachable!(),
             }
         }
         commit_buffer(
             gpu,
             &mut gates,
             &mut qubit_params,
-            initial_seen_t_gates,
+            &ci_params_buf,
+            &cz_params_buf,
+            initial_seen_p_gates,
             &mut bind_groups,
         );
         bind_groups
@@ -860,7 +927,7 @@ impl<'a> GpuSimulator<'a> {
             .queue
             .write_buffer(&self.path_buf, 0, &encode_bitstring(path.iter().copied()));
         self.zero();
-        let mut seen_t_gates = 0;
+        let mut seen_p_gates = 0;
         for &gate in self.circuit.gates() {
             match gate {
                 CliffordPGate::H(a) => {
@@ -872,33 +939,12 @@ impl<'a> GpuSimulator<'a> {
                     // to get the GPU started as soon as possible and avoid a single huge submission timing out.
                     self.submit_encoder();
                 }
-                // TODO: Pass ci and cz
-                CliffordPGate::Piz(ci, cz, a)
-                    if (ci, cz)
-                        == (
-                            (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
-                            (1.0 - FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
-                        ) =>
-                {
-                    if seen_t_gates < self.path_length {
-                        seen_t_gates += 1;
+                CliffordPGate::Piz(ci, cz, a) => {
+                    if seen_p_gates < self.path_length {
+                        seen_p_gates += 1;
                     } else {
                         self.dispatch_gates();
-                        self.apply_t_gate_parallel(a);
-                    }
-                }
-                CliffordPGate::Piz(ci, cz, a)
-                    if (ci, cz)
-                        == (
-                            (1.0 + FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
-                            (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
-                        ) =>
-                {
-                    if seen_t_gates < self.path_length {
-                        seen_t_gates += 1;
-                    } else {
-                        self.dispatch_gates();
-                        self.apply_tdg_gate_parallel(a);
+                        self.apply_piz_gate_parallel(ci, cz, a);
                     }
                 }
                 _ => {}
@@ -945,7 +991,7 @@ impl<'a> GpuSimulator<'a> {
         let n = self.n;
 
         self.encoder.clear_buffer(&self.tableau_buf, 0, None);
-        self.encoder.clear_buffer(&self.seen_t_gates_buf, 0, None);
+        self.encoder.clear_buffer(&self.seen_p_gates_buf, 0, None);
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
 
         self.active_batches = 1;
@@ -983,13 +1029,7 @@ impl<'a> GpuSimulator<'a> {
         self.gpu.queue.submit([encoder.finish()]);
     }
 
-    fn apply_t_gate_parallel(&mut self, a: u32) {
-        self.apply_gate_parallel(a, &self.gpu.apply_t_gate_parallel_pipeline);
-    }
-    fn apply_tdg_gate_parallel(&mut self, a: u32) {
-        self.apply_gate_parallel(a, &self.gpu.apply_tdg_gate_parallel_pipeline);
-    }
-    fn apply_gate_parallel(&mut self, a: u32, pipeline: &wgpu::ComputePipeline) {
+    fn apply_piz_gate_parallel(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
         debug_assert!(
             self.active_batches * 2 <= self.max_batches,
             "Cannot split batches beyond max_batches"
@@ -999,25 +1039,51 @@ impl<'a> GpuSimulator<'a> {
             .gpu
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Apply T Gate Parallel Bind Group"),
-                layout: &self.gpu.single_qubit_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self
-                        .gpu
-                        .device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("qubit"),
-                            contents: &a.to_ne_bytes(),
-                            usage: wgpu::BufferUsages::UNIFORM,
-                        })
-                        .as_entire_binding(),
-                }],
+                label: Some("Apply Piz Gate Parallel Bind Group"),
+                layout: &self.gpu.apply_piz_gate_parallel_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self
+                            .gpu
+                            .device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("qubit"),
+                                contents: &a.to_ne_bytes(),
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            })
+                            .as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self
+                            .gpu
+                            .device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("ci"),
+                                contents: &encode_complex([ci]),
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            })
+                            .as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self
+                            .gpu
+                            .device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("cz"),
+                                contents: &encode_complex([cz]),
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            })
+                            .as_entire_binding(),
+                    },
+                ],
             });
 
         let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
-        pass.set_pipeline(pipeline);
+        pass.set_pipeline(&self.gpu.apply_piz_gate_parallel_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
         pass.set_bind_group(1, &bind_group, &[]);
         pass.dispatch_workgroups(workgroups, 1, 1);
@@ -1162,6 +1228,19 @@ where
 {
     bits.map(|b| if b { 1u32 } else { 0u32 })
         .flat_map(|b| b.to_ne_bytes())
+        .collect()
+}
+
+/// Encode complex values as a sequence of WGSL `Complex` structs (pairs of f32) using native endianness.
+/// Note that the values are narrowed from f64 to f32 precision.
+fn encode_complex<T>(values: T) -> Vec<u8>
+where
+    T: IntoIterator<Item = Complex<f64>>,
+{
+    values
+        .into_iter()
+        .flat_map(|c| [c.re as f32, c.im as f32])
+        .flat_map(|x| x.to_ne_bytes())
         .collect()
 }
 
