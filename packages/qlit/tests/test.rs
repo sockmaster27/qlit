@@ -267,6 +267,13 @@ mod circuit {
             })
         );
         assert_eq!(
+            Circuit::new(8, [Rz(1.0, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
             Circuit::new(8, [Cnot(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
@@ -485,6 +492,32 @@ mod cpu {
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn rz_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0),
+                0b0100_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), phi / 2.0),
+                0b1000_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
+                }
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, &w);
@@ -925,6 +958,32 @@ mod gpu {
     }
 
     #[test]
+    fn rz_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0),
+                0b0100_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), phi / 2.0),
+                0b1000_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
+                }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
     fn smaller_circuit_1() {
         let circuit = Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
@@ -1351,6 +1410,32 @@ mod hybrid {
 
             let expected = match i {
                 0b0000_0000 => Complex::ONE,
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn rz_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_hybrid(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0),
+                0b0100_0000 => Complex::from_polar(amplitude * (theta / 2.0).cos(), phi / 2.0),
+                0b1000_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
+                }
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, &w);

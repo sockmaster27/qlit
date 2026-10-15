@@ -1,4 +1,5 @@
-from math import sqrt
+from cmath import rect
+from math import cos, pi, sin, sqrt
 
 import pytest
 from qlit import (
@@ -32,6 +33,8 @@ class TestCircuit:
             Circuit(8, [Gate.T(8)])
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Tdg(8)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rz(1.0, 8)])
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Cnot(8, 4)])
         with pytest.raises(ValueError):
@@ -222,6 +225,29 @@ class TestCpu:
             match i:
                 case 0b0000_0000:
                     expected = 1
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_rz_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(
+            8, [Gate.H(0), Gate.Rz(theta, 0), Gate.H(0), Gate.H(1), Gate.Rz(phi, 1)]
+        )
+
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), phi / 2)
+                case 0b1000_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
                 case _:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
@@ -586,6 +612,29 @@ class TestGpu:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
 
+    def test_rz_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(
+            8, [Gate.H(0), Gate.Rz(theta, 0), Gate.H(0), Gate.H(1), Gate.Rz(phi, 1)]
+        )
+
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_gpu(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), phi / 2)
+                case 0b1000_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
     def test_smaller_circuit_1(self):
         circuit = Circuit(8, [Gate.T(0), Gate.H(1), Gate.H(2), Gate.Cnot(1, 0), Gate.Cnot(2, 1)])
 
@@ -942,6 +991,29 @@ class TestHybrid:
             match i:
                 case 0b0000_0000:
                     expected = 1
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_rz_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(
+            8, [Gate.H(0), Gate.Rz(theta, 0), Gate.H(0), Gate.H(1), Gate.Rz(phi, 1)]
+        )
+
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_hybrid(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), phi / 2)
+                case 0b1000_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
                 case _:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)

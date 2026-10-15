@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, vec::IntoIter};
 
 use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Gate {
     X(u32),
     Y(u32),
@@ -20,8 +20,10 @@ pub enum Gate {
     T(u32),
     /// The inverse of the T gate.
     Tdg(u32),
+
+    Rz(f64, u32),
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Circuit {
     /// The number of qubits in the circuit.
     qubits: u32,
@@ -63,13 +65,14 @@ impl Circuit {
                 Tdg(a) => {
                     check_index(a)?;
                 }
+                Rz(_, a) => check_index(a)?,
             }
         }
         Ok(Self { qubits, gates })
     }
 
-    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    pub fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,

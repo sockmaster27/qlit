@@ -27,6 +27,10 @@ class Gate:
     class Tdg(Gate):
         qubit: int
     @dataclass
+    class Rz(Gate):
+        angle: float
+        qubit: int
+    @dataclass
     class Cnot(Gate):
         control: int
         target: int
@@ -38,7 +42,7 @@ class Gate:
 class Circuit:
     def __init__(self, qubits: int, gates: Iterable[Gate]) -> None: ...
     @staticmethod
-    def random(qubits: int, gates: int, t_gates: int, seed: int) -> Circuit: ...
+    def random_clifford_t(qubits: int, gates: int, t_gates: int, seed: int) -> Circuit: ...
 
     @property
     def qubits(self) -> int: ...

@@ -3,6 +3,8 @@ use num_complex::Complex;
 use crate::{Circuit, Gate};
 use std::f64::consts::FRAC_1_SQRT_2;
 
+/// The Clifford+P gate set contains all Clifford/stabilizer gates,
+/// plus P, (Pauli sum decompositions).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CliffordPGate {
     X(u32),
@@ -14,7 +16,7 @@ pub enum CliffordPGate {
     Cnot(u32, u32),
     Cz(u32, u32),
 
-    /// Piz(ci, cz, a) = ci*I + cz*Z[a]
+    /// Piz(ci, cz) = ci*I + cz*Z
     Piz(Complex<f64>, Complex<f64>, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +42,7 @@ impl CliffordPCircuit {
     }
 }
 
+/// Decomposes the given circuit to the Clifford+P gate set.
 pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
     use CliffordPGate::*;
 
@@ -66,8 +69,14 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
                 (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 a,
             ),
+            Gate::Rz(t, a) => Piz(
+                Complex::new((t / 2.0).cos(), 0.0),
+                Complex::new(0.0, -(t / 2.0).sin()),
+                a,
+            ),
         })
         .collect();
+
     let p_gates = gates
         .iter()
         .filter(|gate| match gate {
