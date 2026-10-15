@@ -267,6 +267,20 @@ mod circuit {
             })
         );
         assert_eq!(
+            Circuit::new(8, [Rx(1.0, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
+            Circuit::new(8, [Ry(1.0, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 8,
+                qubits: 8
+            })
+        );
+        assert_eq!(
             Circuit::new(8, [Rz(1.0, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
@@ -499,6 +513,55 @@ mod cpu {
     }
 
     #[test]
+    fn rx_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Rx(theta, 0), H(1), Rx(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            // |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0)
+                }
+                0b1000_0000 | 0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn ry_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Ry(theta, 0), H(1), Ry(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let (c0, s0) = ((theta / 2.0).cos(), (theta / 2.0).sin());
+            let (c1, s1) = ((phi / 2.0).cos(), (phi / 2.0).sin());
+            let expected = match i {
+                0b0000_0000 => Complex::ONE * amplitude * c0 * (c1 - s1),
+                0b0100_0000 => Complex::ONE * amplitude * c0 * (c1 + s1),
+                0b1000_0000 => Complex::ONE * amplitude * s0 * (c1 - s1),
+                0b1100_0000 => Complex::ONE * amplitude * s0 * (c1 + s1),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
     fn rz_gates() {
         let (theta, phi) = (1.0, 2.5);
         let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
@@ -518,6 +581,76 @@ mod cpu {
                 0b1100_0000 => {
                     Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
                 }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    /// Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ.
+    #[test]
+    fn rotations_by_pi() {
+        let circuit = Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            let expected = match i {
+                0b1100_0000 => Complex {
+                    re: -0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b1110_0000 => Complex {
+                    re: 0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn mixed_rotations() {
+        let (theta, alpha, beta) = (0.8, 0.5, 1.0);
+        let circuit = Circuit::new(
+            8,
+            [
+                H(0),
+                Cnot(0, 1),
+                Rz(theta, 0),
+                Rz(theta, 1),
+                Ry(alpha, 2),
+                Ry(beta, 2),
+                Rx(alpha, 3),
+                Rx(beta, 3),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit(&w, &circuit);
+
+            // Rotations about the same axis add up
+            let amplitude = 0.5_f64.sqrt();
+            let (c, s) = (((alpha + beta) / 2.0).cos(), ((alpha + beta) / 2.0).sin());
+            let bell = match i & 0b1100_0000 {
+                0b0000_0000 => Complex::from_polar(amplitude, -theta),
+                0b1100_0000 => Complex::from_polar(amplitude, theta),
+                _ => Complex::ZERO,
+            };
+            let ry = if i & 0b0010_0000 == 0 { c } else { s };
+            let rx = if i & 0b0001_0000 == 0 {
+                Complex::ONE * c
+            } else {
+                -Complex::I * s
+            };
+            let expected = match i & 0b0000_1111 {
+                0b0000 => bell * ry * rx,
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, &w);
@@ -958,6 +1091,55 @@ mod gpu {
     }
 
     #[test]
+    fn rx_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Rx(theta, 0), H(1), Rx(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            // |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0)
+                }
+                0b1000_0000 | 0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn ry_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Ry(theta, 0), H(1), Ry(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let (c0, s0) = ((theta / 2.0).cos(), (theta / 2.0).sin());
+            let (c1, s1) = ((phi / 2.0).cos(), (phi / 2.0).sin());
+            let expected = match i {
+                0b0000_0000 => Complex::ONE * amplitude * c0 * (c1 - s1),
+                0b0100_0000 => Complex::ONE * amplitude * c0 * (c1 + s1),
+                0b1000_0000 => Complex::ONE * amplitude * s0 * (c1 - s1),
+                0b1100_0000 => Complex::ONE * amplitude * s0 * (c1 + s1),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
     fn rz_gates() {
         let (theta, phi) = (1.0, 2.5);
         let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
@@ -977,6 +1159,76 @@ mod gpu {
                 0b1100_0000 => {
                     Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
                 }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    /// Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ.
+    #[test]
+    fn rotations_by_pi() {
+        let circuit = Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            let expected = match i {
+                0b1100_0000 => Complex {
+                    re: -0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b1110_0000 => Complex {
+                    re: 0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn mixed_rotations() {
+        let (theta, alpha, beta) = (0.8, 0.5, 1.0);
+        let circuit = Circuit::new(
+            8,
+            [
+                H(0),
+                Cnot(0, 1),
+                Rz(theta, 0),
+                Rz(theta, 1),
+                Ry(alpha, 2),
+                Ry(beta, 2),
+                Rx(alpha, 3),
+                Rx(beta, 3),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            // Rotations about the same axis add up
+            let amplitude = 0.5_f64.sqrt();
+            let (c, s) = (((alpha + beta) / 2.0).cos(), ((alpha + beta) / 2.0).sin());
+            let bell = match i & 0b1100_0000 {
+                0b0000_0000 => Complex::from_polar(amplitude, -theta),
+                0b1100_0000 => Complex::from_polar(amplitude, theta),
+                _ => Complex::ZERO,
+            };
+            let ry = if i & 0b0010_0000 == 0 { c } else { s };
+            let rx = if i & 0b0001_0000 == 0 {
+                Complex::ONE * c
+            } else {
+                -Complex::I * s
+            };
+            let expected = match i & 0b0000_1111 {
+                0b0000 => bell * ry * rx,
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, &w);
@@ -1417,6 +1669,55 @@ mod hybrid {
     }
 
     #[test]
+    fn rx_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Rx(theta, 0), H(1), Rx(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_hybrid(&w, &circuit);
+
+            // |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+            let amplitude = 0.5_f64.sqrt();
+            let expected = match i {
+                0b0000_0000 | 0b0100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).cos(), -phi / 2.0)
+                }
+                0b1000_0000 | 0b1100_0000 => {
+                    Complex::from_polar(amplitude * (theta / 2.0).sin(), -phi / 2.0 - PI / 2.0)
+                }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn ry_gates() {
+        let (theta, phi) = (1.0, 2.5);
+        let circuit = Circuit::new(8, [Ry(theta, 0), H(1), Ry(phi, 1)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_hybrid(&w, &circuit);
+
+            let amplitude = 0.5_f64.sqrt();
+            let (c0, s0) = ((theta / 2.0).cos(), (theta / 2.0).sin());
+            let (c1, s1) = ((phi / 2.0).cos(), (phi / 2.0).sin());
+            let expected = match i {
+                0b0000_0000 => Complex::ONE * amplitude * c0 * (c1 - s1),
+                0b0100_0000 => Complex::ONE * amplitude * c0 * (c1 + s1),
+                0b1000_0000 => Complex::ONE * amplitude * s0 * (c1 - s1),
+                0b1100_0000 => Complex::ONE * amplitude * s0 * (c1 + s1),
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
     fn rz_gates() {
         let (theta, phi) = (1.0, 2.5);
         let circuit = Circuit::new(8, [H(0), Rz(theta, 0), H(0), H(1), Rz(phi, 1)]).unwrap();
@@ -1436,6 +1737,76 @@ mod hybrid {
                 0b1100_0000 => {
                     Complex::from_polar(amplitude * (theta / 2.0).sin(), phi / 2.0 - PI / 2.0)
                 }
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    /// Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ.
+    #[test]
+    fn rotations_by_pi() {
+        let circuit = Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_hybrid(&w, &circuit);
+
+            let expected = match i {
+                0b1100_0000 => Complex {
+                    re: -0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                0b1110_0000 => Complex {
+                    re: 0.5_f64.sqrt(),
+                    im: 0.0,
+                },
+                _ => Complex::ZERO,
+            };
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    #[test]
+    fn mixed_rotations() {
+        let (theta, alpha, beta) = (0.8, 0.5, 1.0);
+        let circuit = Circuit::new(
+            8,
+            [
+                H(0),
+                Cnot(0, 1),
+                Rz(theta, 0),
+                Rz(theta, 1),
+                Ry(alpha, 2),
+                Ry(beta, 2),
+                Rx(alpha, 3),
+                Rx(beta, 3),
+            ],
+        )
+        .unwrap();
+
+        for i in 0b0000_0000..=0b1111_1111 {
+            let w = BitString::from_u8_ltr(i);
+
+            let result = simulate_circuit_hybrid(&w, &circuit);
+
+            // Rotations about the same axis add up
+            let amplitude = 0.5_f64.sqrt();
+            let (c, s) = (((alpha + beta) / 2.0).cos(), ((alpha + beta) / 2.0).sin());
+            let bell = match i & 0b1100_0000 {
+                0b0000_0000 => Complex::from_polar(amplitude, -theta),
+                0b1100_0000 => Complex::from_polar(amplitude, theta),
+                _ => Complex::ZERO,
+            };
+            let ry = if i & 0b0010_0000 == 0 { c } else { s };
+            let rx = if i & 0b0001_0000 == 0 {
+                Complex::ONE * c
+            } else {
+                -Complex::I * s
+            };
+            let expected = match i & 0b0000_1111 {
+                0b0000 => bell * ry * rx,
                 _ => Complex::ZERO,
             };
             assert_almost_eq(result, expected, &w);

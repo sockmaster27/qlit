@@ -34,6 +34,10 @@ class TestCircuit:
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Tdg(8)])
         with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rx(1.0, 8)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Ry(1.0, 8)])
+        with pytest.raises(ValueError):
             Circuit(8, [Gate.Rz(1.0, 8)])
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Cnot(8, 4)])
@@ -229,6 +233,47 @@ class TestCpu:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
 
+    def test_rx_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Rx(theta, 0), Gate.H(1), Gate.Rx(phi, 1)])
+
+        # |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit(w, circuit)
+            match i:
+                case 0b0000_0000 | 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b1000_0000 | 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_ry_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Ry(theta, 0), Gate.H(1), Gate.Ry(phi, 1)])
+
+        amplitude = sqrt(0.5)
+        c0, s0 = cos(theta / 2), sin(theta / 2)
+        c1, s1 = cos(phi / 2), sin(phi / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = amplitude * c0 * (c1 - s1)
+                case 0b0100_0000:
+                    expected = amplitude * c0 * (c1 + s1)
+                case 0b1000_0000:
+                    expected = amplitude * s0 * (c1 - s1)
+                case 0b1100_0000:
+                    expected = amplitude * s0 * (c1 + s1)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
     def test_rz_gates(self):
         theta, phi = 1.0, 2.5
         circuit = Circuit(
@@ -248,6 +293,60 @@ class TestCpu:
                     expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
                 case 0b1100_0000:
                     expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_rotations_by_pi(self):
+        # Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ
+        circuit = Circuit(8, [Gate.Rx(pi, 0), Gate.Ry(pi, 1), Gate.H(2), Gate.Rz(pi, 2)])
+
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit(w, circuit)
+            match i:
+                case 0b1100_0000:
+                    expected = -sqrt(0.5)
+                case 0b1110_0000:
+                    expected = sqrt(0.5)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_mixed_rotations(self):
+        theta, alpha, beta = 0.8, 0.5, 1.0
+        circuit = Circuit(
+            8,
+            [
+                Gate.H(0),
+                Gate.Cnot(0, 1),
+                Gate.Rz(theta, 0),
+                Gate.Rz(theta, 1),
+                Gate.Ry(alpha, 2),
+                Gate.Ry(beta, 2),
+                Gate.Rx(alpha, 3),
+                Gate.Rx(beta, 3),
+            ],
+        )
+
+        # Rotations about the same axis add up
+        amplitude = sqrt(0.5)
+        c, s = cos((alpha + beta) / 2), sin((alpha + beta) / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit(w, circuit)
+            match i & 0b1100_0000:
+                case 0b0000_0000:
+                    bell = rect(amplitude, -theta)
+                case 0b1100_0000:
+                    bell = rect(amplitude, theta)
+                case _:
+                    bell = 0
+            ry = c if i & 0b0010_0000 == 0 else s
+            rx = c if i & 0b0001_0000 == 0 else -1j * s
+            match i & 0b0000_1111:
+                case 0b0000:
+                    expected = bell * ry * rx
                 case _:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
@@ -612,6 +711,47 @@ class TestGpu:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
 
+    def test_rx_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Rx(theta, 0), Gate.H(1), Gate.Rx(phi, 1)])
+
+        # |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_gpu(w, circuit)
+            match i:
+                case 0b0000_0000 | 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b1000_0000 | 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_ry_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Ry(theta, 0), Gate.H(1), Gate.Ry(phi, 1)])
+
+        amplitude = sqrt(0.5)
+        c0, s0 = cos(theta / 2), sin(theta / 2)
+        c1, s1 = cos(phi / 2), sin(phi / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_gpu(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = amplitude * c0 * (c1 - s1)
+                case 0b0100_0000:
+                    expected = amplitude * c0 * (c1 + s1)
+                case 0b1000_0000:
+                    expected = amplitude * s0 * (c1 - s1)
+                case 0b1100_0000:
+                    expected = amplitude * s0 * (c1 + s1)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
     def test_rz_gates(self):
         theta, phi = 1.0, 2.5
         circuit = Circuit(
@@ -631,6 +771,60 @@ class TestGpu:
                     expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
                 case 0b1100_0000:
                     expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_rotations_by_pi(self):
+        # Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ
+        circuit = Circuit(8, [Gate.Rx(pi, 0), Gate.Ry(pi, 1), Gate.H(2), Gate.Rz(pi, 2)])
+
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_gpu(w, circuit)
+            match i:
+                case 0b1100_0000:
+                    expected = -sqrt(0.5)
+                case 0b1110_0000:
+                    expected = sqrt(0.5)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_mixed_rotations(self):
+        theta, alpha, beta = 0.8, 0.5, 1.0
+        circuit = Circuit(
+            8,
+            [
+                Gate.H(0),
+                Gate.Cnot(0, 1),
+                Gate.Rz(theta, 0),
+                Gate.Rz(theta, 1),
+                Gate.Ry(alpha, 2),
+                Gate.Ry(beta, 2),
+                Gate.Rx(alpha, 3),
+                Gate.Rx(beta, 3),
+            ],
+        )
+
+        # Rotations about the same axis add up
+        amplitude = sqrt(0.5)
+        c, s = cos((alpha + beta) / 2), sin((alpha + beta) / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_gpu(w, circuit)
+            match i & 0b1100_0000:
+                case 0b0000_0000:
+                    bell = rect(amplitude, -theta)
+                case 0b1100_0000:
+                    bell = rect(amplitude, theta)
+                case _:
+                    bell = 0
+            ry = c if i & 0b0010_0000 == 0 else s
+            rx = c if i & 0b0001_0000 == 0 else -1j * s
+            match i & 0b0000_1111:
+                case 0b0000:
+                    expected = bell * ry * rx
                 case _:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
@@ -995,6 +1189,47 @@ class TestHybrid:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)
 
+    def test_rx_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Rx(theta, 0), Gate.H(1), Gate.Rx(phi, 1)])
+
+        # |+> is an eigenstate of Rx, so qubit 1 only picks up a phase
+        amplitude = sqrt(0.5)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_hybrid(w, circuit)
+            match i:
+                case 0b0000_0000 | 0b0100_0000:
+                    expected = rect(amplitude * cos(theta / 2), -phi / 2)
+                case 0b1000_0000 | 0b1100_0000:
+                    expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_ry_gates(self):
+        theta, phi = 1.0, 2.5
+        circuit = Circuit(8, [Gate.Ry(theta, 0), Gate.H(1), Gate.Ry(phi, 1)])
+
+        amplitude = sqrt(0.5)
+        c0, s0 = cos(theta / 2), sin(theta / 2)
+        c1, s1 = cos(phi / 2), sin(phi / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_hybrid(w, circuit)
+            match i:
+                case 0b0000_0000:
+                    expected = amplitude * c0 * (c1 - s1)
+                case 0b0100_0000:
+                    expected = amplitude * c0 * (c1 + s1)
+                case 0b1000_0000:
+                    expected = amplitude * s0 * (c1 - s1)
+                case 0b1100_0000:
+                    expected = amplitude * s0 * (c1 + s1)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
     def test_rz_gates(self):
         theta, phi = 1.0, 2.5
         circuit = Circuit(
@@ -1014,6 +1249,60 @@ class TestHybrid:
                     expected = rect(amplitude * sin(theta / 2), -phi / 2 - pi / 2)
                 case 0b1100_0000:
                     expected = rect(amplitude * sin(theta / 2), phi / 2 - pi / 2)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_rotations_by_pi(self):
+        # Rx(π) = -iX, Ry(π) = -iY and Rz(π) = -iZ
+        circuit = Circuit(8, [Gate.Rx(pi, 0), Gate.Ry(pi, 1), Gate.H(2), Gate.Rz(pi, 2)])
+
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_hybrid(w, circuit)
+            match i:
+                case 0b1100_0000:
+                    expected = -sqrt(0.5)
+                case 0b1110_0000:
+                    expected = sqrt(0.5)
+                case _:
+                    expected = 0
+            assert result == pytest.approx(expected, rel=DELTA)
+
+    def test_mixed_rotations(self):
+        theta, alpha, beta = 0.8, 0.5, 1.0
+        circuit = Circuit(
+            8,
+            [
+                Gate.H(0),
+                Gate.Cnot(0, 1),
+                Gate.Rz(theta, 0),
+                Gate.Rz(theta, 1),
+                Gate.Ry(alpha, 2),
+                Gate.Ry(beta, 2),
+                Gate.Rx(alpha, 3),
+                Gate.Rx(beta, 3),
+            ],
+        )
+
+        # Rotations about the same axis add up
+        amplitude = sqrt(0.5)
+        c, s = cos((alpha + beta) / 2), sin((alpha + beta) / 2)
+        for i in range(0b1111_1111 + 1):
+            w = format(i, "08b")
+            result = simulate_circuit_hybrid(w, circuit)
+            match i & 0b1100_0000:
+                case 0b0000_0000:
+                    bell = rect(amplitude, -theta)
+                case 0b1100_0000:
+                    bell = rect(amplitude, theta)
+                case _:
+                    bell = 0
+            ry = c if i & 0b0010_0000 == 0 else s
+            rx = c if i & 0b0001_0000 == 0 else -1j * s
+            match i & 0b0000_1111:
+                case 0b0000:
+                    expected = bell * ry * rx
                 case _:
                     expected = 0
             assert result == pytest.approx(expected, rel=DELTA)

@@ -27,6 +27,14 @@ class Gate:
     class Tdg(Gate):
         qubit: int
     @dataclass
+    class Rx(Gate):
+        angle: float
+        qubit: int
+    @dataclass
+    class Ry(Gate):
+        angle: float
+        qubit: int
+    @dataclass
     class Rz(Gate):
         angle: float
         qubit: int

@@ -21,6 +21,8 @@ pub enum Gate {
     /// The inverse of the T gate.
     Tdg(u32),
 
+    Rx(f64, u32),
+    Ry(f64, u32),
     Rz(f64, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +67,8 @@ impl Circuit {
                 Tdg(a) => {
                     check_index(a)?;
                 }
+                Rx(_, a) => check_index(a)?,
+                Ry(_, a) => check_index(a)?,
                 Rz(_, a) => check_index(a)?,
             }
         }

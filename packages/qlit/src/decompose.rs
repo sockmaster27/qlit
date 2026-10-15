@@ -47,35 +47,56 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
     use CliffordPGate::*;
 
     let qubits = circuit.qubits();
-    let gates: Vec<CliffordPGate> = circuit
-        .iter()
-        .map(|gate| match gate {
-            Gate::X(a) => X(a),
-            Gate::Y(a) => Y(a),
-            Gate::Z(a) => Z(a),
-            Gate::S(a) => S(a),
-            Gate::Sdg(a) => Sdg(a),
-            Gate::H(a) => H(a),
-            Gate::Cnot(a, b) => Cnot(a, b),
-            Gate::Cz(a, b) => Cz(a, b),
+    let mut gates = Vec::new();
+    for gate in circuit.iter() {
+        match gate {
+            Gate::X(a) => gates.push(X(a)),
+            Gate::Y(a) => gates.push(Y(a)),
+            Gate::Z(a) => gates.push(Z(a)),
+            Gate::S(a) => gates.push(S(a)),
+            Gate::Sdg(a) => gates.push(Sdg(a)),
+            Gate::H(a) => gates.push(H(a)),
+            Gate::Cnot(a, b) => gates.push(Cnot(a, b)),
+            Gate::Cz(a, b) => gates.push(Cz(a, b)),
 
-            Gate::T(a) => Piz(
+            Gate::T(a) => gates.push(Piz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 a,
-            ),
-            Gate::Tdg(a) => Piz(
+            )),
+            Gate::Tdg(a) => gates.push(Piz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 a,
-            ),
-            Gate::Rz(t, a) => Piz(
+            )),
+
+            Gate::Rx(t, a) => gates.extend([
+                H(a),
+                Piz(
+                    Complex::new((t / 2.0).cos(), 0.0),
+                    Complex::new(0.0, -(t / 2.0).sin()),
+                    a,
+                ),
+                H(a),
+            ]),
+            Gate::Ry(t, a) => gates.extend([
+                Sdg(a),
+                H(a),
+                Piz(
+                    Complex::new((t / 2.0).cos(), 0.0),
+                    Complex::new(0.0, -(t / 2.0).sin()),
+                    a,
+                ),
+                H(a),
+                S(a),
+            ]),
+            Gate::Rz(t, a) => gates.push(Piz(
                 Complex::new((t / 2.0).cos(), 0.0),
                 Complex::new(0.0, -(t / 2.0).sin()),
                 a,
-            ),
-        })
-        .collect();
+            )),
+        }
+    }
 
     let p_gates = gates
         .iter()
