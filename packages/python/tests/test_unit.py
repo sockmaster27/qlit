@@ -2,8 +2,8 @@ from math import sqrt
 
 import pytest
 from qlit import (
-    CliffordTCircuit,
-    CliffordTGate,
+    Circuit,
+    Gate,
     simulate_circuit,
     simulate_circuit_gpu,
     simulate_circuit_hybrid,
@@ -15,48 +15,48 @@ DELTA = 1e-6
 class TestCircuit:
     def test_invalid_qubit_index(self):
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.X(165)])
+            Circuit(8, [Gate.X(165)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.X(8)])
+            Circuit(8, [Gate.X(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Y(8)])
+            Circuit(8, [Gate.Y(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Z(8)])
+            Circuit(8, [Gate.Z(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.H(8)])
+            Circuit(8, [Gate.H(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.S(8)])
+            Circuit(8, [Gate.S(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Sdg(8)])
+            Circuit(8, [Gate.Sdg(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.T(8)])
+            Circuit(8, [Gate.T(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Tdg(8)])
+            Circuit(8, [Gate.Tdg(8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Cnot(8, 4)])
+            Circuit(8, [Gate.Cnot(8, 4)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Cnot(4, 8)])
+            Circuit(8, [Gate.Cnot(4, 8)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Cz(8, 4)])
+            Circuit(8, [Gate.Cz(8, 4)])
         with pytest.raises(ValueError):
-            CliffordTCircuit(8, [CliffordTGate.Cz(4, 8)])
+            Circuit(8, [Gate.Cz(4, 8)])
 
 
 class TestCpu:
     def test_mismatched_qubit_number(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "000000000"
         with pytest.raises(ValueError):
             simulate_circuit(w, circuit)
 
     def test_invalid_basis_state(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "010a0100"
         with pytest.raises(ValueError):
             simulate_circuit(w, circuit)
 
     def test_zero(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
             result = simulate_circuit(w, circuit)
@@ -68,7 +68,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_x_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.X(0)])
+        circuit = Circuit(8, [Gate.X(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -81,7 +81,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_y_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.Y(0)])
+        circuit = Circuit(8, [Gate.Y(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -94,11 +94,11 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_imaginary(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
+                Gate.H(0),
+                Gate.S(0),
             ],
         )
 
@@ -115,13 +115,13 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_flipped(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(0),
-                CliffordTGate.H(0),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(0),
+                Gate.H(0),
             ],
         )
 
@@ -136,11 +136,11 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_bell_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(0, 1),
+                Gate.H(0),
+                Gate.Cnot(0, 1),
             ],
         )
 
@@ -155,29 +155,29 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_clifford_circuit(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(2),
-                CliffordTGate.H(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(0),
-                CliffordTGate.Cnot(2, 3),
-                CliffordTGate.S(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(3),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.S(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 2),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 1),
+                Gate.H(1),
+                Gate.H(0),
+                Gate.S(2),
+                Gate.H(3),
+                Gate.S(1),
+                Gate.S(0),
+                Gate.Cnot(2, 3),
+                Gate.S(1),
+                Gate.H(0),
+                Gate.S(3),
+                Gate.Cnot(1, 0),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.S(3),
+                Gate.S(1),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.Cnot(3, 2),
+                Gate.H(1),
+                Gate.Cnot(3, 1),
             ],
         )
 
@@ -201,7 +201,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_t_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.T(0)] * 5])
+        circuit = Circuit(8, [*[Gate.T(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -214,7 +214,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_tdg_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.Tdg(0)] * 5])
+        circuit = Circuit(8, [*[Gate.Tdg(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -227,7 +227,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_1(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.T(0), CliffordTGate.H(1), CliffordTGate.H(2), CliffordTGate.Cnot(1, 0), CliffordTGate.Cnot(2, 1)])
+        circuit = Circuit(8, [Gate.T(0), Gate.H(1), Gate.H(2), Gate.Cnot(1, 0), Gate.Cnot(2, 1)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -240,7 +240,7 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_2(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.H(0), CliffordTGate.H(1), CliffordTGate.Cnot(1, 0), CliffordTGate.T(0)])
+        circuit = Circuit(8, [Gate.H(0), Gate.H(1), Gate.Cnot(1, 0), Gate.T(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -255,22 +255,22 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_1(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.T(0),
-                CliffordTGate.H(1),
-                CliffordTGate.S(1),
-                CliffordTGate.H(3),
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(1),
-                CliffordTGate.S(2),
-                CliffordTGate.T(1),
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.S(3),
+                Gate.T(0),
+                Gate.H(1),
+                Gate.S(1),
+                Gate.H(3),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(1),
+                Gate.S(2),
+                Gate.T(1),
+                Gate.H(0),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.S(3),
             ],
         )
 
@@ -297,24 +297,24 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_2(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.Tdg(0),
-                CliffordTGate.H(2),
-                CliffordTGate.H(1),
-                CliffordTGate.Y(2),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.Tdg(0),
-                CliffordTGate.Cnot(2, 1),
-                CliffordTGate.Sdg(1),
-                CliffordTGate.S(2),
-                CliffordTGate.X(0),
-                CliffordTGate.S(0),
-                CliffordTGate.Y(0),
-                CliffordTGate.T(1),
-                CliffordTGate.Tdg(2),
+                Gate.Tdg(0),
+                Gate.H(2),
+                Gate.H(1),
+                Gate.Y(2),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.Tdg(0),
+                Gate.Cnot(2, 1),
+                Gate.Sdg(1),
+                Gate.S(2),
+                Gate.X(0),
+                Gate.S(0),
+                Gate.Y(0),
+                Gate.T(1),
+                Gate.Tdg(2),
             ],
         )
 
@@ -335,10 +335,10 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_linear_cluster_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
-            [CliffordTGate.H(q) for q in range(8)]
-            + [CliffordTGate.Cz(q, q + 1) for q in range(7)],
+            [Gate.H(q) for q in range(8)]
+            + [Gate.Cz(q, q + 1) for q in range(7)],
         )
 
         for i in range(0b1111_1111 + 1):
@@ -353,10 +353,10 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_multi_block_phase(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             70,
-            [CliffordTGate.H(q) for q in range(70)]
-            + [CliffordTGate.Cz(0, 64), CliffordTGate.Cz(0, 69)],
+            [Gate.H(q) for q in range(70)]
+            + [Gate.Cz(0, 64), Gate.Cz(0, 69)],
         )
 
         amplitude = 2**-35
@@ -375,15 +375,15 @@ class TestCpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_large_tableau(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             300,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.T(1),
-                CliffordTGate.H(78),
-                CliffordTGate.T(78),
-                CliffordTGate.H(123),
-                CliffordTGate.T(123),
+                Gate.H(1),
+                Gate.T(1),
+                Gate.H(78),
+                Gate.T(78),
+                Gate.H(123),
+                Gate.T(123),
             ],
         )
 
@@ -404,19 +404,19 @@ class TestCpu:
 @pytest.mark.gpu
 class TestGpu:
     def test_mismatched_qubit_number(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "000000000"
         with pytest.raises(ValueError):
             simulate_circuit_gpu(w, circuit)
 
     def test_invalid_basis_state(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "010a0100"
         with pytest.raises(ValueError):
             simulate_circuit_gpu(w, circuit)
 
     def test_zero(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
             result = simulate_circuit_gpu(w, circuit)
@@ -428,7 +428,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_x_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.X(0)])
+        circuit = Circuit(8, [Gate.X(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -441,7 +441,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_y_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.Y(0)])
+        circuit = Circuit(8, [Gate.Y(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -454,11 +454,11 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_imaginary(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
+                Gate.H(0),
+                Gate.S(0),
             ],
         )
 
@@ -475,13 +475,13 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_flipped(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(0),
-                CliffordTGate.H(0),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(0),
+                Gate.H(0),
             ],
         )
 
@@ -496,11 +496,11 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_bell_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(0, 1),
+                Gate.H(0),
+                Gate.Cnot(0, 1),
             ],
         )
 
@@ -515,29 +515,29 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_clifford_circuit(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(2),
-                CliffordTGate.H(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(0),
-                CliffordTGate.Cnot(2, 3),
-                CliffordTGate.S(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(3),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.S(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 2),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 1),
+                Gate.H(1),
+                Gate.H(0),
+                Gate.S(2),
+                Gate.H(3),
+                Gate.S(1),
+                Gate.S(0),
+                Gate.Cnot(2, 3),
+                Gate.S(1),
+                Gate.H(0),
+                Gate.S(3),
+                Gate.Cnot(1, 0),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.S(3),
+                Gate.S(1),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.Cnot(3, 2),
+                Gate.H(1),
+                Gate.Cnot(3, 1),
             ],
         )
 
@@ -561,7 +561,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_t_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.T(0)] * 5])
+        circuit = Circuit(8, [*[Gate.T(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -574,7 +574,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_tdg_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.Tdg(0)] * 5])
+        circuit = Circuit(8, [*[Gate.Tdg(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -587,7 +587,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_1(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.T(0), CliffordTGate.H(1), CliffordTGate.H(2), CliffordTGate.Cnot(1, 0), CliffordTGate.Cnot(2, 1)])
+        circuit = Circuit(8, [Gate.T(0), Gate.H(1), Gate.H(2), Gate.Cnot(1, 0), Gate.Cnot(2, 1)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -600,7 +600,7 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_2(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.H(0), CliffordTGate.H(1), CliffordTGate.Cnot(1, 0), CliffordTGate.T(0)])
+        circuit = Circuit(8, [Gate.H(0), Gate.H(1), Gate.Cnot(1, 0), Gate.T(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -615,22 +615,22 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_1(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.T(0),
-                CliffordTGate.H(1),
-                CliffordTGate.S(1),
-                CliffordTGate.H(3),
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(1),
-                CliffordTGate.S(2),
-                CliffordTGate.T(1),
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.S(3),
+                Gate.T(0),
+                Gate.H(1),
+                Gate.S(1),
+                Gate.H(3),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(1),
+                Gate.S(2),
+                Gate.T(1),
+                Gate.H(0),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.S(3),
             ],
         )
 
@@ -657,24 +657,24 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_2(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.Tdg(0),
-                CliffordTGate.H(2),
-                CliffordTGate.H(1),
-                CliffordTGate.Y(2),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.Tdg(0),
-                CliffordTGate.Cnot(2, 1),
-                CliffordTGate.Sdg(1),
-                CliffordTGate.S(2),
-                CliffordTGate.X(0),
-                CliffordTGate.S(0),
-                CliffordTGate.Y(0),
-                CliffordTGate.T(1),
-                CliffordTGate.Tdg(2),
+                Gate.Tdg(0),
+                Gate.H(2),
+                Gate.H(1),
+                Gate.Y(2),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.Tdg(0),
+                Gate.Cnot(2, 1),
+                Gate.Sdg(1),
+                Gate.S(2),
+                Gate.X(0),
+                Gate.S(0),
+                Gate.Y(0),
+                Gate.T(1),
+                Gate.Tdg(2),
             ],
         )
 
@@ -695,10 +695,10 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_linear_cluster_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
-            [CliffordTGate.H(q) for q in range(8)]
-            + [CliffordTGate.Cz(q, q + 1) for q in range(7)],
+            [Gate.H(q) for q in range(8)]
+            + [Gate.Cz(q, q + 1) for q in range(7)],
         )
 
         for i in range(0b1111_1111 + 1):
@@ -713,10 +713,10 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_multi_block_phase(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             70,
-            [CliffordTGate.H(q) for q in range(70)]
-            + [CliffordTGate.Cz(0, 64), CliffordTGate.Cz(0, 69)],
+            [Gate.H(q) for q in range(70)]
+            + [Gate.Cz(0, 64), Gate.Cz(0, 69)],
         )
 
         amplitude = 2**-35
@@ -735,15 +735,15 @@ class TestGpu:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_large_tableau(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             300,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.T(1),
-                CliffordTGate.H(78),
-                CliffordTGate.T(78),
-                CliffordTGate.H(123),
-                CliffordTGate.T(123),
+                Gate.H(1),
+                Gate.T(1),
+                Gate.H(78),
+                Gate.T(78),
+                Gate.H(123),
+                Gate.T(123),
             ],
         )
 
@@ -764,19 +764,19 @@ class TestGpu:
 @pytest.mark.gpu
 class TestHybrid:
     def test_mismatched_qubit_number(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "000000000"
         with pytest.raises(ValueError):
             simulate_circuit_hybrid(w, circuit)
 
     def test_invalid_basis_state(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         w = "010a0100"
         with pytest.raises(ValueError):
             simulate_circuit_hybrid(w, circuit)
 
     def test_zero(self):
-        circuit = CliffordTCircuit(8, [])
+        circuit = Circuit(8, [])
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
             result = simulate_circuit_hybrid(w, circuit)
@@ -788,7 +788,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_x_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.X(0)])
+        circuit = Circuit(8, [Gate.X(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -801,7 +801,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_y_gate(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.Y(0)])
+        circuit = Circuit(8, [Gate.Y(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -814,11 +814,11 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_imaginary(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
+                Gate.H(0),
+                Gate.S(0),
             ],
         )
 
@@ -835,13 +835,13 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_flipped(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(0),
-                CliffordTGate.H(0),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(0),
+                Gate.H(0),
             ],
         )
 
@@ -856,11 +856,11 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_bell_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(0, 1),
+                Gate.H(0),
+                Gate.Cnot(0, 1),
             ],
         )
 
@@ -875,29 +875,29 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_clifford_circuit(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(2),
-                CliffordTGate.H(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(0),
-                CliffordTGate.Cnot(2, 3),
-                CliffordTGate.S(1),
-                CliffordTGate.H(0),
-                CliffordTGate.S(3),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.S(3),
-                CliffordTGate.S(1),
-                CliffordTGate.S(3),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 2),
-                CliffordTGate.H(1),
-                CliffordTGate.Cnot(3, 1),
+                Gate.H(1),
+                Gate.H(0),
+                Gate.S(2),
+                Gate.H(3),
+                Gate.S(1),
+                Gate.S(0),
+                Gate.Cnot(2, 3),
+                Gate.S(1),
+                Gate.H(0),
+                Gate.S(3),
+                Gate.Cnot(1, 0),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.S(3),
+                Gate.S(1),
+                Gate.S(3),
+                Gate.H(1),
+                Gate.Cnot(3, 2),
+                Gate.H(1),
+                Gate.Cnot(3, 1),
             ],
         )
 
@@ -921,7 +921,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_t_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.T(0)] * 5])
+        circuit = Circuit(8, [*[Gate.T(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -934,7 +934,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_only_tdg_gates(self):
-        circuit = CliffordTCircuit(8, [*[CliffordTGate.Tdg(0)] * 5])
+        circuit = Circuit(8, [*[Gate.Tdg(0)] * 5])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -947,7 +947,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_1(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.T(0), CliffordTGate.H(1), CliffordTGate.H(2), CliffordTGate.Cnot(1, 0), CliffordTGate.Cnot(2, 1)])
+        circuit = Circuit(8, [Gate.T(0), Gate.H(1), Gate.H(2), Gate.Cnot(1, 0), Gate.Cnot(2, 1)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -960,7 +960,7 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_smaller_circuit_2(self):
-        circuit = CliffordTCircuit(8, [CliffordTGate.H(0), CliffordTGate.H(1), CliffordTGate.Cnot(1, 0), CliffordTGate.T(0)])
+        circuit = Circuit(8, [Gate.H(0), Gate.H(1), Gate.Cnot(1, 0), Gate.T(0)])
 
         for i in range(0b1111_1111 + 1):
             w = format(i, "08b")
@@ -975,22 +975,22 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_1(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.T(0),
-                CliffordTGate.H(1),
-                CliffordTGate.S(1),
-                CliffordTGate.H(3),
-                CliffordTGate.H(0),
-                CliffordTGate.S(0),
-                CliffordTGate.S(1),
-                CliffordTGate.S(2),
-                CliffordTGate.T(1),
-                CliffordTGate.H(0),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.S(3),
+                Gate.T(0),
+                Gate.H(1),
+                Gate.S(1),
+                Gate.H(3),
+                Gate.H(0),
+                Gate.S(0),
+                Gate.S(1),
+                Gate.S(2),
+                Gate.T(1),
+                Gate.H(0),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.S(3),
             ],
         )
 
@@ -1017,24 +1017,24 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_larger_circuit_2(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
             [
-                CliffordTGate.Tdg(0),
-                CliffordTGate.H(2),
-                CliffordTGate.H(1),
-                CliffordTGate.Y(2),
-                CliffordTGate.Cnot(1, 0),
-                CliffordTGate.T(0),
-                CliffordTGate.Tdg(0),
-                CliffordTGate.Cnot(2, 1),
-                CliffordTGate.Sdg(1),
-                CliffordTGate.S(2),
-                CliffordTGate.X(0),
-                CliffordTGate.S(0),
-                CliffordTGate.Y(0),
-                CliffordTGate.T(1),
-                CliffordTGate.Tdg(2),
+                Gate.Tdg(0),
+                Gate.H(2),
+                Gate.H(1),
+                Gate.Y(2),
+                Gate.Cnot(1, 0),
+                Gate.T(0),
+                Gate.Tdg(0),
+                Gate.Cnot(2, 1),
+                Gate.Sdg(1),
+                Gate.S(2),
+                Gate.X(0),
+                Gate.S(0),
+                Gate.Y(0),
+                Gate.T(1),
+                Gate.Tdg(2),
             ],
         )
 
@@ -1055,10 +1055,10 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_linear_cluster_state(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             8,
-            [CliffordTGate.H(q) for q in range(8)]
-            + [CliffordTGate.Cz(q, q + 1) for q in range(7)],
+            [Gate.H(q) for q in range(8)]
+            + [Gate.Cz(q, q + 1) for q in range(7)],
         )
 
         for i in range(0b1111_1111 + 1):
@@ -1073,10 +1073,10 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_multi_block_phase(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             70,
-            [CliffordTGate.H(q) for q in range(70)]
-            + [CliffordTGate.Cz(0, 64), CliffordTGate.Cz(0, 69)],
+            [Gate.H(q) for q in range(70)]
+            + [Gate.Cz(0, 64), Gate.Cz(0, 69)],
         )
 
         amplitude = 2**-35
@@ -1095,15 +1095,15 @@ class TestHybrid:
             assert result == pytest.approx(expected, rel=DELTA)
 
     def test_large_tableau(self):
-        circuit = CliffordTCircuit(
+        circuit = Circuit(
             300,
             [
-                CliffordTGate.H(1),
-                CliffordTGate.T(1),
-                CliffordTGate.H(78),
-                CliffordTGate.T(78),
-                CliffordTGate.H(123),
-                CliffordTGate.T(123),
+                Gate.H(1),
+                Gate.T(1),
+                Gate.H(78),
+                Gate.T(78),
+                Gate.H(123),
+                Gate.T(123),
             ],
         )
 

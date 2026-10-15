@@ -1,9 +1,9 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, vec::IntoIter};
 
 use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CliffordTGate {
+pub enum Gate {
     X(u32),
     Y(u32),
     Z(u32),
@@ -21,23 +21,19 @@ pub enum CliffordTGate {
     /// The inverse of the T gate.
     Tdg(u32),
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CliffordTCircuit {
+pub struct Circuit {
     /// The number of qubits in the circuit.
     qubits: u32,
-    /// The number of `T` and `Tdg` gates in the circuit.
-    t_gates: usize,
     /// The ordered list of gates in the circuit.
-    gates: Vec<CliffordTGate>,
+    gates: Vec<Gate>,
 }
-impl CliffordTCircuit {
+impl Circuit {
     pub fn new(
         qubits: u32,
-        gates: impl IntoIterator<Item = CliffordTGate>,
+        gates: impl IntoIterator<Item = Gate>,
     ) -> Result<Self, CircuitCreationError> {
-        let gates: Vec<CliffordTGate> = gates.into_iter().collect();
-        let mut t_gates = 0;
+        let gates: Vec<Gate> = gates.into_iter().collect();
         let check_index = |a| {
             if a >= qubits {
                 return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
@@ -45,36 +41,31 @@ impl CliffordTCircuit {
             Ok(())
         };
         for &gate in &gates {
+            use Gate::*;
             match gate {
-                CliffordTGate::X(a) => check_index(a)?,
-                CliffordTGate::Y(a) => check_index(a)?,
-                CliffordTGate::Z(a) => check_index(a)?,
-                CliffordTGate::H(a) => check_index(a)?,
-                CliffordTGate::S(a) => check_index(a)?,
-                CliffordTGate::Sdg(a) => check_index(a)?,
-                CliffordTGate::Cnot(a, b) => {
+                X(a) => check_index(a)?,
+                Y(a) => check_index(a)?,
+                Z(a) => check_index(a)?,
+                H(a) => check_index(a)?,
+                S(a) => check_index(a)?,
+                Sdg(a) => check_index(a)?,
+                Cnot(a, b) => {
                     check_index(a)?;
                     check_index(b)?;
                 }
-                CliffordTGate::Cz(a, b) => {
+                Cz(a, b) => {
                     check_index(a)?;
                     check_index(b)?;
                 }
-                CliffordTGate::T(a) => {
+                T(a) => {
                     check_index(a)?;
-                    t_gates += 1;
                 }
-                CliffordTGate::Tdg(a) => {
+                Tdg(a) => {
                     check_index(a)?;
-                    t_gates += 1;
                 }
             }
         }
-        Ok(CliffordTCircuit {
-            qubits,
-            t_gates,
-            gates,
-        })
+        Ok(Self { qubits, gates })
     }
 
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
@@ -102,35 +93,23 @@ impl CliffordTCircuit {
             }
         }
 
-        CliffordTCircuit {
+        Self {
             qubits,
-            t_gates,
             gates: (0..gates)
                 .map(|i| {
+                    use Gate::*;
                     let a = rng.random_range(0..qubits);
                     let mut b = a;
                     while b == a {
                         b = rng.random_range(0..qubits);
                     }
                     if t_gate_positions.contains(&i) {
-                        [CliffordTGate::T(a), CliffordTGate::Tdg(a)]
+                        [T(a), Tdg(a)].choose(&mut rng).unwrap().clone()
+                    } else {
+                        [X(a), Y(a), Z(a), H(a), S(a), Sdg(a), Cnot(a, b), Cz(a, b)]
                             .choose(&mut rng)
                             .unwrap()
                             .clone()
-                    } else {
-                        [
-                            CliffordTGate::X(a),
-                            CliffordTGate::Y(a),
-                            CliffordTGate::Z(a),
-                            CliffordTGate::H(a),
-                            CliffordTGate::S(a),
-                            CliffordTGate::Sdg(a),
-                            CliffordTGate::Cnot(a, b),
-                            CliffordTGate::Cz(a, b),
-                        ]
-                        .choose(&mut rng)
-                        .unwrap()
-                        .clone()
                     }
                 })
                 .collect(),
@@ -142,14 +121,18 @@ impl CliffordTCircuit {
         self.qubits
     }
 
-    /// The number of `T` and `Tdg` gates in the circuit.
-    pub fn t_gates(&self) -> usize {
-        self.t_gates
+    /// An iterator over the gates in the circuit, in the order that they are applied.
+    pub fn iter(&self) -> impl Iterator<Item = Gate> {
+        self.gates.iter().copied()
     }
+}
+impl IntoIterator for Circuit {
+    type Item = Gate;
 
-    /// The gates in the circuit, in the order that they are applied.
-    pub fn gates(&self) -> &[CliffordTGate] {
-        &self.gates
+    type IntoIter = IntoIter<Gate>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.gates.into_iter()
     }
 }
 

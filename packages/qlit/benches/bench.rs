@@ -1,14 +1,14 @@
 use criterion::Criterion;
-use qlit::{BitString, CliffordTCircuit, initialize_global};
+use qlit::{BitString, Circuit, initialize_global};
 use std::{hint::black_box, time::Duration};
 
-fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, CliffordTCircuit) {
+fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
     let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
     let seed = 123;
     let w = BitString::random(qubits.try_into().unwrap(), seed);
-    let circuit = CliffordTCircuit::random(qubits, gates, t_gates, seed);
+    let circuit = Circuit::random(qubits, gates, t_gates, seed);
     (w, circuit)
 }
 
