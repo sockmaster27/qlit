@@ -8,8 +8,8 @@ from pathlib import Path
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 from qlit import (
-    CliffordTCircuit,
-    CliffordTGate,
+    Circuit,
+    Gate,
 )
 
 FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
@@ -22,7 +22,7 @@ def setup(
     w_samples,
     seed,
 ) -> tuple[QuantumCircuit, list[str]]:
-    circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
+    circuit = Circuit.random(qubits, gates, t_gates, seed)
     random.seed(seed)
 
     ws = []
@@ -32,25 +32,25 @@ def setup(
     qiskit_circuit = QuantumCircuit(qubits)
     for gate in circuit.gates:
         match gate:
-            case CliffordTGate.X(a):
+            case Gate.X(a):
                 qiskit_circuit.x(a)
-            case CliffordTGate.Y(a):
+            case Gate.Y(a):
                 qiskit_circuit.y(a)
-            case CliffordTGate.Z(a):
+            case Gate.Z(a):
                 qiskit_circuit.z(a)
-            case CliffordTGate.H(a):
+            case Gate.H(a):
                 qiskit_circuit.h(a)
-            case CliffordTGate.S(a):
+            case Gate.S(a):
                 qiskit_circuit.s(a)
-            case CliffordTGate.Sdg(a):
+            case Gate.Sdg(a):
                 qiskit_circuit.sdg(a)
-            case CliffordTGate.Cnot(a, b):
+            case Gate.Cnot(a, b):
                 qiskit_circuit.cx(a, b)
-            case CliffordTGate.Cz(a, b):
+            case Gate.Cz(a, b):
                 qiskit_circuit.cz(a, b)
-            case CliffordTGate.T(a):
+            case Gate.T(a):
                 qiskit_circuit.t(a)
-            case CliffordTGate.Tdg(a):
+            case Gate.Tdg(a):
                 qiskit_circuit.tdg(a)
             case _:
                 raise ValueError(f"Unknown gate: {gate}")

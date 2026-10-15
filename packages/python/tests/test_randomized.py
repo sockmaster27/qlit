@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from qlit import (
-    CliffordTCircuit,
+    Circuit,
     simulate_circuit,
     simulate_circuit_gpu,
     simulate_circuit_hybrid,
@@ -18,7 +18,7 @@ class TestQlitRandomized:
         with open(FIXTURES_PATH, "r") as f:
             fixtures = json.load(f)
         for fixture in fixtures:
-            circuit = CliffordTCircuit.random(
+            circuit = Circuit.random(
                 fixture["qubits"], 
                 fixture["gates"], 
                 fixture["t_gates"], 
@@ -52,7 +52,7 @@ class TestQlitRandomized:
             t_gates = 3
             gates = 1000
             seed = 1234 + i
-            circuit = CliffordTCircuit.random(qubits, gates, t_gates, seed)
+            circuit = Circuit.random(qubits, gates, t_gates, seed)
 
             for _ in range(w_samples):
                 w = format(random.getrandbits(qubits), f"00{qubits}b")

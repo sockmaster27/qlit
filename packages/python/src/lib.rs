@@ -1,16 +1,16 @@
 use num_complex::Complex;
 use pyo3::{PyAny, PyErr, exceptions::PyValueError, prelude::*, types::PyString, wrap_pyfunction};
 use qlit::{
-    BitString, CliffordTCircuit, CliffordTGate, initialize_global, simulate_circuit,
-    simulate_circuit_gpu, simulate_circuit_hybrid,
+    BitString, Circuit, Gate, initialize_global, simulate_circuit, simulate_circuit_gpu,
+    simulate_circuit_hybrid,
 };
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[pyo3(name = "CliffordTGate")]
+#[pyo3(name = "Gate")]
 // For now, we unfortunately have to duplicate this
 // See https://github.com/PyO3/pyo3/discussions/3368
-enum PyCliffordTGate {
+enum PyGate {
     X(u32),
     Y(u32),
     Z(u32),
@@ -23,10 +23,10 @@ enum PyCliffordTGate {
     Tdg(u32),
 }
 #[pymethods]
-impl PyCliffordTGate {
+impl PyGate {
     fn __repr__(&self) -> String {
-        use PyCliffordTGate::*;
-        let pre = "CliffordTGate.";
+        use PyGate::*;
+        let pre = "Gate.";
         match self {
             X(a) => format!("{pre}X({a})"),
             Y(a) => format!("{pre}Y({a})"),
@@ -41,60 +41,54 @@ impl PyCliffordTGate {
         }
     }
 }
-impl From<PyCliffordTGate> for CliffordTGate {
-    fn from(gate: PyCliffordTGate) -> Self {
+impl From<PyGate> for Gate {
+    fn from(gate: PyGate) -> Self {
         match gate {
-            PyCliffordTGate::X(a) => CliffordTGate::X(a),
-            PyCliffordTGate::Y(a) => CliffordTGate::Y(a),
-            PyCliffordTGate::Z(a) => CliffordTGate::Z(a),
-            PyCliffordTGate::S(a) => CliffordTGate::S(a),
-            PyCliffordTGate::Sdg(a) => CliffordTGate::Sdg(a),
-            PyCliffordTGate::H(a) => CliffordTGate::H(a),
-            PyCliffordTGate::Cnot(a, b) => CliffordTGate::Cnot(a, b),
-            PyCliffordTGate::Cz(a, b) => CliffordTGate::Cz(a, b),
-            PyCliffordTGate::T(a) => CliffordTGate::T(a),
-            PyCliffordTGate::Tdg(a) => CliffordTGate::Tdg(a),
+            PyGate::X(a) => Gate::X(a),
+            PyGate::Y(a) => Gate::Y(a),
+            PyGate::Z(a) => Gate::Z(a),
+            PyGate::S(a) => Gate::S(a),
+            PyGate::Sdg(a) => Gate::Sdg(a),
+            PyGate::H(a) => Gate::H(a),
+            PyGate::Cnot(a, b) => Gate::Cnot(a, b),
+            PyGate::Cz(a, b) => Gate::Cz(a, b),
+            PyGate::T(a) => Gate::T(a),
+            PyGate::Tdg(a) => Gate::Tdg(a),
         }
     }
 }
-impl From<CliffordTGate> for PyCliffordTGate {
-    fn from(gate: CliffordTGate) -> Self {
+impl From<Gate> for PyGate {
+    fn from(gate: Gate) -> Self {
         match gate {
-            CliffordTGate::X(a) => PyCliffordTGate::X(a),
-            CliffordTGate::Y(a) => PyCliffordTGate::Y(a),
-            CliffordTGate::Z(a) => PyCliffordTGate::Z(a),
-            CliffordTGate::S(a) => PyCliffordTGate::S(a),
-            CliffordTGate::Sdg(a) => PyCliffordTGate::Sdg(a),
-            CliffordTGate::H(a) => PyCliffordTGate::H(a),
-            CliffordTGate::Cnot(a, b) => PyCliffordTGate::Cnot(a, b),
-            CliffordTGate::Cz(a, b) => PyCliffordTGate::Cz(a, b),
-            CliffordTGate::T(a) => PyCliffordTGate::T(a),
-            CliffordTGate::Tdg(a) => PyCliffordTGate::Tdg(a),
+            Gate::X(a) => PyGate::X(a),
+            Gate::Y(a) => PyGate::Y(a),
+            Gate::Z(a) => PyGate::Z(a),
+            Gate::S(a) => PyGate::S(a),
+            Gate::Sdg(a) => PyGate::Sdg(a),
+            Gate::H(a) => PyGate::H(a),
+            Gate::Cnot(a, b) => PyGate::Cnot(a, b),
+            Gate::Cz(a, b) => PyGate::Cz(a, b),
+            Gate::T(a) => PyGate::T(a),
+            Gate::Tdg(a) => PyGate::Tdg(a),
         }
     }
 }
 
 #[pyclass(skip_from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[pyo3(name = "CliffordTCircuit")]
-struct PyCliffordTCircuit(CliffordTCircuit);
+#[pyo3(name = "Circuit")]
+struct PyCircuit(Circuit);
 #[pymethods]
-impl PyCliffordTCircuit {
+impl PyCircuit {
     #[new]
     fn new(qubits: u32, gates: Bound<'_, PyAny>) -> PyResult<Self> {
-        let gates: PyResult<Vec<CliffordTGate>> = gates
+        let gates: PyResult<Vec<Gate>> = gates
             .try_iter()?
-            .flat_map(|r| {
-                r.map(|obj| {
-                    obj.extract::<PyCliffordTGate>()
-                        .map(Into::into)
-                        .map_err(Into::into)
-                })
-            })
+            .flat_map(|r| r.map(|obj| obj.extract::<PyGate>().map(Into::into).map_err(Into::into)))
             .collect();
-        let res = CliffordTCircuit::new(qubits, gates?);
+        let res = Circuit::new(qubits, gates?);
         match res {
-            Ok(circuit) => Ok(PyCliffordTCircuit(circuit)),
+            Ok(circuit) => Ok(PyCircuit(circuit)),
             Err(e) => Err(PyErr::new::<PyValueError, _>(e.to_string())),
         }
     }
@@ -102,7 +96,7 @@ impl PyCliffordTCircuit {
     /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[staticmethod]
     fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
-        PyCliffordTCircuit(CliffordTCircuit::random(qubits, gates, t_gates, seed))
+        PyCircuit(Circuit::random(qubits, gates, t_gates, seed))
     }
 
     /// The number of qubits in the circuit.
@@ -111,21 +105,10 @@ impl PyCliffordTCircuit {
         self.0.qubits()
     }
 
-    /// The number of T gates in the circuit.
-    #[getter]
-    fn t_gates(&self) -> usize {
-        self.0.t_gates()
-    }
-
     /// The gates in the circuit, in the order that they are applied.
     #[getter]
-    fn gates(&self) -> Vec<PyCliffordTGate> {
-        self.0
-            .gates()
-            .iter()
-            .cloned()
-            .map(PyCliffordTGate::from)
-            .collect()
+    fn gates(&self) -> Vec<PyGate> {
+        self.0.iter().map(PyGate::from).collect()
     }
 }
 
@@ -152,10 +135,7 @@ fn parse_basis_state(w: &Bound<PyString>, n: u32) -> PyResult<BitString> {
 
 #[pyfunction]
 #[pyo3(name = "simulate_circuit")]
-fn py_simulate_circuit(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+fn py_simulate_circuit(w: &Bound<PyString>, circuit: &PyCircuit) -> PyResult<Complex<f64>> {
     Ok(simulate_circuit(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
@@ -164,10 +144,7 @@ fn py_simulate_circuit(
 
 #[pyfunction]
 #[pyo3(name = "simulate_circuit_gpu")]
-fn py_simulate_circuit_gpu(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+fn py_simulate_circuit_gpu(w: &Bound<PyString>, circuit: &PyCircuit) -> PyResult<Complex<f64>> {
     Ok(simulate_circuit_gpu(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
@@ -176,10 +153,7 @@ fn py_simulate_circuit_gpu(
 
 #[pyfunction]
 #[pyo3(name = "simulate_circuit_hybrid")]
-fn py_simulate_circuit_hybrid(
-    w: &Bound<PyString>,
-    circuit: &PyCliffordTCircuit,
-) -> PyResult<Complex<f64>> {
+fn py_simulate_circuit_hybrid(w: &Bound<PyString>, circuit: &PyCircuit) -> PyResult<Complex<f64>> {
     Ok(simulate_circuit_hybrid(
         &parse_basis_state(w, circuit.qubits())?,
         &circuit.0,
@@ -191,8 +165,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
-    m.add_class::<PyCliffordTGate>()?;
-    m.add_class::<PyCliffordTCircuit>()?;
+    m.add_class::<PyGate>()?;
+    m.add_class::<PyCircuit>()?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit, m)?)?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(py_simulate_circuit_hybrid, m)?)?;

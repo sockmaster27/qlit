@@ -1,53 +1,53 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-class CliffordTGate:
+class Gate:
     @dataclass
-    class X(CliffordTGate):
+    class X(Gate):
         qubit: int
     @dataclass
-    class Y(CliffordTGate):
+    class Y(Gate):
         qubit: int
     @dataclass
-    class Z(CliffordTGate):
+    class Z(Gate):
         qubit: int
     @dataclass
-    class S(CliffordTGate):
+    class S(Gate):
         qubit: int
     @dataclass
-    class Sdg(CliffordTGate):
+    class Sdg(Gate):
         qubit: int
     @dataclass
-    class H(CliffordTGate):
+    class H(Gate):
         qubit: int
     @dataclass
-    class T(CliffordTGate):
+    class T(Gate):
         qubit: int
     @dataclass
-    class Tdg(CliffordTGate):
+    class Tdg(Gate):
         qubit: int
     @dataclass
-    class Cnot(CliffordTGate):
+    class Cnot(Gate):
         control: int
         target: int
     @dataclass
-    class Cz(CliffordTGate):
+    class Cz(Gate):
         control: int
         target: int
 
-class CliffordTCircuit:
-    def __init__(self, qubits: int, gates: Iterable[CliffordTGate]) -> None: ...
+class Circuit:
+    def __init__(self, qubits: int, gates: Iterable[Gate]) -> None: ...
     @staticmethod
-    def random(qubits: int, gates: int, t_gates: int, seed: int) -> CliffordTCircuit: ...
+    def random(qubits: int, gates: int, t_gates: int, seed: int) -> Circuit: ...
 
     @property
     def qubits(self) -> int: ...
     @property
     def t_gates(self) -> int: ...
     @property
-    def gates(self) -> list[CliffordTGate]: ...
+    def gates(self) -> list[Gate]: ...
 
 
-def simulate_circuit(w: str, circuit: CliffordTCircuit) -> complex: ...
-def simulate_circuit_gpu(w: str, circuit: CliffordTCircuit) -> complex: ...
-def simulate_circuit_hybrid(w: str, circuit: CliffordTCircuit) -> complex: ...
+def simulate_circuit(w: str, circuit: Circuit) -> complex: ...
+def simulate_circuit_gpu(w: str, circuit: Circuit) -> complex: ...
+def simulate_circuit_hybrid(w: str, circuit: Circuit) -> complex: ...

@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
 use num_complex::Complex;
-use qlit::{BitString, CircuitCreationError, CliffordTCircuit, CliffordTGate::*};
+use qlit::{BitString, Circuit, CircuitCreationError, Gate::*};
 
 const DELTA: f64 = 1e-6;
 const ABS_DELTA: f64 = 1e-12;
@@ -198,96 +198,97 @@ mod bitstring {
 }
 
 mod circuit {
+
     use super::*;
 
     #[test]
     fn invalid_qubit_index() {
         assert_eq!(
-            CliffordTCircuit::new(8, [X(165)]),
+            Circuit::new(8, [X(165)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 165,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [X(8)]),
+            Circuit::new(8, [X(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Y(8)]),
+            Circuit::new(8, [Y(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Z(8)]),
+            Circuit::new(8, [Z(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [H(8)]),
+            Circuit::new(8, [H(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [S(8)]),
+            Circuit::new(8, [S(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Sdg(8)]),
+            Circuit::new(8, [Sdg(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [T(8)]),
+            Circuit::new(8, [T(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Tdg(8)]),
+            Circuit::new(8, [Tdg(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Cnot(8, 4)]),
+            Circuit::new(8, [Cnot(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Cnot(4, 8)]),
+            Circuit::new(8, [Cnot(4, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Cz(8, 4)]),
+            Circuit::new(8, [Cz(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
             })
         );
         assert_eq!(
-            CliffordTCircuit::new(8, [Cz(4, 8)]),
+            Circuit::new(8, [Cz(4, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 8,
                 qubits: 8
@@ -304,14 +305,14 @@ mod cpu {
     #[test]
     #[should_panic]
     fn mismatched_qubit_number() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
         let w = BitString::zero(9);
         simulate_circuit(&w, &circuit);
     }
 
     #[test]
     fn zero() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -328,7 +329,7 @@ mod cpu {
 
     #[test]
     fn x_gate() {
-        let circuit = CliffordTCircuit::new(8, [X(0)]).unwrap();
+        let circuit = Circuit::new(8, [X(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -345,7 +346,7 @@ mod cpu {
 
     #[test]
     fn y_gate() {
-        let circuit = CliffordTCircuit::new(8, [Y(0)]).unwrap();
+        let circuit = Circuit::new(8, [Y(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -362,7 +363,7 @@ mod cpu {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -380,7 +381,7 @@ mod cpu {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -397,7 +398,7 @@ mod cpu {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -414,7 +415,7 @@ mod cpu {
 
     #[test]
     fn larger_clifford_circuit() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 H(0),
@@ -458,7 +459,7 @@ mod cpu {
 
     #[test]
     fn only_t_gates() {
-        let circuit = CliffordTCircuit::new(8, [T(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [T(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -475,7 +476,7 @@ mod cpu {
 
     #[test]
     fn only_tdg_gates() {
-        let circuit = CliffordTCircuit::new(8, [Tdg(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [Tdg(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -492,7 +493,7 @@ mod cpu {
 
     #[test]
     fn smaller_circuit_1() {
-        let circuit = CliffordTCircuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
+        let circuit = Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -511,7 +512,7 @@ mod cpu {
 
     #[test]
     fn smaller_circuit_2() {
-        let circuit = CliffordTCircuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -532,7 +533,7 @@ mod cpu {
 
     #[test]
     fn larger_circuit_1() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 T(0),
@@ -591,7 +592,7 @@ mod cpu {
 
     #[test]
     fn larger_circuit_2() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 Tdg(0),
@@ -637,8 +638,7 @@ mod cpu {
 
     #[test]
     fn linear_cluster_state() {
-        let circuit =
-            CliffordTCircuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
+        let circuit = Circuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -657,8 +657,7 @@ mod cpu {
     /// Phase shifts from row multiplication between rows across different bit blocks.
     #[test]
     fn multi_block_phase() {
-        let circuit =
-            CliffordTCircuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
+        let circuit = Circuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
 
         let amplitude = 2_f64.powi(-35);
         let cases: [(&[usize], Complex<f64>); 7] = [
@@ -684,8 +683,7 @@ mod cpu {
 
     #[test]
     fn large_tableau() {
-        let circuit =
-            CliffordTCircuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
+        let circuit = Circuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
 
         let amplitude = 2_f64.powf(-1.5);
         let cases: [(&[usize], Complex<f64>); 6] = [
@@ -714,8 +712,7 @@ mod cpu {
     #[test]
     fn convergent_branches_with_different_basis_states() {
         let circuit =
-            CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
-                .unwrap();
+            Circuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -741,14 +738,14 @@ mod gpu {
     #[test]
     #[should_panic]
     fn mismatched_qubit_number() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
         let w = BitString::zero(9);
         simulate_circuit_gpu(&w, &circuit);
     }
 
     #[test]
     fn zero() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -765,7 +762,7 @@ mod gpu {
 
     #[test]
     fn x_gate() {
-        let circuit = CliffordTCircuit::new(8, [X(0)]).unwrap();
+        let circuit = Circuit::new(8, [X(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -782,7 +779,7 @@ mod gpu {
 
     #[test]
     fn y_gate() {
-        let circuit = CliffordTCircuit::new(8, [Y(0)]).unwrap();
+        let circuit = Circuit::new(8, [Y(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -799,7 +796,7 @@ mod gpu {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -817,7 +814,7 @@ mod gpu {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -834,7 +831,7 @@ mod gpu {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -851,7 +848,7 @@ mod gpu {
 
     #[test]
     fn larger_clifford_circuit() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 H(0),
@@ -895,7 +892,7 @@ mod gpu {
 
     #[test]
     fn only_t_gates() {
-        let circuit = CliffordTCircuit::new(8, [T(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [T(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -912,7 +909,7 @@ mod gpu {
 
     #[test]
     fn only_tdg_gates() {
-        let circuit = CliffordTCircuit::new(8, [Tdg(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [Tdg(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -929,7 +926,7 @@ mod gpu {
 
     #[test]
     fn smaller_circuit_1() {
-        let circuit = CliffordTCircuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
+        let circuit = Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -948,7 +945,7 @@ mod gpu {
 
     #[test]
     fn smaller_circuit_2() {
-        let circuit = CliffordTCircuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -969,7 +966,7 @@ mod gpu {
 
     #[test]
     fn larger_circuit_1() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 T(0),
@@ -1028,7 +1025,7 @@ mod gpu {
 
     #[test]
     fn larger_circuit_2() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 Tdg(0),
@@ -1074,8 +1071,7 @@ mod gpu {
 
     #[test]
     fn linear_cluster_state() {
-        let circuit =
-            CliffordTCircuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
+        let circuit = Circuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1094,8 +1090,7 @@ mod gpu {
     /// Phase shifts from row multiplication between rows across different bit blocks.
     #[test]
     fn multi_block_phase() {
-        let circuit =
-            CliffordTCircuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
+        let circuit = Circuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
 
         let amplitude = 2_f64.powi(-35);
         let cases: [(&[usize], Complex<f64>); 7] = [
@@ -1121,8 +1116,7 @@ mod gpu {
 
     #[test]
     fn large_tableau() {
-        let circuit =
-            CliffordTCircuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
+        let circuit = Circuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
 
         let amplitude = 2_f64.powf(-1.5);
         let cases: [(&[usize], Complex<f64>); 6] = [
@@ -1151,8 +1145,7 @@ mod gpu {
     #[test]
     fn convergent_branches_with_different_basis_states() {
         let circuit =
-            CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
-                .unwrap();
+            Circuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1178,14 +1171,14 @@ mod hybrid {
     #[test]
     #[should_panic]
     fn mismatched_qubit_number() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
         let w = BitString::zero(9);
         simulate_circuit_hybrid(&w, &circuit);
     }
 
     #[test]
     fn zero() {
-        let circuit = CliffordTCircuit::new(8, []).unwrap();
+        let circuit = Circuit::new(8, []).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1202,7 +1195,7 @@ mod hybrid {
 
     #[test]
     fn x_gate() {
-        let circuit = CliffordTCircuit::new(8, [X(0)]).unwrap();
+        let circuit = Circuit::new(8, [X(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1219,7 +1212,7 @@ mod hybrid {
 
     #[test]
     fn y_gate() {
-        let circuit = CliffordTCircuit::new(8, [Y(0)]).unwrap();
+        let circuit = Circuit::new(8, [Y(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1236,7 +1229,7 @@ mod hybrid {
 
     #[test]
     fn imaginary() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1254,7 +1247,7 @@ mod hybrid {
 
     #[test]
     fn flipped() {
-        let circuit = CliffordTCircuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), S(0), S(0), H(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1271,7 +1264,7 @@ mod hybrid {
 
     #[test]
     fn bell_state() {
-        let circuit = CliffordTCircuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), Cnot(0, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1288,7 +1281,7 @@ mod hybrid {
 
     #[test]
     fn larger_clifford_circuit() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 H(0),
@@ -1332,7 +1325,7 @@ mod hybrid {
 
     #[test]
     fn only_t_gates() {
-        let circuit = CliffordTCircuit::new(8, [T(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [T(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1349,7 +1342,7 @@ mod hybrid {
 
     #[test]
     fn only_tdg_gates() {
-        let circuit = CliffordTCircuit::new(8, [Tdg(0); 5]).unwrap();
+        let circuit = Circuit::new(8, [Tdg(0); 5]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1366,7 +1359,7 @@ mod hybrid {
 
     #[test]
     fn smaller_circuit_1() {
-        let circuit = CliffordTCircuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
+        let circuit = Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1385,7 +1378,7 @@ mod hybrid {
 
     #[test]
     fn smaller_circuit_2() {
-        let circuit = CliffordTCircuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
+        let circuit = Circuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1406,7 +1399,7 @@ mod hybrid {
 
     #[test]
     fn larger_circuit_1() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 T(0),
@@ -1465,7 +1458,7 @@ mod hybrid {
 
     #[test]
     fn larger_circuit_2() {
-        let circuit = CliffordTCircuit::new(
+        let circuit = Circuit::new(
             8,
             [
                 Tdg(0),
@@ -1511,8 +1504,7 @@ mod hybrid {
 
     #[test]
     fn linear_cluster_state() {
-        let circuit =
-            CliffordTCircuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
+        let circuit = Circuit::new(8, (0..8).map(H).chain((0..7).map(|q| Cz(q, q + 1)))).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);
@@ -1531,8 +1523,7 @@ mod hybrid {
     /// Phase shifts from row multiplication between rows across different bit blocks.
     #[test]
     fn multi_block_phase() {
-        let circuit =
-            CliffordTCircuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
+        let circuit = Circuit::new(70, (0..70).map(H).chain([Cz(0, 64), Cz(0, 69)])).unwrap();
 
         let amplitude = 2_f64.powi(-35);
         let cases: [(&[usize], Complex<f64>); 7] = [
@@ -1558,8 +1549,7 @@ mod hybrid {
 
     #[test]
     fn large_tableau() {
-        let circuit =
-            CliffordTCircuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
+        let circuit = Circuit::new(300, [H(1), T(1), H(78), T(78), H(123), T(123)]).unwrap();
 
         let amplitude = 2_f64.powf(-1.5);
         let cases: [(&[usize], Complex<f64>); 6] = [
@@ -1588,8 +1578,7 @@ mod hybrid {
     #[test]
     fn convergent_branches_with_different_basis_states() {
         let circuit =
-            CliffordTCircuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)])
-                .unwrap();
+            Circuit::new(8, [H(0), T(0), H(1), H(0), Cnot(1, 0), H(1), Z(0), Tdg(1)]).unwrap();
 
         for i in 0b0000_0000..=0b1111_1111 {
             let w = BitString::from_u8_ltr(i);

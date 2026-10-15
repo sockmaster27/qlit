@@ -1,5 +1,6 @@
 mod bitstring;
 mod circuit;
+mod decompose;
 mod simulate;
 #[cfg(feature = "gpu")]
 mod simulate_gpu;
@@ -7,7 +8,7 @@ mod tableau;
 mod utils;
 
 pub use bitstring::BitString;
-pub use circuit::{CircuitCreationError, CliffordTCircuit, CliffordTGate};
+pub use circuit::{Circuit, CircuitCreationError, Gate};
 
 pub use simulate::simulate_circuit;
 #[cfg(feature = "gpu")]
