@@ -1,26 +1,6 @@
 const BLOCK_SIZE: u32 = 32;
 alias BitBlock = u32;
 
-// T = C_I*I + C_Z*Z
-const C_I: Complex = Complex(
-    0.5 + 0.5 * inverseSqrt(2.0),
-    0.5 * inverseSqrt(2.0),
-);
-const C_Z: Complex = Complex(
-    0.5 - 0.5 * inverseSqrt(2.0),
-    -0.5 * inverseSqrt(2.0),
-);
-
-// Tdg = C_I_DG*I + C_Z_DG*Z
-const C_I_DG: Complex = Complex(
-    0.5 + 0.5 * inverseSqrt(2.0),
-    -0.5 * inverseSqrt(2.0),
-);
-const C_Z_DG: Complex = Complex(
-    0.5 - 0.5 * inverseSqrt(2.0),
-    0.5 * inverseSqrt(2.0),
-);
-
 @group(0) @binding(0) var<uniform> n: u32;
 @group(0) @binding(1) var<uniform> max_batches: u32;
 @group(0) @binding(2) var<storage, read> path: array<u32>;
@@ -63,7 +43,9 @@ fn zero(
 
 @group(1) @binding(0) var<storage, read> gates: array<u32>;
 @group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
-@group(1) @binding(2) var<uniform> initial_seen_t_gates: u32;
+@group(1) @binding(2) var<storage, read> ci_params: array<Complex>;
+@group(1) @binding(3) var<storage, read> cz_params: array<Complex>;
+@group(1) @binding(4) var<uniform> initial_seen_p_gates: u32;
 
 @compute
 @workgroup_size(64)
@@ -78,7 +60,7 @@ fn apply_gates(
     let block_index = id.x % single_column_block_length();
 
     var p: u32 = 0;
-    var seen_t_gates = initial_seen_t_gates;
+    var seen_p_gates = initial_seen_p_gates;
     for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
         switch gates[i] {
             case 0: {
@@ -205,10 +187,10 @@ fn apply_gates(
                 tableau[x] = temp;
             }
             case 8: {
-                // T branch
-                if path[seen_t_gates] == 0u {
+                // Piz branch
+                if path[seen_p_gates] == 0u {
                     if block_index == 0 {
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], C_I);
+                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], ci_params[seen_p_gates]);
                     }
                 } else {
                     let a = qubit_params[p];
@@ -219,32 +201,11 @@ fn apply_gates(
                         if ws[w_bit_index(batch_index, a)] == 1u {
                             w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
                         }
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], C_Z);
+                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], cz_params[seen_p_gates]);
                     }
                 }
                 p += 1;
-                seen_t_gates += 1;
-            }
-            case 9: {
-                // Tdg branch
-                if path[seen_t_gates] == 0u {
-                    if block_index == 0 {
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], C_I_DG);
-                    }
-                } else {
-                    let a = qubit_params[p];
-                    let r = r_column_block_index(batch_index, block_index);
-                    let x = x_column_block_index(batch_index, block_index, a);
-                    tableau[r] ^= tableau[x];
-                    if block_index == 0 {
-                        if ws[w_bit_index(batch_index, a)] == 1u {
-                            w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
-                        }
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], C_Z_DG);
-                    }
-                }
-                p += 1;
-                seen_t_gates += 1;
+                seen_p_gates += 1;
             }
             default: {}
         }
@@ -252,29 +213,20 @@ fn apply_gates(
 }
 
 
-@compute
-@workgroup_size(64)
-fn apply_t_gate_parallel(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    apply_gate_parallel(id.x, C_I, C_Z);
-}
+@group(1) @binding(1) var<uniform> ci: Complex;
+@group(1) @binding(2) var<uniform> cz: Complex;
 
 @compute
 @workgroup_size(64)
-fn apply_tdg_gate_parallel(
+fn apply_piz_gate_parallel(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    apply_gate_parallel(id.x, C_I_DG, C_Z_DG);
-}
-
-fn apply_gate_parallel(id: u32, c_i: Complex, c_z: Complex) {
     // Assign one thread to each row (block).
-    if id >= active_column_block_length() {
+    if id.x >= active_column_block_length() {
         return;
     }
-    let batch_index = id / single_column_block_length();
-    let block_index = id % single_column_block_length();
+    let batch_index = id.x / single_column_block_length();
+    let block_index = id.x % single_column_block_length();
     for (var q: u32 = 0u; q < n; q += 1) {
         let x1 = x_column_block_index(batch_index, block_index, q);
         let x2 = x_column_block_index(batch_index + active_batches, block_index, q);
@@ -297,8 +249,8 @@ fn apply_gate_parallel(id: u32, c_i: Complex, c_z: Complex) {
         }
         w_coeffs[index_z] = w_coeffs[index_i];
 
-        w_coeffs[index_i] = mul(w_coeffs[index_i], c_i);
-        w_coeffs[index_z] = mul(w_coeffs[index_z], c_z);
+        w_coeffs[index_i] = mul(w_coeffs[index_i], ci);
+        w_coeffs[index_z] = mul(w_coeffs[index_z], cz);
         if ws[w_bit_index(index_z, qubit)] == 1u {
             w_coeffs[index_z] = mul_minus_one(w_coeffs[index_z]);
         }
