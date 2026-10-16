@@ -1,14 +1,18 @@
 use criterion::Criterion;
 use qlit::{BitString, Circuit, initialize_global};
+use rand::{SeedableRng, rngs::Xoshiro128PlusPlus};
 use std::{hint::black_box, time::Duration};
 
 fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
     let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
-    let seed = 123;
-    let w = BitString::random(qubits.try_into().unwrap(), seed);
-    let circuit = Circuit::random_clifford_t(qubits, gates, t_gates, seed);
+    // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
+    // seed always produces the same circuit regardless of pointer width.
+    // Useful for CI testing and benchmarking.
+    let mut rng = Xoshiro128PlusPlus::seed_from_u64(123);
+    let w = BitString::random(qubits.try_into().unwrap(), &mut rng);
+    let circuit = Circuit::random_clifford_t(qubits, gates, t_gates, &mut rng);
     (w, circuit)
 }
 

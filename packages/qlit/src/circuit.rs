@@ -1,6 +1,7 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
-use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
+#[cfg(any(feature = "rand", test))]
+use rand::{RngExt, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Gate {
@@ -86,18 +87,19 @@ impl Circuit {
         Ok(Self { qubits, gates })
     }
 
-    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    #[cfg(any(feature = "rand", test))]
+    pub fn random_clifford_t(
+        qubits: u32,
+        gates: usize,
+        t_gates: usize,
+        mut rng: impl RngExt,
+    ) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
             "t_gates must be less than or equal to gates"
         );
-
-        // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
-        // seed always produces the same circuit regardless of pointer width.
-        // Useful for CI testing and benchmarking.
-        let mut rng = Xoshiro128PlusPlus::seed_from_u64(seed);
 
         let mut t_gate_positions = Vec::new();
         for _ in 0..t_gates {

@@ -1,7 +1,8 @@
 use std::mem;
 use std::{borrow::Borrow, fmt::Debug};
 
-use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus};
+#[cfg(any(feature = "rand", test))]
+use rand::RngExt;
 
 use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
 
@@ -51,11 +52,8 @@ impl BitString {
             inner: s.to_be_bytes().into(),
         }
     }
-    pub fn random(length: usize, seed: u64) -> Self {
-        // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
-        // seed always produces the same circuit regardless of pointer width.
-        // Useful for CI testing and benchmarking.
-        let rng = Xoshiro128PlusPlus::seed_from_u64(seed);
+    #[cfg(any(feature = "rand", test))]
+    pub fn random(length: usize, rng: impl RngExt) -> Self {
         Self {
             length,
             inner: rng

@@ -1359,16 +1359,16 @@ mod test {
 
     #[test]
     fn compare_stabilizer_matrix_entry_reference() {
-        let rng = &mut Xoshiro128PlusPlus::seed_from_u64(1234);
+        let mut rng = Xoshiro128PlusPlus::seed_from_u64(1234);
         let tableau = ExtendedTableau::random(8, 3, 12345);
-        for i in 0..2u64.pow(16) {
+        for _ in 0..2u64.pow(16) {
             let s = rng.random_range(0..8);
             let row = rng.random_range(0..8);
-            let w1 = BitString::random(8, 123456 + i);
-            let w2 = BitString::random(8, 654321 + i);
+            let w1 = BitString::random(8, &mut rng);
+            let w2 = BitString::random(8, &mut rng);
             assert_eq!(
                 tableau.stabilizer_matrix_entry(row, &w1.slice(), &w2.slice(), s),
-                tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s,)
+                tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s),
             );
         }
     }
