@@ -206,114 +206,165 @@ mod circuit {
         assert_eq!(
             Circuit::new(8, [X(165)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 165,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [X(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Y(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Z(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [H(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [S(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Sdg(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [T(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Tdg(8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Rx(1.0, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Ry(1.0, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Rz(1.0, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Cnot(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Cnot(4, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Cz(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
         );
         assert_eq!(
             Circuit::new(8, [Cz(4, 8)]),
             Err(CircuitCreationError::InvalidQubitIndex {
-                index: 8,
+                index: 0,
                 qubits: 8
             })
+        );
+        assert_eq!(
+            Circuit::new(8, [H(0), Cnot(0, 1), X(8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 2,
+                qubits: 8
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_parameter() {
+        assert_eq!(
+            Circuit::new(8, [Rx(f64::NAN, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Rx(f64::INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Rx(f64::NEG_INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Ry(f64::NAN, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Ry(f64::INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Ry(f64::NEG_INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Rz(f64::NAN, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Rz(f64::INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [Rz(f64::NEG_INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [H(0), Rz(1.0, 0), Rx(f64::NAN, 0)]),
+            Err(CircuitCreationError::InvalidParameter { index: 2 })
         );
     }
 }

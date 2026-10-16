@@ -38,14 +38,20 @@ impl Circuit {
         gates: impl IntoIterator<Item = Gate>,
     ) -> Result<Self, CircuitCreationError> {
         let gates: Vec<Gate> = gates.into_iter().collect();
-        let check_index = |a| {
-            if a >= qubits {
-                return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-            }
-            Ok(())
-        };
-        for &gate in &gates {
+        for (index, &gate) in gates.iter().enumerate() {
             use Gate::*;
+            let check_index = |a| {
+                if a >= qubits {
+                    return Err(CircuitCreationError::InvalidQubitIndex { index, qubits });
+                }
+                Ok(())
+            };
+            let check_param = |t: f64| {
+                if t.is_nan() || t.is_infinite() {
+                    return Err(CircuitCreationError::InvalidParameter { index });
+                }
+                Ok(())
+            };
             match gate {
                 X(a) => check_index(a)?,
                 Y(a) => check_index(a)?,
@@ -61,15 +67,20 @@ impl Circuit {
                     check_index(a)?;
                     check_index(b)?;
                 }
-                T(a) => {
+                T(a) => check_index(a)?,
+                Tdg(a) => check_index(a)?,
+                Rx(t, a) => {
                     check_index(a)?;
+                    check_param(t)?;
                 }
-                Tdg(a) => {
+                Ry(t, a) => {
                     check_index(a)?;
+                    check_param(t)?;
                 }
-                Rx(_, a) => check_index(a)?,
-                Ry(_, a) => check_index(a)?,
-                Rz(_, a) => check_index(a)?,
+                Rz(t, a) => {
+                    check_index(a)?;
+                    check_param(t)?;
+                }
             }
         }
         Ok(Self { qubits, gates })
@@ -129,7 +140,7 @@ impl Circuit {
     }
 
     /// The number of gates in the circuit.
-    pub fn gates(&self) -> usize {
+    pub fn gate_count(&self) -> usize {
         self.gates.len()
     }
 
@@ -219,7 +230,8 @@ impl IntoIterator for Circuit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitCreationError {
-    InvalidQubitIndex { index: u32, qubits: u32 },
+    InvalidQubitIndex { index: usize, qubits: u32 },
+    InvalidParameter { index: usize },
 }
 impl Display for CircuitCreationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -227,8 +239,11 @@ impl Display for CircuitCreationError {
             CircuitCreationError::InvalidQubitIndex { index, qubits } => {
                 write!(
                     f,
-                    "Invalid qubit index {index} for circuit of {qubits} qubits"
+                    "gate at position {index} contains invalid index for circuit of {qubits} qubits"
                 )
+            }
+            CircuitCreationError::InvalidParameter { index } => {
+                write!(f, "gate at position {index} contains invalid parameter")
             }
         }
     }

@@ -4,7 +4,7 @@ use crate::{Circuit, Gate};
 use std::f64::consts::FRAC_1_SQRT_2;
 
 /// The Clifford+P gate set contains all Clifford/stabilizer gates,
-/// plus P, (Pauli sum decompositions).
+/// plus P (Pauli sum decompositions).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CliffordPGate {
     X(u32),
@@ -47,7 +47,7 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
     use CliffordPGate::*;
 
     let qubits = circuit.qubits();
-    let mut gates = Vec::with_capacity(circuit.gates());
+    let mut gates = Vec::with_capacity(circuit.gate_count());
     for gate in circuit {
         let decomp: &[CliffordPGate] = match gate {
             Gate::X(a) => &[X(a)],
@@ -70,31 +70,9 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
                 a,
             )],
 
-            Gate::Rx(t, a) => &[
-                H(a),
-                Piz(
-                    Complex::new((t / 2.0).cos(), 0.0),
-                    Complex::new(0.0, -(t / 2.0).sin()),
-                    a,
-                ),
-                H(a),
-            ],
-            Gate::Ry(t, a) => &[
-                Sdg(a),
-                H(a),
-                Piz(
-                    Complex::new((t / 2.0).cos(), 0.0),
-                    Complex::new(0.0, -(t / 2.0).sin()),
-                    a,
-                ),
-                H(a),
-                S(a),
-            ],
-            Gate::Rz(t, a) => &[Piz(
-                Complex::new((t / 2.0).cos(), 0.0),
-                Complex::new(0.0, -(t / 2.0).sin()),
-                a,
-            )],
+            Gate::Rx(t, a) => &[H(a), rz(t, a), H(a)],
+            Gate::Ry(t, a) => &[Sdg(a), H(a), rz(t, a), H(a), S(a)],
+            Gate::Rz(t, a) => &[rz(t, a)],
         };
         gates.extend(decomp);
     }
@@ -111,4 +89,12 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
         p_gates,
         gates,
     }
+}
+
+fn rz(t: f64, a: u32) -> CliffordPGate {
+    CliffordPGate::Piz(
+        Complex::new((t / 2.0).cos(), 0.0),
+        Complex::new(0.0, -(t / 2.0).sin()),
+        a,
+    )
 }
