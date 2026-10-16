@@ -44,14 +44,14 @@ struct GpuContext {
 
     global_bind_group_layout: wgpu::BindGroupLayout,
     single_qubit_bind_group_layout: wgpu::BindGroupLayout,
-    apply_piz_gate_parallel_bind_group_layout: wgpu::BindGroupLayout,
+    fork_apply_piz_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
     compute_output_bind_group_layout: wgpu::BindGroupLayout,
 
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
-    apply_piz_gate_parallel_pipeline: wgpu::ComputePipeline,
+    fork_apply_piz_gate_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     update_before_h_pipeline: wgpu::ComputePipeline,
@@ -123,7 +123,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // active_batches
+                    // c_cols
                     wgpu::BindGroupLayoutEntry {
                         binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -175,9 +175,9 @@ impl GpuContext {
                     },
                 ],
             });
-        let apply_piz_gate_parallel_bind_group_layout =
+        let fork_apply_piz_gate_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Apply Piz Gate"),
+                label: Some("Fork Apply Piz Gate"),
                 entries: &[
                     // qubit
                     wgpu::BindGroupLayoutEntry {
@@ -376,21 +376,21 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
 
-        let apply_piz_gate_parallel_pipeline_layout =
+        let fork_apply_piz_gate_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Apply Piz Gate in Parallel"),
+                label: Some("Fork Apply Piz Gate"),
                 bind_group_layouts: &[
                     Some(&global_bind_group_layout),
-                    Some(&apply_piz_gate_parallel_bind_group_layout),
+                    Some(&fork_apply_piz_gate_bind_group_layout),
                 ],
                 immediate_size: 0,
             });
-        let apply_piz_gate_parallel_pipeline =
+        let fork_apply_piz_gate_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Apply Piz Gate in Parallel"),
-                layout: Some(&apply_piz_gate_parallel_pipeline_layout),
+                label: Some("Fork Apply Piz Gate"),
+                layout: Some(&fork_apply_piz_gate_pipeline_layout),
                 module: &shader_module,
-                entry_point: Some("apply_piz_gate_parallel"),
+                entry_point: Some("fork_apply_piz_gate"),
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
@@ -466,14 +466,14 @@ impl GpuContext {
 
             global_bind_group_layout,
             single_qubit_bind_group_layout,
-            apply_piz_gate_parallel_bind_group_layout,
+            fork_apply_piz_gate_bind_group_layout,
             apply_gates_bind_group_layout,
             bring_into_rref_bind_group_layout,
             compute_output_bind_group_layout,
 
             zero_pipeline,
             apply_gates_pipeline,
-            apply_piz_gate_parallel_pipeline,
+            fork_apply_piz_gate_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             update_before_h_pipeline,
@@ -489,15 +489,15 @@ pub struct GpuSimulator<'a> {
     encoder: wgpu::CommandEncoder,
 
     n: u32,
-    max_batches: u32,
-    active_batches: u32,
+    max_c_cols: u32,
+    c_cols: u32,
     path_length: u32,
 
     n_buf: wgpu::Buffer,
     max_batches_buf: wgpu::Buffer,
     path_buf: wgpu::Buffer,
     tableau_buf: wgpu::Buffer,
-    active_batches_buf: wgpu::Buffer,
+    c_cols_buf: wgpu::Buffer,
     seen_p_gates_buf: wgpu::Buffer,
     ws_buf: wgpu::Buffer,
     w_coeffs_buf: wgpu::Buffer,
@@ -525,9 +525,12 @@ impl<'a> GpuSimulator<'a> {
             batch_size_log2 < 32,
             "batch_size_log2 must be strictly less than 32 to avoid overflow in max_batches"
         );
-        let max_batches: u32 = 1 << batch_size_log2;
+        let max_c_cols: u32 = batch_size_log2
+            .try_into()
+            .expect("batch_size_log2 exceeds maximum supported by GPU simulator");
+        let max_batches: u32 = 1 << max_c_cols;
         let max_batches_u64: u64 = max_batches.into();
-        let active_batches: u32 = 1;
+        let c_cols: u32 = 0;
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
@@ -554,14 +557,14 @@ impl<'a> GpuSimulator<'a> {
         });
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tableau"),
-            size: u64::from(tableau_block_length(n, max_batches)) * BLOCK_SIZE_BYTES,
+            size: u64::from(tableau_block_length(n, max_c_cols)) * BLOCK_SIZE_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let active_batches_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("active_batches"),
+        let c_cols_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("c_cols"),
             size: U32_SIZE,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let seen_p_gates_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -588,7 +591,7 @@ impl<'a> GpuSimulator<'a> {
             &max_batches_buf,
             &path_buf,
             &tableau_buf,
-            &active_batches_buf,
+            &c_cols_buf,
             &ws_buf,
             &w_coeffs_buf,
         );
@@ -657,15 +660,15 @@ impl<'a> GpuSimulator<'a> {
             encoder,
 
             n,
-            max_batches,
-            active_batches,
+            max_c_cols,
+            c_cols,
             path_length,
 
             n_buf,
             max_batches_buf,
             path_buf,
             tableau_buf,
-            active_batches_buf,
+            c_cols_buf,
             seen_p_gates_buf,
             ws_buf,
             w_coeffs_buf,
@@ -689,7 +692,7 @@ impl<'a> GpuSimulator<'a> {
         max_batches_buf: &wgpu::Buffer,
         path_buf: &wgpu::Buffer,
         tableau_buf: &wgpu::Buffer,
-        active_batches_buf: &wgpu::Buffer,
+        c_cols_buf: &wgpu::Buffer,
         ws_buf: &wgpu::Buffer,
         w_coeffs_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
@@ -715,7 +718,7 @@ impl<'a> GpuSimulator<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: active_batches_buf.as_entire_binding(),
+                    resource: c_cols_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
@@ -944,7 +947,7 @@ impl<'a> GpuSimulator<'a> {
                         seen_p_gates += 1;
                     } else {
                         self.dispatch_gates();
-                        self.apply_piz_gate_parallel(ci, cz, a);
+                        self.fork_apply_piz_gate(ci, cz, a);
                     }
                 }
                 _ => {}
@@ -993,11 +996,12 @@ impl<'a> GpuSimulator<'a> {
         self.encoder.clear_buffer(&self.tableau_buf, 0, None);
         self.encoder.clear_buffer(&self.seen_p_gates_buf, 0, None);
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
+        self.encoder.clear_buffer(&self.c_cols_buf, 0, None);
 
-        self.active_batches = 1;
+        self.c_cols = 0;
         self.apply_gates_bind_group_index = 0;
 
-        let workgroups = single_column_block_length(n).div_ceil(WORKGROUP_SIZE);
+        let workgroups = column_block_length(n).div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&self.gpu.zero_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1008,7 +1012,7 @@ impl<'a> GpuSimulator<'a> {
     fn dispatch_gates(&mut self) {
         match &self.apply_gates_bind_groups[self.apply_gates_bind_group_index] {
             Some(bind_group) => {
-                let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
+                let workgroups = self.block_or_state_threads().div_ceil(WORKGROUP_SIZE);
                 let mut pass = self.encoder.begin_compute_pass(&Default::default());
                 pass.set_pipeline(&self.gpu.apply_gates_pipeline);
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1029,18 +1033,18 @@ impl<'a> GpuSimulator<'a> {
         self.gpu.queue.submit([encoder.finish()]);
     }
 
-    fn apply_piz_gate_parallel(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
+    fn fork_apply_piz_gate(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
         debug_assert!(
-            self.active_batches * 2 <= self.max_batches,
-            "Cannot split batches beyond max_batches"
+            self.c_cols < self.max_c_cols,
+            "Cannot fork beyond max_c_cols"
         );
 
         let bind_group = self
             .gpu
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Apply Piz Gate Parallel Bind Group"),
-                layout: &self.gpu.apply_piz_gate_parallel_bind_group_layout,
+                label: Some("Fork Apply Piz Gate Bind Group"),
+                layout: &self.gpu.fork_apply_piz_gate_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -1081,29 +1085,30 @@ impl<'a> GpuSimulator<'a> {
                 ],
             });
 
-        let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
+        let workgroups = self.block_or_state_threads().div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
-        pass.set_pipeline(&self.gpu.apply_piz_gate_parallel_pipeline);
+        pass.set_pipeline(&self.gpu.fork_apply_piz_gate_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
         pass.set_bind_group(1, &bind_group, &[]);
         pass.dispatch_workgroups(workgroups, 1, 1);
+        drop(pass);
 
-        self.active_batches *= 2;
-        self.active_batches_buf =
-            self.gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("active_batches"),
-                    contents: &self.active_batches.to_ne_bytes(),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
+        self.c_cols += 1;
+        self.c_cols_buf = self
+            .gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("c_cols"),
+                contents: &self.c_cols.to_ne_bytes(),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            });
         self.global_bind_group = Self::new_global_bind_group(
             &self.gpu,
             &self.n_buf,
             &self.max_batches_buf,
             &self.path_buf,
             &self.tableau_buf,
-            &self.active_batches_buf,
+            &self.c_cols_buf,
             &self.ws_buf,
             &self.w_coeffs_buf,
         )
@@ -1111,7 +1116,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn bring_into_rref(&mut self) {
         let n = self.n;
-        let active_batches = self.active_batches;
+        let c_cols = self.c_cols;
 
         let mut input_buf = &self.rref_input_bufs[0];
         let mut input_next_buf = &self.rref_input_bufs[1];
@@ -1141,7 +1146,7 @@ impl<'a> GpuSimulator<'a> {
                     ],
                 });
 
-            let workgroups = self.active_column_block_length().div_ceil(WORKGROUP_SIZE);
+            let workgroups = column_block_length(n).div_ceil(WORKGROUP_SIZE);
             let mut elimination_pass = self.encoder.begin_compute_pass(&Default::default());
             elimination_pass.set_pipeline(&self.gpu.elimination_pass_pipeline);
             elimination_pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1149,7 +1154,7 @@ impl<'a> GpuSimulator<'a> {
             elimination_pass.dispatch_workgroups(workgroups, 1, 1);
             drop(elimination_pass);
 
-            let workgroups = active_batches.div_ceil(WORKGROUP_SIZE);
+            let workgroups = (n + n + 1 + c_cols).div_ceil(WORKGROUP_SIZE);
             let mut swap_pass = self.encoder.begin_compute_pass(&Default::default());
             swap_pass.set_pipeline(&self.gpu.swap_pass_pipeline);
             swap_pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1182,7 +1187,7 @@ impl<'a> GpuSimulator<'a> {
                 }],
             });
 
-        let workgroups = self.active_batches.div_ceil(WORKGROUP_SIZE);
+        let workgroups = self.contained_states().div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&self.gpu.update_before_h_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1191,7 +1196,7 @@ impl<'a> GpuSimulator<'a> {
     }
 
     fn compute_output(&mut self) {
-        let workgroups = self.active_batches.div_ceil(WORKGROUP_SIZE);
+        let workgroups = self.contained_states().div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&self.gpu.compute_output_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
@@ -1203,23 +1208,26 @@ impl<'a> GpuSimulator<'a> {
             .copy_buffer_to_buffer(&self.output_buf, 0, &self.output_read_buf, 0, None);
     }
 
-    fn active_column_block_length(&self) -> u32 {
-        single_column_block_length(self.n) * self.active_batches
+    /// Get the number of states currently represented by the tableau.
+    fn contained_states(&self) -> u32 {
+        1 << self.c_cols
+    }
+
+    /// Get the number of threads needed by kernels that assign one thread to each row (block),
+    /// as well as one thread to each contained state.
+    fn block_or_state_threads(&self) -> u32 {
+        max(column_block_length(self.n), self.contained_states())
     }
 }
 
-// Get the block-length of the columns in a single tableau batch.
-fn single_column_block_length(n: u32) -> u32 {
+// Get the block-length of the columns in the tableau.
+fn column_block_length(n: u32) -> u32 {
     // Make room for the auxiliary row.
     (n + 1).div_ceil(BLOCK_SIZE)
 }
-// Get the block-length of the columns of all the combined tableau batches.
-fn column_block_length(n: u32, max_batches: u32) -> u32 {
-    single_column_block_length(n) * max_batches
-}
-/// Get the length of the tableau in blocks.
-fn tableau_block_length(n: u32, max_batches: u32) -> u32 {
-    column_block_length(n, max_batches) * (n + n + 1)
+/// Get the length of the tableau in blocks, with room for `max_c_cols` c columns.
+fn tableau_block_length(n: u32, max_c_cols: u32) -> u32 {
+    column_block_length(n) * (n + n + 1 + max_c_cols)
 }
 
 fn encode_bitstring<T>(bits: T) -> Vec<u8>
