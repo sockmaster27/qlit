@@ -4,13 +4,21 @@ alias BitBlock = u32;
 @group(0) @binding(0) var<uniform> n: u32;
 @group(0) @binding(1) var<uniform> max_batches: u32;
 @group(0) @binding(2) var<storage, read> path: array<u32>;
+// The extended stabilizer tableau, laid out column-wise with interleaved x and z columns in the following way:
+// P1 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// ...
+// Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// (E -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct)
+// See ExtendedTableau in tableau.rs.
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
-@group(0) @binding(4) var<storage, read_write> active_batches: u32;
+// The current number of active c columns in the tableau.
+@group(0) @binding(4) var<uniform> c_cols: u32;
 @group(0) @binding(5) var<storage, read_write> ws: array<u32>;
 @group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 
-fn w_bit_index(batch_index: u32, q: u32) -> u32 {
-    return batch_index * n + q;
+fn w_bit_index(state_index: u32, q: u32) -> u32 {
+    return state_index * n + q;
 }
 
 @group(1) @binding(0) var<uniform> qubit: u32;
@@ -21,22 +29,24 @@ fn w_bit_index(batch_index: u32, q: u32) -> u32 {
 fn zero(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to row (block).
+    // Assign one thread to each row (block).
     let block_index = id.x;
-    if block_index >= single_column_block_length() {
+    if block_index >= column_block_length() {
         return;
     }
 
     // Assume all buffers are zero-initialized.
 
     if id.x == 0 {
-        active_batches = 1;
         w_coeffs[0] = Complex(1.0, 0.0);
     }
-    
+
     for (var i: u32 = 0; i < BLOCK_SIZE; i += 1) {
-        let b = z_column_block_index(0, block_index, block_index * BLOCK_SIZE + i);
-        tableau[b] = bitmask(i);
+        let q = block_index * BLOCK_SIZE + i;
+        if q < n {
+            let b = z_column_block_index(block_index, q);
+            tableau[b] = bitmask(i);
+        }
     }
 }
 
@@ -52,12 +62,14 @@ fn zero(
 fn apply_gates(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each row (block).
-    if id.x >= active_column_block_length() {
+    // Assign one thread to each row (block), and one thread to each contained state.
+    let block_index = id.x;
+    let state_index = id.x;
+    let is_block_thread = block_index < column_block_length();
+    let is_state_thread = state_index < contained_states();
+    if !is_block_thread && !is_state_thread {
         return;
     }
-    let batch_index = id.x / single_column_block_length();
-    let block_index = id.x % single_column_block_length();
 
     var p: u32 = 0;
     var seen_p_gates = initial_seen_p_gates;
@@ -68,16 +80,18 @@ fn apply_gates(
                 let a = qubit_params[p];
                 let b = qubit_params[p + 1];
                 p += 2;
-                let r = r_column_block_index(batch_index, block_index);
-                let xa = x_column_block_index(batch_index, block_index, a);
-                let za = z_column_block_index(batch_index, block_index, a);
-                let xb = x_column_block_index(batch_index, block_index, b);
-                let zb = z_column_block_index(batch_index, block_index, b);
-                tableau[r] ^= tableau[xa] & tableau[zb] & ~(tableau[xb] ^ tableau[za]);
-                tableau[za] ^= tableau[zb];
-                tableau[xb] ^= tableau[xa];
-                if block_index == 0 {
-                    ws[w_bit_index(batch_index, b)] ^= ws[w_bit_index(batch_index, a)];
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let xa = x_column_block_index(block_index, a);
+                    let za = z_column_block_index(block_index, a);
+                    let xb = x_column_block_index(block_index, b);
+                    let zb = z_column_block_index(block_index, b);
+                    tableau[r] ^= tableau[xa] & tableau[zb] & ~(tableau[xb] ^ tableau[za]);
+                    tableau[za] ^= tableau[zb];
+                    tableau[xb] ^= tableau[xa];
+                }
+                if is_state_thread {
+                    ws[w_bit_index(state_index, b)] ^= ws[w_bit_index(state_index, a)];
                 }
             }
             case 1: {
@@ -85,19 +99,21 @@ fn apply_gates(
                 let a = qubit_params[p];
                 let b = qubit_params[p + 1];
                 p += 2;
-                let r = r_column_block_index(batch_index, block_index);
-                let xa = x_column_block_index(batch_index, block_index, a);
-                let za = z_column_block_index(batch_index, block_index, a);
-                let xb = x_column_block_index(batch_index, block_index, b);
-                let zb = z_column_block_index(batch_index, block_index, b);
-                tableau[r] ^= (tableau[xb] & tableau[zb])
-                    ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
-                    ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
-                tableau[za] ^= tableau[xb];
-                tableau[zb] ^= tableau[xa];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u && ws[w_bit_index(batch_index, b)] == 1u {
-                        w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let xa = x_column_block_index(block_index, a);
+                    let za = z_column_block_index(block_index, a);
+                    let xb = x_column_block_index(block_index, b);
+                    let zb = z_column_block_index(block_index, b);
+                    tableau[r] ^= (tableau[xb] & tableau[zb])
+                        ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
+                        ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
+                    tableau[za] ^= tableau[xb];
+                    tableau[zb] ^= tableau[xa];
+                }
+                if is_state_thread {
+                    if ws[w_bit_index(state_index, a)] == 1u && ws[w_bit_index(state_index, b)] == 1u {
+                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
             }
@@ -105,41 +121,47 @@ fn apply_gates(
                 // X
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[z];
-                if block_index == 0 {
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let z = z_column_block_index(block_index, a);
+                    tableau[r] ^= tableau[z];
+                }
+                if is_state_thread {
                     // Flip bit
-                    ws[w_bit_index(batch_index, a)] ^= 1u;
+                    ws[w_bit_index(state_index, a)] ^= 1u;
                 }
             }
             case 3: {
                 // Y
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x] ^ tableau[z];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_minus_i(w_coeffs[batch_index]);
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let x = x_column_block_index(block_index, a);
+                    let z = z_column_block_index(block_index, a);
+                    tableau[r] ^= tableau[x] ^ tableau[z];
+                }
+                if is_state_thread {
+                    if ws[w_bit_index(state_index, a)] == 1u {
+                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
                     } else {
-                        w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
+                        w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
                     }
-                    ws[w_bit_index(batch_index, a)] ^= 1u;
+                    ws[w_bit_index(state_index, a)] ^= 1u;
                 }
             }
             case 4: {
                 // Z
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let x = x_column_block_index(block_index, a);
+                    tableau[r] ^= tableau[x];
+                }
+                if is_state_thread {
+                    if ws[w_bit_index(state_index, a)] == 1u {
+                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
             }
@@ -147,14 +169,16 @@ fn apply_gates(
                 // S
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x] & tableau[z];
-                tableau[z] ^= tableau[x];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_i(w_coeffs[batch_index]);
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let x = x_column_block_index(block_index, a);
+                    let z = z_column_block_index(block_index, a);
+                    tableau[r] ^= tableau[x] & tableau[z];
+                    tableau[z] ^= tableau[x];
+                }
+                if is_state_thread {
+                    if ws[w_bit_index(state_index, a)] == 1u {
+                        w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
                     }
                 }
             }
@@ -162,14 +186,16 @@ fn apply_gates(
                 // Sdg
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[z] ^= tableau[x];
-                tableau[r] ^= tableau[x] & tableau[z];
-                if block_index == 0 {
-                    if ws[w_bit_index(batch_index, a)] == 1u {
-                        w_coeffs[batch_index] = mul_minus_i(w_coeffs[batch_index]);
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let x = x_column_block_index(block_index, a);
+                    let z = z_column_block_index(block_index, a);
+                    tableau[z] ^= tableau[x];
+                    tableau[r] ^= tableau[x] & tableau[z];
+                }
+                if is_state_thread {
+                    if ws[w_bit_index(state_index, a)] == 1u {
+                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
                     }
                 }
             }
@@ -178,33 +204,37 @@ fn apply_gates(
                 // Updates to ws and w_coeffs are handled by update_before_h.
                 let a = qubit_params[p];
                 p += 1;
-                let r = r_column_block_index(batch_index, block_index);
-                let x = x_column_block_index(batch_index, block_index, a);
-                let z = z_column_block_index(batch_index, block_index, a);
-                tableau[r] ^= tableau[x] & tableau[z];
-                let temp = tableau[z];
-                tableau[z] = tableau[x];
-                tableau[x] = temp;
+                if is_block_thread {
+                    let r = r_column_block_index(block_index);
+                    let x = x_column_block_index(block_index, a);
+                    let z = z_column_block_index(block_index, a);
+                    tableau[r] ^= tableau[x] & tableau[z];
+                    let temp = tableau[z];
+                    tableau[z] = tableau[x];
+                    tableau[x] = temp;
+                }
             }
             case 8: {
                 // Piz branch
+                let a = qubit_params[p];
+                p += 1;
                 if path[seen_p_gates] == 0u {
-                    if block_index == 0 {
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], ci_params[seen_p_gates]);
+                    if is_state_thread {
+                        w_coeffs[state_index] = mul(w_coeffs[state_index], ci_params[seen_p_gates]);
                     }
                 } else {
-                    let a = qubit_params[p];
-                    let r = r_column_block_index(batch_index, block_index);
-                    let x = x_column_block_index(batch_index, block_index, a);
-                    tableau[r] ^= tableau[x];
-                    if block_index == 0 {
-                        if ws[w_bit_index(batch_index, a)] == 1u {
-                            w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
+                    if is_block_thread {
+                        let r = r_column_block_index(block_index);
+                        let x = x_column_block_index(block_index, a);
+                        tableau[r] ^= tableau[x];
+                    }
+                    if is_state_thread {
+                        if ws[w_bit_index(state_index, a)] == 1u {
+                            w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                         }
-                        w_coeffs[batch_index] = mul(w_coeffs[batch_index], cz_params[seen_p_gates]);
+                        w_coeffs[state_index] = mul(w_coeffs[state_index], cz_params[seen_p_gates]);
                     }
                 }
-                p += 1;
                 seen_p_gates += 1;
             }
             default: {}
@@ -218,42 +248,34 @@ fn apply_gates(
 
 @compute
 @workgroup_size(64)
-fn apply_piz_gate_parallel(
+fn fork_apply_piz_gate(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
     // Assign one thread to each row (block).
-    if id.x >= active_column_block_length() {
-        return;
-    }
-    let batch_index = id.x / single_column_block_length();
-    let block_index = id.x % single_column_block_length();
-    for (var q: u32 = 0u; q < n; q += 1) {
-        let x1 = x_column_block_index(batch_index, block_index, q);
-        let x2 = x_column_block_index(batch_index + active_batches, block_index, q);
-        tableau[x2] = tableau[x1];
-        let z1 = z_column_block_index(batch_index, block_index, q);
-        let z2 = z_column_block_index(batch_index + active_batches, block_index, q);
-        tableau[z2] = tableau[z1];
-    }
-    
-    let x = x_column_block_index(batch_index, block_index, qubit);
-    let r1 = r_column_block_index(batch_index, block_index);
-    let r2 = r_column_block_index(batch_index + active_batches, block_index);
-    tableau[r2] = tableau[r1] ^ tableau[x];
+    if id.x < column_block_length() {
+        let block_index = id.x;
 
-    if block_index == 0 {
-        let index_i = batch_index;
-        let index_z = batch_index + active_batches;
+        let x = x_column_block_index(block_index, qubit);
+        let c = c_column_block_index(block_index, c_cols);
+        tableau[c] = tableau[x];
+    }
+
+    // Assign one thread to each contained state.
+    if id.x < contained_states() {
+        let index_i = id.x;
+        let index_z = id.x + contained_states();
+
         for (var q = 0u; q < n; q += 1) {
             ws[w_bit_index(index_z, q)] = ws[w_bit_index(index_i, q)];
         }
         w_coeffs[index_z] = w_coeffs[index_i];
 
         w_coeffs[index_i] = mul(w_coeffs[index_i], ci);
-        w_coeffs[index_z] = mul(w_coeffs[index_z], cz);
+
         if ws[w_bit_index(index_z, qubit)] == 1u {
             w_coeffs[index_z] = mul_minus_one(w_coeffs[index_z]);
         }
+        w_coeffs[index_z] = mul(w_coeffs[index_z], cz);
     }
 }
 
@@ -272,11 +294,10 @@ fn elimination_pass(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
     // Assign one thread to each row (block).
-    if id.x >= active_column_block_length() {
+    let block_index = id.x;
+    if block_index >= column_block_length() {
         return;
     }
-    let batch_index = id.x / single_column_block_length();
-    let block_index = id.x % single_column_block_length();
 
     if id.x == 0 {
         input_next.col = input.col + 1;
@@ -290,13 +311,13 @@ fn elimination_pass(
     var pivot_found = false;
     var pivot: u32 = 0;
     let a_block_index = input.a / BLOCK_SIZE;
-    for (var i = a_block_index; i < single_column_block_length(); i += 1) {
+    for (var i = a_block_index; i < column_block_length(); i += 1) {
         // Bitmask blocking out the auxiliary row.
         var aux_mask: BitBlock = ~0u;
         if i == aux_block_index {
             aux_mask = ~bitmask(aux_bit_index);
         }
-        let block = tableau[x_column_block_index(batch_index, i, input.col)] & aux_mask;
+        let block = tableau[x_column_block_index(i, input.col)] & aux_mask;
         if block != 0 {
             let row = BLOCK_SIZE * i + lsb_index(block);
             if row >= input.a {
@@ -331,7 +352,7 @@ fn elimination_pass(
         pivot_mask = ~bitmask(pivot_bit_index);
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-    let mask = tableau[x_column_block_index(batch_index, block_index, input.col)] & pivot_mask;
+    let mask = tableau[x_column_block_index(block_index, input.col)] & pivot_mask;
     if mask == 0 {
         return;
     }
@@ -343,15 +364,15 @@ fn elimination_pass(
     var phase_bit1: BitBlock = 0u;
     var phase_bit2: BitBlock = 0u;
     for (var col2 = 0u; col2 < n; col2 += 1) {
-        let x1 = tableau[x_column_block_index(batch_index, block_index, col2)];
-        let z1 = tableau[z_column_block_index(batch_index, block_index, col2)];
+        let x1 = tableau[x_column_block_index(block_index, col2)];
+        let z1 = tableau[z_column_block_index(block_index, col2)];
         // Fill these blocks with the bits in the pivot row.
         var x2: BitBlock = 0u;
-        if x_bit(batch_index, pivot, col2) { 
+        if x_bit(pivot, col2) {
             x2 = ~0u;
         }
         var z2: BitBlock = 0u;
-        if z_bit(batch_index, pivot, col2) {
+        if z_bit(pivot, col2) {
             z2 = ~0u;
         }
 
@@ -378,12 +399,12 @@ fn elimination_pass(
     // This should never be able to happen, and we cannot represent it.
     // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
     // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
-    tableau[r_column_block_index(batch_index, block_index)] ^= phase_bit2 & mask;
+    tableau[r_column_block_index(block_index)] ^= phase_bit2 & mask;
 
     // XOR
-    for (var j = 0u; j < n + n + 1; j += 1) {
-        if bit(batch_index, pivot, j)  {
-            tableau[column_block_index(batch_index, block_index, j)] ^= mask;
+    for (var j = 0u; j < n + n + 1 + c_cols; j += 1) {
+        if bit(pivot, j)  {
+            tableau[column_block_index(block_index, j)] ^= mask;
         }
     }
 }
@@ -393,9 +414,9 @@ fn elimination_pass(
 fn swap_pass(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each batch.
-    let batch_index = id.x;
-    if batch_index >= active_batches {
+    // Assign one thread to each column.
+    let j = id.x;
+    if j >= n + n + 1 + c_cols {
         return;
     }
 
@@ -410,18 +431,16 @@ fn swap_pass(
     let row1_bitmask = bitmask(row1_bit_index);
     let row2_bitmask = bitmask(row2_bit_index);
 
-    for (var j: u32 = 0; j < n + n + 1; j += 1) {
-        let block1 = column_block_index(batch_index, row1_block_index, j);
-        let block2 = column_block_index(batch_index, row2_block_index, j);
-        let bit1 = (tableau[block1] & row1_bitmask) != 0;
-        let bit2 = (tableau[block2] & row2_bitmask) != 0;
-        if bit1 && !bit2 {
-            tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
-            tableau[block2] = set_bit(tableau[block2], row2_bit_index);
-        } else if !bit1 && bit2 {
-            tableau[block1] = set_bit(tableau[block1], row1_bit_index);
-            tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
-        }
+    let block1 = column_block_index(row1_block_index, j);
+    let block2 = column_block_index(row2_block_index, j);
+    let bit1 = (tableau[block1] & row1_bitmask) != 0;
+    let bit2 = (tableau[block2] & row2_bitmask) != 0;
+    if bit1 && !bit2 {
+        tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
+        tableau[block2] = set_bit(tableau[block2], row2_bit_index);
+    } else if !bit1 && bit2 {
+        tableau[block1] = set_bit(tableau[block1], row1_bit_index);
+        tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
     }
 }
 
@@ -431,23 +450,23 @@ fn swap_pass(
 fn update_before_h(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each batch.
-    let batch_index = id.x;
-    if batch_index >= active_batches {
+    // Assign one thread to each contained state.
+    let state_index = id.x;
+    if state_index >= contained_states() {
         return;
     }
 
-    let r = coeff_ratio_flipped_bit(batch_index);
+    let r = coeff_ratio_flipped_bit(state_index);
     if !eq(r, Complex(-1.0, 0.0)) {
-        w_coeffs[batch_index] = mul(w_coeffs[batch_index], div_real(add_real(r, 1.0), sqrt(2.0)));
-        ws[w_bit_index(batch_index, qubit)] = 0;
+        w_coeffs[state_index] = mul(w_coeffs[state_index], div_real(add_real(r, 1.0), sqrt(2.0)));
+        ws[w_bit_index(state_index, qubit)] = 0;
     } else {
-        if ws[w_bit_index(batch_index, qubit)] == 0 {
-            w_coeffs[batch_index] = mul_real(w_coeffs[batch_index], 2.0 / sqrt(2.0));
+        if ws[w_bit_index(state_index, qubit)] == 0 {
+            w_coeffs[state_index] = mul_real(w_coeffs[state_index], 2.0 / sqrt(2.0));
         } else {
-            w_coeffs[batch_index] = mul_real(w_coeffs[batch_index], -2.0 / sqrt(2.0));
+            w_coeffs[state_index] = mul_real(w_coeffs[state_index], -2.0 / sqrt(2.0));
         }
-        ws[w_bit_index(batch_index, qubit)] = 1;
+        ws[w_bit_index(state_index, qubit)] = 1;
     }
 }
 
@@ -460,48 +479,48 @@ fn update_before_h(
 fn compute_output(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each batch.
-    let batch_index = id.x;
-    if batch_index >= active_batches {
+    // Assign one thread to each contained state.
+    let state_index = id.x;
+    if state_index >= contained_states() {
         return;
     }
 
-    let r = coeff_ratio(batch_index);
-    output[batch_index] = mul(w_coeffs[batch_index], r);
+    let r = coeff_ratio(state_index);
+    output[state_index] = mul(w_coeffs[state_index], r);
 }
 
 
 // Assume tableau in RREF.
-fn coeff_ratio_flipped_bit(batch_index: u32) -> Complex {
+fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
     let flipped_bit = qubit;
 
     // Find pivot row.
     var row: u32 = 0;
     for (var j: u32 = 0; j < n; j += 1) {
-        if x_bit(batch_index, j, flipped_bit) {
+        if x_bit(j, flipped_bit) {
             row = j;
             break;
         }
     }
 
     var res = Complex(1.0, 0.0);
-    if row_negative(batch_index, row) {
+    if row_negative(state_index, row) {
         res = Complex(-1.0, 0.0);
-    } 
+    }
     for (var q: u32 = 0; q < n; q += 1) {
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        if i(batch_index, row, q) && (flipped_bit != q) {
+        if i(row, q) && (flipped_bit != q) {
             // Multiply by 1
-        } else if x(batch_index, row, q) && (flipped_bit == q) {
+        } else if x(row, q) && (flipped_bit == q) {
             // Multiply by 1
-        } else if y(batch_index, row, q) && (flipped_bit == q) {
-            if ws[w_bit_index(batch_index, q)] == 0 {
+        } else if y(row, q) && (flipped_bit == q) {
+            if ws[w_bit_index(state_index, q)] == 0 {
                 res = mul_i(res);
             } else {
                 res = mul_minus_i(res);
             }
-        } else if z(batch_index, row, q) && (flipped_bit != q) {
-            if ws[w_bit_index(batch_index, q)] == 0 {
+        } else if z(row, q) && (flipped_bit != q) {
+            if ws[w_bit_index(state_index, q)] == 0 {
                 // Multiply by 1
             } else {
                 res = mul_minus_one(res);
@@ -515,168 +534,162 @@ fn coeff_ratio_flipped_bit(batch_index: u32) -> Complex {
 }
 
 // Assume tableau in RREF.
-fn coeff_ratio(batch_index: u32) -> Complex {
-    let aux_row = n;
-    let aux_block_index = aux_row / BLOCK_SIZE;
-    let aux_bit_index = aux_row % BLOCK_SIZE;
-    let aux_bitmask = bitmask(aux_bit_index);
+//
+// Since the auxiliary row is shared between all contained states,
+// the stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ
+// is derived one tensor element at a time instead of being stored in the auxiliary row.
+fn coeff_ratio(state_index: u32) -> Complex {
+    // We encode the result as i^phase, and let the phase wrap around modulo 4.
+    var phase: u32 = 0;
 
-    // Reset the auxiliary row.
-    for (var j: u32 = 0; j < n + n + 1; j += 1) {
-        tableau[column_block_index(batch_index, aux_block_index, j)] &= ~aux_bitmask;
-    }
-    // Derive a stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ.
+    // Determine the sign of the derived stabilizer.
     var row: u32 = 0;
     for (var q: u32 = 0; q < n; q += 1) {
-        if x_bit(batch_index, row, q) {
-            if ws[w_bit_index(batch_index, q)] != w_target[q] {
-                multiply_rows_into(batch_index, row, aux_row);
+        if x_bit(row, q) {
+            if ws[w_bit_index(state_index, q)] != w_target[q] && row_negative(state_index, row) {
+                phase += 2;
             }
             row += 1;
         }
     }
 
-    var res = Complex(1.0, 0.0);
-    if row_negative(batch_index, aux_row) {
-        res = Complex(-1.0, 0.0);
-    } 
-    for (var q: u32 = 0; q < n; q += 1) {
-        if i(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] == w_target[q]) {
-            // Multiply by 1
-        } else if x(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] != w_target[q]) {
-            // Multiply by 1
-        } else if y(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] != w_target[q]) {
-            if ws[w_bit_index(batch_index, q)] == 0 {
-                res = mul_i(res);
-            } else {
-                res = mul_minus_i(res);
+    for (var q2: u32 = 0; q2 < n; q2 += 1) {
+        // Derive the q2'th tensor element of the stabilizer,
+        // including the phase change caused by multiplication of the individual Pauli matrices.
+        var x_acc = false;
+        var z_acc = false;
+        var row2: u32 = 0;
+        for (var q: u32 = 0; q < n; q += 1) {
+            if x_bit(row2, q) {
+                if ws[w_bit_index(state_index, q)] != w_target[q] {
+                    let x_row = x_bit(row2, q2);
+                    let z_row = z_bit(row2, q2);
+                    phase += product_phase(x_acc, z_acc, x_row, z_row);
+                    x_acc = x_acc != x_row;
+                    z_acc = z_acc != z_row;
+                }
+                row2 += 1;
             }
-        } else if z(batch_index, aux_row, q) && (ws[w_bit_index(batch_index, q)] == w_target[q]) {
-            if ws[w_bit_index(batch_index, q)] == 0 {
-                // Multiply by 1
-            } else {
-                res = mul_minus_one(res);
-            }
-        } else {
+        }
+
+        // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
+        let w1_bit = ws[w_bit_index(state_index, q2)];
+        let differs = w1_bit != w_target[q2];
+        if x_acc != differs {
             // Multiply by 0
             return Complex(0.0, 0.0);
         }
+        if x_acc && z_acc {
+            // Y
+            phase += 1;
+        }
+        if z_acc && w1_bit == 1 {
+            // Z or Y
+            phase += 2;
+        }
     }
-    return res;
+    return i_pow(phase);
 }
 
-// Set row with index `dst` to be the product of the `src` and `dst` rows.
-//
-// NOTE: Since all stabilizers must commute, multiplication order is irrelevant.
-fn multiply_rows_into(batch_index: u32, src: u32, dst: u32) {
-    let src_block_index = src / BLOCK_SIZE;
-    let dst_block_index = dst / BLOCK_SIZE;
-    let src_bit_index = src % BLOCK_SIZE;
-    let dst_bit_index = dst % BLOCK_SIZE;
-    let src_bitmask = bitmask(src_bit_index);
-    let dst_bitmask = bitmask(dst_bit_index);
-
-    // Determine phase shift.
-    var phase: u32 = 0;
-    for (var q: u32 = 0; q < n; q += 1) {
-        if x(batch_index, src, q) && y(batch_index, dst, q) {
-            phase += 1;
-        } else if x(batch_index, src, q) && z(batch_index, dst, q) {
-            phase += 3;
-        } else if y(batch_index, src, q) && z(batch_index, dst, q) {
-            phase += 1;
-        } else if y(batch_index, src, q) && x(batch_index, dst, q) {
-            phase += 3;
-        } else if z(batch_index, src, q) && x(batch_index, dst, q) {
-            phase += 1;
-        } else if z(batch_index, src, q) && y(batch_index, dst, q) {
-            phase += 3;
-        }
-        phase %= 4;
+// Get the exponent of the phase, i^phase, resulting from multiplying the Pauli matrices (x1, z1) and (x2, z2) in that order.
+fn product_phase(x1: bool, z1: bool, x2: bool, z2: bool) -> u32 {
+    let x_1 = x1 && !z1;
+    let y_1 = x1 && z1;
+    let z_1 = !x1 && z1;
+    let x_2 = x2 && !z2;
+    let y_2 = x2 && z2;
+    let z_2 = !x2 && z2;
+    // XY = +iZ
+    // YZ = +iX
+    // ZX = +iY
+    if (x_1 && y_2) || (y_1 && z_2) || (z_1 && x_2) {
+        return 1u;
     }
-    if phase == 2 {
-        // Negate the sign bit.
-        tableau[r_column_block_index(batch_index, dst_block_index)] ^= dst_bitmask;
+    // YX = -iZ
+    // ZY = -iX
+    // XZ = -iY
+    if (y_1 && x_2) || (z_1 && y_2) || (x_1 && z_2) {
+        return 3u;
     }
-    // phase == 0 implies multiplication by 1, do nothing.
-    // Any other phase should be impossible since stabilizers must commute.
-
-    // XOR
-    for (var j: u32 = 0; j < n + n + 1; j += 1) {
-        let src_block = column_block_index(batch_index, src_block_index, j);
-        let dst_block = column_block_index(batch_index, dst_block_index, j);
-        tableau[dst_block] ^= align_bit_to(
-            tableau[src_block] & src_bitmask,
-            src_bit_index,
-            dst_bit_index,
-        );
-    }
+    return 0u;
 }
 
 
 // Get whether the given row is negative or not, i.e. the contents of the sign bit.
-fn row_negative(batch_index: u32, row: u32) -> bool {
+//
+// This will respect the sign of the s'th state.
+fn row_negative(s: u32, row: u32) -> bool {
     let row_block_index = row / BLOCK_SIZE;
     let row_bit_index = row % BLOCK_SIZE;
     let row_bitmask = bitmask(row_bit_index);
-    return (tableau[r_column_block_index(batch_index, row_block_index)] & row_bitmask) != 0;
+    var r = tableau[r_column_block_index(row_block_index)];
+    for (var j: u32 = 0; j < c_cols; j += 1) {
+        if (s & (1u << j)) != 0u {
+            r ^= tableau[c_column_block_index(row_block_index, j)];
+        }
+    }
+    return (r & row_bitmask) != 0u;
 }
 
-// Get the index of the i'th block of the `j`th column.
-fn column_block_index(batch_index: u32, i: u32, j: u32) -> u32 {
-    let batch_start_block = batch_index * single_column_block_length();
-    return (batch_start_block + i) * (n + n + 1) + j;
+// Get the index of the i'th block of the j'th column.
+fn column_block_index(i: u32, j: u32) -> u32 {
+    return j * column_block_length() + i;
 }
-// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
-fn x_column_block_index(batch_index: u32, i: u32, q: u32) -> u32 {
-    return column_block_index(batch_index, i, 2 * q);
+// Get the index of the i'th block of the column representing the x part of the q'th tensor element.
+fn x_column_block_index(i: u32, q: u32) -> u32 {
+    return column_block_index(i, 2 * q);
 }
-// Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
-fn z_column_block_index(batch_index: u32, i: u32, q: u32) -> u32 {
-    return column_block_index(batch_index, i, 2 * q + 1);
+// Get the index of the i'th block of the column representing the z part of the q'th tensor element.
+fn z_column_block_index(i: u32, q: u32) -> u32 {
+    return column_block_index(i, 2 * q + 1);
 }
 // Get the index of the i'th block of the r column.
-fn r_column_block_index(batch_index: u32, i: u32) -> u32 {
-    return column_block_index(batch_index, i, 2 * n);
+fn r_column_block_index(i: u32) -> u32 {
+    return column_block_index(i, n + n);
+}
+// Get the index of the i'th block of the j'th c column.
+fn c_column_block_index(i: u32, j: u32) -> u32 {
+    return column_block_index(i, n + n + 1 + j);
 }
 
-// Get the block-length of the columns in a single tableau batch.
-fn single_column_block_length() -> u32 {
+// Get the block-length of the columns in the tableau.
+fn column_block_length() -> u32 {
     // Make room for the auxiliary row.
     return div_ceil(n + 1, BLOCK_SIZE);
 }
-// Get the block-length of the combined active tableau batches.
-fn active_column_block_length() -> u32 {
-    return single_column_block_length() * active_batches;
+
+// Get the number of states currently represented by the tableau.
+fn contained_states() -> u32 {
+    return 1u << c_cols;
 }
 
-// Get the value of the bit corresponding to the `j`th column in the `row`th row.
-fn bit(batch_index: u32, row: u32, j: u32) -> bool {
+// Get the value of the bit corresponding to the j'th column in the `row`th row.
+fn bit(row: u32, j: u32) -> bool {
     let row_block_index = row / BLOCK_SIZE;
     let row_bit_index = row % BLOCK_SIZE;
     let row_bitmask = bitmask(row_bit_index);
-    return (tableau[column_block_index(batch_index, row_block_index, j)] & row_bitmask) != 0u;
+    return (tableau[column_block_index(row_block_index, j)] & row_bitmask) != 0u;
 }
-// Get the value of the x bit corresponding to the `q`th tensor element in the `row`th row.
-fn x_bit(batch_index: u32, row: u32, q: u32) -> bool {
-    return bit(batch_index, row, 2 * q);
+// Get the value of the x bit corresponding to the q'th tensor element in the `row`th row.
+fn x_bit(row: u32, q: u32) -> bool {
+    return bit(row, 2 * q);
 }
-// Get the value of the z bit corresponding to the `q`th tensor element in the `row`th row.
-fn z_bit(batch_index: u32, row: u32, q: u32) -> bool {
-    return bit(batch_index, row, 2 * q + 1);
+// Get the value of the z bit corresponding to the q'th tensor element in the `row`th row.
+fn z_bit(row: u32, q: u32) -> bool {
+    return bit(row, 2 * q + 1);
 }
 
-fn i(batch_index: u32, row: u32, q: u32) -> bool {
-    return !x_bit(batch_index, row, q) && !z_bit(batch_index, row, q);
+fn i(row: u32, q: u32) -> bool {
+    return !x_bit(row, q) && !z_bit(row, q);
 }
-fn x(batch_index: u32, row: u32, q: u32) -> bool {
-    return x_bit(batch_index, row, q) && !z_bit(batch_index, row, q);
+fn x(row: u32, q: u32) -> bool {
+    return x_bit(row, q) && !z_bit(row, q);
 }
-fn y(batch_index: u32, row: u32, q: u32) -> bool {
-    return x_bit(batch_index, row, q) && z_bit(batch_index, row, q);
+fn y(row: u32, q: u32) -> bool {
+    return x_bit(row, q) && z_bit(row, q);
 }
-fn z(batch_index: u32, row: u32, q: u32) -> bool {
-    return !x_bit(batch_index, row, q) && z_bit(batch_index, row, q);
+fn z(row: u32, q: u32) -> bool {
+    return !x_bit(row, q) && z_bit(row, q);
 }
 
 fn x_block(x: BitBlock, z: BitBlock) -> BitBlock {
@@ -695,15 +708,6 @@ fn y_block(x: BitBlock, z: BitBlock) -> BitBlock {
 // bitmask(6) -> 00000010
 fn bitmask(i: u32) -> BitBlock {
     return 1u << (BLOCK_SIZE - 1u - i);
-}
-
-// Bit-shift the given block such that the `src`th bit is moved to the `dst`th position.
-fn align_bit_to(block: BitBlock, src: u32, dst: u32) -> BitBlock {
-    if dst < src {
-        return block << (src - dst);
-    } else {
-        return block >> (dst - src);
-    }
 }
 
 // Get the index of the least significant (right-most) bit in the given block, e.g.
@@ -772,4 +776,21 @@ fn mul_i(c: Complex) -> Complex {
 }
 fn mul_minus_i(c: Complex) -> Complex {
     return Complex(c.im, -c.re);
+}
+// Get i^phase.
+fn i_pow(phase: u32) -> Complex {
+    switch phase % 4 {
+        case 0: {
+            return Complex(1.0, 0.0);
+        }
+        case 1: {
+            return Complex(0.0, 1.0);
+        }
+        case 2: {
+            return Complex(-1.0, 0.0);
+        }
+        default: {
+            return Complex(0.0, -1.0);
+        }
+    }
 }
