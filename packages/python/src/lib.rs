@@ -112,7 +112,7 @@ impl PyCircuit {
         // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
         // seed always produces the same circuit regardless of pointer width.
         // Useful for CI testing and benchmarking.
-        let rng = Xoshiro128PlusPlus::seed_from_u64(seed);
+        let rng = &mut Xoshiro128PlusPlus::seed_from_u64(seed);
         PyCircuit(Circuit::random_clifford_t(qubits, gates, t_gates, rng))
     }
 

@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
-#[cfg(any(feature = "rand", test))]
+#[cfg(feature = "rand")]
 use rand::{Rng, RngExt, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -88,8 +88,13 @@ impl Circuit {
     }
 
     /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    #[cfg(any(feature = "rand", test))]
-    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, mut rng: impl Rng) -> Self {
+    #[cfg(feature = "rand")]
+    pub fn random_clifford_t(
+        qubits: u32,
+        gates: usize,
+        t_gates: usize,
+        rng: &mut impl Rng,
+    ) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
@@ -119,10 +124,10 @@ impl Circuit {
                         b = rng.random_range(0..qubits);
                     }
                     if t_gate_positions.contains(&i) {
-                        [T(a), Tdg(a)].choose(&mut rng).unwrap().clone()
+                        [T(a), Tdg(a)].choose(rng).unwrap().clone()
                     } else {
                         [X(a), Y(a), Z(a), H(a), S(a), Sdg(a), Cnot(a, b), Cz(a, b)]
-                            .choose(&mut rng)
+                            .choose(rng)
                             .unwrap()
                             .clone()
                     }

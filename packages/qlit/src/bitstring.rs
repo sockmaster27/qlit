@@ -1,7 +1,7 @@
 use std::mem;
 use std::{borrow::Borrow, fmt::Debug};
 
-#[cfg(any(feature = "rand", test))]
+#[cfg(feature = "rand")]
 use rand::{Rng, RngExt};
 
 use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
@@ -52,8 +52,8 @@ impl BitString {
             inner: s.to_be_bytes().into(),
         }
     }
-    #[cfg(any(feature = "rand", test))]
-    pub fn random(length: usize, rng: impl Rng) -> Self {
+    #[cfg(feature = "rand")]
+    pub fn random(length: usize, rng: &mut impl Rng) -> Self {
         Self {
             length,
             inner: rng
