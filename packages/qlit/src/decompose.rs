@@ -47,7 +47,7 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
     use CliffordPGate::*;
 
     let qubits = circuit.qubits();
-    let mut gates = Vec::new();
+    let mut gates = Vec::with_capacity(circuit.gates());
     for gate in circuit {
         let decomp: &[CliffordPGate] = match gate {
             Gate::X(a) => &[X(a)],

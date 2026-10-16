@@ -128,6 +128,11 @@ impl Circuit {
         self.qubits
     }
 
+    /// The number of gates in the circuit.
+    pub fn gates(&self) -> usize {
+        self.gates.len()
+    }
+
     /// An iterator over the gates in the circuit, in the order that they are applied.
     pub fn iter(&self) -> impl Iterator<Item = Gate> {
         self.into_iter()
