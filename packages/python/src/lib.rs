@@ -4,6 +4,7 @@ use qlit::{
     BitString, Circuit, Gate, initialize_global, simulate_circuit, simulate_circuit_gpu,
     simulate_circuit_hybrid,
 };
+use rand::{SeedableRng, rngs::Xoshiro128PlusPlus};
 
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,7 +109,11 @@ impl PyCircuit {
     /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[staticmethod]
     fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
-        PyCircuit(Circuit::random_clifford_t(qubits, gates, t_gates, seed))
+        // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
+        // seed always produces the same circuit regardless of pointer width.
+        // Useful for CI testing and benchmarking.
+        let rng = &mut Xoshiro128PlusPlus::seed_from_u64(seed);
+        PyCircuit(Circuit::random_clifford_t(qubits, gates, t_gates, rng))
     }
 
     /// The number of qubits in the circuit.
