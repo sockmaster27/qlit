@@ -12,6 +12,7 @@ fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
     // Useful for CI testing and benchmarking.
     let rng = &mut Xoshiro128PlusPlus::seed_from_u64(123);
     let w = BitString::random(qubits.try_into().unwrap(), rng);
+    let rng = &mut Xoshiro128PlusPlus::seed_from_u64(123);
     let circuit = Circuit::random_clifford_t(qubits, gates, t_gates, rng);
     (w, circuit)
 }
