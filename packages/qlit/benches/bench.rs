@@ -8,7 +8,7 @@ fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
 
     let seed = 123;
     let w = BitString::random(qubits.try_into().unwrap(), seed);
-    let circuit = Circuit::random(qubits, gates, t_gates, seed);
+    let circuit = Circuit::random_clifford_t(qubits, gates, t_gates, seed);
     (w, circuit)
 }
 

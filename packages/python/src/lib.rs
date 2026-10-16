@@ -6,7 +6,7 @@ use qlit::{
 };
 
 #[pyclass(from_py_object)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[pyo3(name = "Gate")]
 // For now, we unfortunately have to duplicate this
 // See https://github.com/PyO3/pyo3/discussions/3368
@@ -21,6 +21,9 @@ enum PyGate {
     Cz(u32, u32),
     T(u32),
     Tdg(u32),
+    Rx(f64, u32),
+    Ry(f64, u32),
+    Rz(f64, u32),
 }
 #[pymethods]
 impl PyGate {
@@ -38,6 +41,9 @@ impl PyGate {
             Cz(a, b) => format!("{pre}Cz({a}, {b})"),
             T(a) => format!("{pre}T({a})"),
             Tdg(a) => format!("{pre}Tdg({a})"),
+            Rx(t, a) => format!("{pre}Rx({t}, {a})"),
+            Ry(t, a) => format!("{pre}Ry({t}, {a})"),
+            Rz(t, a) => format!("{pre}Rz({t}, {a})"),
         }
     }
 }
@@ -54,6 +60,9 @@ impl From<PyGate> for Gate {
             PyGate::Cz(a, b) => Gate::Cz(a, b),
             PyGate::T(a) => Gate::T(a),
             PyGate::Tdg(a) => Gate::Tdg(a),
+            PyGate::Rx(t, a) => Gate::Rx(t, a),
+            PyGate::Ry(t, a) => Gate::Ry(t, a),
+            PyGate::Rz(t, a) => Gate::Rz(t, a),
         }
     }
 }
@@ -70,12 +79,15 @@ impl From<Gate> for PyGate {
             Gate::Cz(a, b) => PyGate::Cz(a, b),
             Gate::T(a) => PyGate::T(a),
             Gate::Tdg(a) => PyGate::Tdg(a),
+            Gate::Rx(t, a) => PyGate::Rx(t, a),
+            Gate::Ry(t, a) => PyGate::Ry(t, a),
+            Gate::Rz(t, a) => PyGate::Rz(t, a),
         }
     }
 }
 
 #[pyclass(skip_from_py_object)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[pyo3(name = "Circuit")]
 struct PyCircuit(Circuit);
 #[pymethods]
@@ -93,10 +105,10 @@ impl PyCircuit {
         }
     }
 
-    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[staticmethod]
-    fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
-        PyCircuit(Circuit::random(qubits, gates, t_gates, seed))
+    fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+        PyCircuit(Circuit::random_clifford_t(qubits, gates, t_gates, seed))
     }
 
     /// The number of qubits in the circuit.

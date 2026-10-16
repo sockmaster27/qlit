@@ -1,8 +1,8 @@
-use std::{error::Error, fmt::Display, vec::IntoIter};
+use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
 use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Gate {
     X(u32),
     Y(u32),
@@ -20,8 +20,12 @@ pub enum Gate {
     T(u32),
     /// The inverse of the T gate.
     Tdg(u32),
+
+    Rx(f64, u32),
+    Ry(f64, u32),
+    Rz(f64, u32),
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Circuit {
     /// The number of qubits in the circuit.
     qubits: u32,
@@ -34,14 +38,20 @@ impl Circuit {
         gates: impl IntoIterator<Item = Gate>,
     ) -> Result<Self, CircuitCreationError> {
         let gates: Vec<Gate> = gates.into_iter().collect();
-        let check_index = |a| {
-            if a >= qubits {
-                return Err(CircuitCreationError::InvalidQubitIndex { index: a, qubits });
-            }
-            Ok(())
-        };
-        for &gate in &gates {
+        for (index, &gate) in gates.iter().enumerate() {
             use Gate::*;
+            let check_index = |a| {
+                if a >= qubits {
+                    return Err(CircuitCreationError::InvalidQubitIndex { index, qubits });
+                }
+                Ok(())
+            };
+            let check_param = |t: f64| {
+                if t.is_nan() || t.is_infinite() {
+                    return Err(CircuitCreationError::InvalidParameter { index });
+                }
+                Ok(())
+            };
             match gate {
                 X(a) => check_index(a)?,
                 Y(a) => check_index(a)?,
@@ -57,19 +67,27 @@ impl Circuit {
                     check_index(a)?;
                     check_index(b)?;
                 }
-                T(a) => {
+                T(a) => check_index(a)?,
+                Tdg(a) => check_index(a)?,
+                Rx(t, a) => {
                     check_index(a)?;
+                    check_param(t)?;
                 }
-                Tdg(a) => {
+                Ry(t, a) => {
                     check_index(a)?;
+                    check_param(t)?;
+                }
+                Rz(t, a) => {
+                    check_index(a)?;
+                    check_param(t)?;
                 }
             }
         }
         Ok(Self { qubits, gates })
     }
 
-    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    pub fn random(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
@@ -121,24 +139,99 @@ impl Circuit {
         self.qubits
     }
 
+    /// The number of gates in the circuit.
+    pub fn gate_count(&self) -> usize {
+        self.gates.len()
+    }
+
     /// An iterator over the gates in the circuit, in the order that they are applied.
     pub fn iter(&self) -> impl Iterator<Item = Gate> {
-        self.gates.iter().copied()
+        self.into_iter()
+    }
+}
+pub struct Iter<'a> {
+    inner: Copied<slice::Iter<'a, Gate>>,
+}
+impl<'a> Iterator for Iter<'a> {
+    type Item = Gate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+    fn fold<Acc, F>(self, init: Acc, f: F) -> Acc
+    where
+        F: FnMut(Acc, Self::Item) -> Acc,
+    {
+        self.inner.fold(init, f)
+    }
+    fn nth(&mut self, n: usize) -> Option<Gate> {
+        self.inner.nth(n)
+    }
+    fn last(self) -> Option<Gate> {
+        self.inner.last()
+    }
+    fn count(self) -> usize {
+        self.inner.count()
+    }
+}
+impl<'a> IntoIterator for &'a Circuit {
+    type Item = Gate;
+
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            inner: self.gates.iter().copied(),
+        }
+    }
+}
+pub struct IntoIter {
+    inner: vec::IntoIter<Gate>,
+}
+impl Iterator for IntoIter {
+    type Item = Gate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+    fn fold<Acc, F>(self, init: Acc, f: F) -> Acc
+    where
+        F: FnMut(Acc, Self::Item) -> Acc,
+    {
+        self.inner.fold(init, f)
+    }
+    fn nth(&mut self, n: usize) -> Option<Gate> {
+        self.inner.nth(n)
+    }
+    fn last(self) -> Option<Gate> {
+        self.inner.last()
+    }
+    fn count(self) -> usize {
+        self.inner.count()
     }
 }
 impl IntoIterator for Circuit {
     type Item = Gate;
 
-    type IntoIter = IntoIter<Gate>;
+    type IntoIter = IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.gates.into_iter()
+        IntoIter {
+            inner: self.gates.into_iter(),
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitCreationError {
-    InvalidQubitIndex { index: u32, qubits: u32 },
+    InvalidQubitIndex { index: usize, qubits: u32 },
+    InvalidParameter { index: usize },
 }
 impl Display for CircuitCreationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -146,8 +239,11 @@ impl Display for CircuitCreationError {
             CircuitCreationError::InvalidQubitIndex { index, qubits } => {
                 write!(
                     f,
-                    "Invalid qubit index {index} for circuit of {qubits} qubits"
+                    "gate at position {index} contains invalid index for circuit of {qubits} qubits"
                 )
+            }
+            CircuitCreationError::InvalidParameter { index } => {
+                write!(f, "gate at position {index} contains invalid parameter")
             }
         }
     }

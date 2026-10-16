@@ -22,7 +22,7 @@ def setup(
     w_samples,
     seed,
 ) -> tuple[QuantumCircuit, list[str]]:
-    circuit = Circuit.random(qubits, gates, t_gates, seed)
+    circuit = Circuit.random_clifford_t(qubits, gates, t_gates, seed)
     random.seed(seed)
 
     ws = []

@@ -18,7 +18,7 @@ class TestQlitRandomized:
         with open(FIXTURES_PATH, "r") as f:
             fixtures = json.load(f)
         for fixture in fixtures:
-            circuit = Circuit.random(
+            circuit = Circuit.random_clifford_t(
                 fixture["qubits"], 
                 fixture["gates"], 
                 fixture["t_gates"], 
@@ -52,7 +52,7 @@ class TestQlitRandomized:
             t_gates = 3
             gates = 1000
             seed = 1234 + i
-            circuit = Circuit.random(qubits, gates, t_gates, seed)
+            circuit = Circuit.random_clifford_t(qubits, gates, t_gates, seed)
 
             for _ in range(w_samples):
                 w = format(random.getrandbits(qubits), f"00{qubits}b")
