@@ -48,29 +48,29 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
 
     let qubits = circuit.qubits();
     let mut gates = Vec::new();
-    for gate in circuit.iter() {
-        match gate {
-            Gate::X(a) => gates.push(X(a)),
-            Gate::Y(a) => gates.push(Y(a)),
-            Gate::Z(a) => gates.push(Z(a)),
-            Gate::S(a) => gates.push(S(a)),
-            Gate::Sdg(a) => gates.push(Sdg(a)),
-            Gate::H(a) => gates.push(H(a)),
-            Gate::Cnot(a, b) => gates.push(Cnot(a, b)),
-            Gate::Cz(a, b) => gates.push(Cz(a, b)),
+    for gate in circuit {
+        let decomp: &[CliffordPGate] = match gate {
+            Gate::X(a) => &[X(a)],
+            Gate::Y(a) => &[Y(a)],
+            Gate::Z(a) => &[Z(a)],
+            Gate::S(a) => &[S(a)],
+            Gate::Sdg(a) => &[Sdg(a)],
+            Gate::H(a) => &[H(a)],
+            Gate::Cnot(a, b) => &[Cnot(a, b)],
+            Gate::Cz(a, b) => &[Cz(a, b)],
 
-            Gate::T(a) => gates.push(Piz(
+            Gate::T(a) => &[Piz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 a,
-            )),
-            Gate::Tdg(a) => gates.push(Piz(
+            )],
+            Gate::Tdg(a) => &[Piz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 a,
-            )),
+            )],
 
-            Gate::Rx(t, a) => gates.extend([
+            Gate::Rx(t, a) => &[
                 H(a),
                 Piz(
                     Complex::new((t / 2.0).cos(), 0.0),
@@ -78,8 +78,8 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
                     a,
                 ),
                 H(a),
-            ]),
-            Gate::Ry(t, a) => gates.extend([
+            ],
+            Gate::Ry(t, a) => &[
                 Sdg(a),
                 H(a),
                 Piz(
@@ -89,13 +89,14 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
                 ),
                 H(a),
                 S(a),
-            ]),
-            Gate::Rz(t, a) => gates.push(Piz(
+            ],
+            Gate::Rz(t, a) => &[Piz(
                 Complex::new((t / 2.0).cos(), 0.0),
                 Complex::new(0.0, -(t / 2.0).sin()),
                 a,
-            )),
-        }
+            )],
+        };
+        gates.extend(decomp);
     }
 
     let p_gates = gates

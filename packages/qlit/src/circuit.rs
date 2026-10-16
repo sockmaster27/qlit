@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display, vec::IntoIter};
+use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
 use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
 
@@ -130,16 +130,85 @@ impl Circuit {
 
     /// An iterator over the gates in the circuit, in the order that they are applied.
     pub fn iter(&self) -> impl Iterator<Item = Gate> {
-        self.gates.iter().copied()
+        self.into_iter()
+    }
+}
+pub struct Iter<'a> {
+    inner: Copied<slice::Iter<'a, Gate>>,
+}
+impl<'a> Iterator for Iter<'a> {
+    type Item = Gate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+    fn fold<Acc, F>(self, init: Acc, f: F) -> Acc
+    where
+        F: FnMut(Acc, Self::Item) -> Acc,
+    {
+        self.inner.fold(init, f)
+    }
+    fn nth(&mut self, n: usize) -> Option<Gate> {
+        self.inner.nth(n)
+    }
+    fn last(self) -> Option<Gate> {
+        self.inner.last()
+    }
+    fn count(self) -> usize {
+        self.inner.count()
+    }
+}
+impl<'a> IntoIterator for &'a Circuit {
+    type Item = Gate;
+
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            inner: self.gates.iter().copied(),
+        }
+    }
+}
+pub struct IntoIter {
+    inner: vec::IntoIter<Gate>,
+}
+impl Iterator for IntoIter {
+    type Item = Gate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+    fn fold<Acc, F>(self, init: Acc, f: F) -> Acc
+    where
+        F: FnMut(Acc, Self::Item) -> Acc,
+    {
+        self.inner.fold(init, f)
+    }
+    fn nth(&mut self, n: usize) -> Option<Gate> {
+        self.inner.nth(n)
+    }
+    fn last(self) -> Option<Gate> {
+        self.inner.last()
+    }
+    fn count(self) -> usize {
+        self.inner.count()
     }
 }
 impl IntoIterator for Circuit {
     type Item = Gate;
 
-    type IntoIter = IntoIter<Gate>;
+    type IntoIter = IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.gates.into_iter()
+        IntoIter {
+            inner: self.gates.into_iter(),
+        }
     }
 }
 
