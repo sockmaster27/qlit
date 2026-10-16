@@ -13,7 +13,7 @@ alias BitBlock = u32;
 // See ExtendedTableau in tableau.rs.
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
 // The current number of active c columns in the tableau.
-@group(0) @binding(4) var<storage, read_write> c_cols: u32;
+@group(0) @binding(4) var<uniform> c_cols: u32;
 @group(0) @binding(5) var<storage, read_write> ws: array<u32>;
 @group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 

@@ -128,7 +128,7 @@ impl GpuContext {
                         binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -564,7 +564,7 @@ impl<'a> GpuSimulator<'a> {
         let c_cols_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("c_cols"),
             size: U32_SIZE,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let seen_p_gates_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1100,7 +1100,7 @@ impl<'a> GpuSimulator<'a> {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("c_cols"),
                 contents: &self.c_cols.to_ne_bytes(),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
         self.global_bind_group = Self::new_global_bind_group(
             &self.gpu,
