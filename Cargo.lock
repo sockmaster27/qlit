@@ -957,6 +957,7 @@ dependencies = [
  "num-complex",
  "num-traits",
  "pollster",
+ "qlit",
  "rand",
  "rayon",
  "wgpu",
@@ -969,6 +970,7 @@ dependencies = [
  "num-complex",
  "pyo3",
  "qlit",
+ "rand",
  "rayon",
 ]
 

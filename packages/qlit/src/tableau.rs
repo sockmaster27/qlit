@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use std::mem;
 
 use num_complex::Complex;
+#[cfg(test)]
+use rand::{Rng, RngExt};
 
 use crate::bitstring::{BitStringArray, BitStringSlice};
 use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
@@ -81,12 +83,8 @@ impl ExtendedTableau {
         }
     }
     #[cfg(test)]
-    pub fn random(n: usize, capacity_log2: usize, seed: u64) -> Self {
-        use rand::rngs::Xoshiro128PlusPlus;
-        use rand::{RngExt, SeedableRng};
-
+    pub fn random(n: usize, capacity_log2: usize, rng: &mut impl Rng) -> Self {
         let c_cols = capacity_log2;
-        let rng = Xoshiro128PlusPlus::seed_from_u64(seed);
         let mut tableau: Vec<BitBlock> = rng
             .random_iter()
             .take(tableau_block_length(n, c_cols))
@@ -1360,15 +1358,15 @@ mod test {
     #[test]
     fn compare_stabilizer_matrix_entry_reference() {
         let rng = &mut Xoshiro128PlusPlus::seed_from_u64(1234);
-        let tableau = ExtendedTableau::random(8, 3, 12345);
-        for i in 0..2u64.pow(16) {
+        let tableau = ExtendedTableau::random(8, 3, rng);
+        for _ in 0..2u64.pow(16) {
             let s = rng.random_range(0..8);
             let row = rng.random_range(0..8);
-            let w1 = BitString::random(8, 123456 + i);
-            let w2 = BitString::random(8, 654321 + i);
+            let w1 = BitString::random(8, rng);
+            let w2 = BitString::random(8, rng);
             assert_eq!(
                 tableau.stabilizer_matrix_entry(row, &w1.slice(), &w2.slice(), s),
-                tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s,)
+                tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s),
             );
         }
     }

@@ -1,6 +1,7 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
-use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus, seq::IndexedRandom};
+#[cfg(feature = "rand")]
+use rand::{Rng, RngExt, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Gate {
@@ -87,17 +88,18 @@ impl Circuit {
     }
 
     /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
-    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+    #[cfg(feature = "rand")]
+    pub fn random_clifford_t(
+        qubits: u32,
+        gates: usize,
+        t_gates: usize,
+        rng: &mut impl Rng,
+    ) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
             "t_gates must be less than or equal to gates"
         );
-
-        // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
-        // seed always produces the same circuit regardless of pointer width.
-        // Useful for CI testing and benchmarking.
-        let mut rng = Xoshiro128PlusPlus::seed_from_u64(seed);
 
         let mut t_gate_positions = Vec::new();
         for _ in 0..t_gates {
@@ -122,10 +124,10 @@ impl Circuit {
                         b = rng.random_range(0..qubits);
                     }
                     if t_gate_positions.contains(&i) {
-                        [T(a), Tdg(a)].choose(&mut rng).unwrap().clone()
+                        [T(a), Tdg(a)].choose(rng).unwrap().clone()
                     } else {
                         [X(a), Y(a), Z(a), H(a), S(a), Sdg(a), Cnot(a, b), Cz(a, b)]
-                            .choose(&mut rng)
+                            .choose(rng)
                             .unwrap()
                             .clone()
                     }
