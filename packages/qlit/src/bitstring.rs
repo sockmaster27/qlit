@@ -2,7 +2,7 @@ use std::mem;
 use std::{borrow::Borrow, fmt::Debug};
 
 #[cfg(any(feature = "rand", test))]
-use rand::RngExt;
+use rand::{Rng, RngExt};
 
 use crate::utils::{bitmask, flip_bit, set_bit, unset_bit};
 
@@ -53,7 +53,7 @@ impl BitString {
         }
     }
     #[cfg(any(feature = "rand", test))]
-    pub fn random(length: usize, rng: impl RngExt) -> Self {
+    pub fn random(length: usize, rng: impl Rng) -> Self {
         Self {
             length,
             inner: rng

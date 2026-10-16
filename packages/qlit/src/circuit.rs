@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
 #[cfg(any(feature = "rand", test))]
-use rand::{RngExt, seq::IndexedRandom};
+use rand::{Rng, RngExt, seq::IndexedRandom};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Gate {
@@ -87,14 +87,9 @@ impl Circuit {
         Ok(Self { qubits, gates })
     }
 
-    /// Create a random circuit with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
     #[cfg(any(feature = "rand", test))]
-    pub fn random_clifford_t(
-        qubits: u32,
-        gates: usize,
-        t_gates: usize,
-        mut rng: impl RngExt,
-    ) -> Self {
+    pub fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, mut rng: impl Rng) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
             t_gates <= gates,
