@@ -38,7 +38,7 @@ jobs:
                       target: ppc64le
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.9"
             - name: Build wheels
@@ -121,7 +121,7 @@ jobs:
                       target: armv7
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.9"
             - name: Build wheels
@@ -198,7 +198,7 @@ jobs:
                       python_arch: arm64
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.13"
                   architecture: ${{ matrix.platform.python_arch }}
@@ -208,7 +208,7 @@ jobs:
                   target: ${{ matrix.platform.target }}
                   args: --release --out dist --manifest-path ./packages/python/Cargo.toml
                   sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.14t"
                   architecture: ${{ matrix.platform.python_arch }}
@@ -253,7 +253,7 @@ jobs:
                       target: aarch64
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.9"
             - name: Build wheels
@@ -262,7 +262,7 @@ jobs:
                   target: ${{ matrix.platform.target }}
                   args: --release --out dist --manifest-path ./packages/python/Cargo.toml
                   sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               with:
                   python-version: "3.14t"
             - name: Build free-threaded wheels
