@@ -16,17 +16,17 @@ jobs:
             PR_EVENT: event.json
         steps:
             - name: Download benchmark results
-              uses: dawidd6/action-download-artifact@v6
+              uses: dawidd6/action-download-artifact@v27
               with:
                   name: ${{ env.BENCHMARK_RESULTS }}
                   run_id: ${{ github.event.workflow_run.id }}
             - name: Download PR event
-              uses: dawidd6/action-download-artifact@v6
+              uses: dawidd6/action-download-artifact@v27
               with:
                   name: ${{ env.PR_EVENT }}
                   run_id: ${{ github.event.workflow_run.id }}
             - name: Export PR event data
-              uses: actions/github-script@v6
+              uses: actions/github-script@v9
               with:
                   script: |
                       let fs = require('fs');
