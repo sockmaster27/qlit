@@ -288,7 +288,21 @@ jobs:
             # TEMPORARY: Diagnostics for the macos-15-intel GPU failure.
             - name: Trace GPU state
               if: ${{ always() }}
-              run: cargo test -p qlit --lib trace_gpu_state -- --ignored --nocapture
+              shell: bash
+              run: |
+                  cargo test -p qlit --lib --no-run
+                  for t in trace_smaller_circuit_1 trace_rotations_by_pi trace_smaller_circuit_2; do
+                      echo "::group::$t"
+                      time cargo test -p qlit --lib "$t" -- --ignored --nocapture || true
+                      echo "::endgroup::"
+                  done
+                  # Metal API and shader validation report GPU-side errors that wgpu silently ignores.
+                  for t in trace_smaller_circuit_1 trace_rotations_by_pi trace_smaller_circuit_2; do
+                      echo "::group::$t (Metal validation)"
+                      MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 \
+                          cargo test -p qlit --lib "$t" -- --ignored --nocapture || true
+                      echo "::endgroup::"
+                  done
 
     # Python tests are authoritative, so Rust tests are run on Linux only
     cargo-test:

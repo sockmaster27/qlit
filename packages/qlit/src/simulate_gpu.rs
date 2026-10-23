@@ -1394,57 +1394,44 @@ mod tests {
     use crate::{Circuit, Gate::*, decompose::decompose};
 
     // TEMPORARY: Diagnostics for the macos-15-intel CI failure.
-    // Run with `cargo test -p qlit trace_gpu_state -- --ignored --nocapture`.
+    // Run each test in its own process, e.g.
+    // `cargo test -p qlit --lib trace_smaller_circuit_1 -- --ignored --nocapture`,
+    // since a GPU error can cause all later GPU work in the process to be ignored.
+    fn trace(name: &str, circuit: Circuit, w: u8) {
+        let circuit = decompose(&circuit);
+        let w_bits = BitString::from_u8_ltr(w);
+        // The traced run goes first, so the first failing step is visible in the trace.
+        let mut g = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates());
+        let (result, trace) = g.run_traced(&[]);
+        println!("=== {name} w={w:08b} traced_result={result}");
+        for step in trace {
+            print!("{step}");
+        }
+        // Tracing submits after every step, so also record an untraced run for comparison.
+        let untraced = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates()).run(&[]);
+        println!("=== {name} w={w:08b} untraced_result={untraced}");
+    }
+
     #[test]
     #[ignore = "diagnostic: prints a step-by-step trace of the GPU state"]
-    fn trace_gpu_state() {
-        let cases = [
-            (
-                "smaller_circuit_1",
-                Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap(),
-                0b0110_0000,
-            ),
-            (
-                "rotations_by_pi",
-                Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap(),
-                0b0000_0000,
-            ),
-            (
-                "larger_circuit_1",
-                Circuit::new(
-                    8,
-                    [
-                        T(0),
-                        H(1),
-                        S(1),
-                        H(3),
-                        H(0),
-                        S(0),
-                        S(1),
-                        S(2),
-                        T(1),
-                        H(0),
-                        Cnot(1, 0),
-                        T(0),
-                        S(3),
-                    ],
-                )
-                .unwrap(),
-                0b0100_0000,
-            ),
-        ];
-        for (name, circuit, w) in cases {
-            let circuit = decompose(&circuit);
-            let w_bits = BitString::from_u8_ltr(w);
-            // Tracing submits after every step, so also record an untraced run for comparison.
-            let untraced = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates()).run(&[]);
-            let mut g = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates());
-            let (result, trace) = g.run_traced(&[]);
-            println!("=== {name} w={w:08b} traced_result={result} untraced_result={untraced}");
-            for step in trace {
-                print!("{step}");
-            }
-        }
+    fn trace_smaller_circuit_1() {
+        let circuit = Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap();
+        trace("smaller_circuit_1", circuit, 0b0110_0000);
+    }
+
+    #[test]
+    #[ignore = "diagnostic: prints a step-by-step trace of the GPU state"]
+    fn trace_rotations_by_pi() {
+        let circuit = Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap();
+        trace("rotations_by_pi", circuit, 0b0000_0000);
+    }
+
+    #[test]
+    #[ignore = "diagnostic: prints a step-by-step trace of the GPU state"]
+    fn trace_smaller_circuit_2() {
+        // Passes on macos-15-intel, for reference.
+        let circuit = Circuit::new(8, [H(0), H(1), Cnot(1, 0), T(0)]).unwrap();
+        trace("smaller_circuit_2", circuit, 0b0100_0000);
     }
 }
 
