@@ -1116,7 +1116,6 @@ impl<'a> GpuSimulator<'a> {
 
     fn bring_into_rref(&mut self) {
         let n = self.n;
-        let c_cols = self.c_cols;
 
         let mut input_buf = &self.rref_input_bufs[0];
         let mut input_next_buf = &self.rref_input_bufs[1];
@@ -1154,12 +1153,11 @@ impl<'a> GpuSimulator<'a> {
             elimination_pass.dispatch_workgroups(workgroups, 1, 1);
             drop(elimination_pass);
 
-            let workgroups = (n + n + 1 + c_cols).div_ceil(WORKGROUP_SIZE);
             let mut swap_pass = self.encoder.begin_compute_pass(&Default::default());
             swap_pass.set_pipeline(&self.gpu.swap_pass_pipeline);
             swap_pass.set_bind_group(0, &self.global_bind_group, &[]);
             swap_pass.set_bind_group(1, &bind_group, &[]);
-            swap_pass.dispatch_workgroups(workgroups, 1, 1);
+            swap_pass.dispatch_workgroups(1, 1, 1);
             drop(swap_pass);
 
             (input_buf, input_next_buf) = (input_next_buf, input_buf);

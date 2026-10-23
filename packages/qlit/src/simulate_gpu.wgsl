@@ -414,9 +414,10 @@ fn elimination_pass(
 fn swap_pass(
     @builtin(global_invocation_id) id: vec3<u32>
 ) {
-    // Assign one thread to each column.
-    let j = id.x;
-    if j >= n + n + 1 + c_cols {
+    // Assign a single thread to perform the entire swap.
+    // NOTE: Splitting this across one thread per column is suspected of producing wrong results
+    // on the Apple Paravirtual Metal device used by the macos-15-intel CI runners.
+    if id.x != 0 {
         return;
     }
 
@@ -431,16 +432,18 @@ fn swap_pass(
     let row1_bitmask = bitmask(row1_bit_index);
     let row2_bitmask = bitmask(row2_bit_index);
 
-    let block1 = column_block_index(row1_block_index, j);
-    let block2 = column_block_index(row2_block_index, j);
-    let bit1 = (tableau[block1] & row1_bitmask) != 0;
-    let bit2 = (tableau[block2] & row2_bitmask) != 0;
-    if bit1 && !bit2 {
-        tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
-        tableau[block2] = set_bit(tableau[block2], row2_bit_index);
-    } else if !bit1 && bit2 {
-        tableau[block1] = set_bit(tableau[block1], row1_bit_index);
-        tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
+    for (var j: u32 = 0; j < n + n + 1 + c_cols; j += 1) {
+        let block1 = column_block_index(row1_block_index, j);
+        let block2 = column_block_index(row2_block_index, j);
+        let bit1 = (tableau[block1] & row1_bitmask) != 0;
+        let bit2 = (tableau[block2] & row2_bitmask) != 0;
+        if bit1 && !bit2 {
+            tableau[block1] = unset_bit(tableau[block1], row1_bit_index);
+            tableau[block2] = set_bit(tableau[block2], row2_bit_index);
+        } else if !bit1 && bit2 {
+            tableau[block1] = set_bit(tableau[block1], row1_bit_index);
+            tableau[block2] = unset_bit(tableau[block2], row2_bit_index);
+        }
     }
 }
 
