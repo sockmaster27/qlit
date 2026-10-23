@@ -71,6 +71,10 @@ fn apply_gates(
         return;
     }
 
+    // Only advance p at the end of each case, after all uses of the parameters it points to.
+    // On the macos-15-intel CI runners, Metal otherwise ends up reading a parameter that is only used
+    // inside `if is_block_thread` after the increment when that branch diverges between threads,
+    // making e.g. H act on the next gate's qubit.
     var p: u32 = 0;
     var seen_p_gates = initial_seen_p_gates;
     for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
@@ -79,7 +83,6 @@ fn apply_gates(
                 // CNOT
                 let a = qubit_params[p];
                 let b = qubit_params[p + 1];
-                p += 2;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let xa = x_column_block_index(block_index, a);
@@ -93,12 +96,12 @@ fn apply_gates(
                 if is_state_thread {
                     ws[w_bit_index(state_index, b)] ^= ws[w_bit_index(state_index, a)];
                 }
+                p += 2;
             }
             case 1: {
                 // CZ
                 let a = qubit_params[p];
                 let b = qubit_params[p + 1];
-                p += 2;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let xa = x_column_block_index(block_index, a);
@@ -116,11 +119,11 @@ fn apply_gates(
                         w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
+                p += 2;
             }
             case 2: {
                 // X
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let z = z_column_block_index(block_index, a);
@@ -130,11 +133,11 @@ fn apply_gates(
                     // Flip bit
                     ws[w_bit_index(state_index, a)] ^= 1u;
                 }
+                p += 1;
             }
             case 3: {
                 // Y
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let x = x_column_block_index(block_index, a);
@@ -149,11 +152,11 @@ fn apply_gates(
                     }
                     ws[w_bit_index(state_index, a)] ^= 1u;
                 }
+                p += 1;
             }
             case 4: {
                 // Z
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let x = x_column_block_index(block_index, a);
@@ -164,11 +167,11 @@ fn apply_gates(
                         w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
+                p += 1;
             }
             case 5: {
                 // S
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let x = x_column_block_index(block_index, a);
@@ -181,11 +184,11 @@ fn apply_gates(
                         w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
                     }
                 }
+                p += 1;
             }
             case 6: {
                 // Sdg
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let x = x_column_block_index(block_index, a);
@@ -198,12 +201,12 @@ fn apply_gates(
                         w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
                     }
                 }
+                p += 1;
             }
             case 7: {
                 // H
                 // Updates to ws and w_coeffs are handled by update_before_h.
                 let a = qubit_params[p];
-                p += 1;
                 if is_block_thread {
                     let r = r_column_block_index(block_index);
                     let x = x_column_block_index(block_index, a);
@@ -213,11 +216,11 @@ fn apply_gates(
                     tableau[z] = tableau[x];
                     tableau[x] = temp;
                 }
+                p += 1;
             }
             case 8: {
                 // Piz branch
                 let a = qubit_params[p];
-                p += 1;
                 if path[seen_p_gates] == 0u {
                     if is_state_thread {
                         w_coeffs[state_index] = mul(w_coeffs[state_index], ci_params[seen_p_gates]);
@@ -236,6 +239,7 @@ fn apply_gates(
                     }
                 }
                 seen_p_gates += 1;
+                p += 1;
             }
             default: {}
         }
