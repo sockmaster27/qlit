@@ -558,7 +558,9 @@ impl<'a> GpuSimulator<'a> {
         let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tableau"),
             size: u64::from(tableau_block_length(n, max_c_cols)) * BLOCK_SIZE_BYTES,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let c_cols_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -576,13 +578,15 @@ impl<'a> GpuSimulator<'a> {
         let ws_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ws"),
             size: U32_SIZE * u64::from(n) * max_batches_u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let w_coeffs_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("w_coeffs"),
             size: COMPLEX_SIZE * max_batches_u64,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let global_bind_group = Self::new_global_bind_group(
@@ -1116,6 +1120,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn bring_into_rref(&mut self) {
         let n = self.n;
+        let c_cols = self.c_cols;
 
         let mut input_buf = &self.rref_input_bufs[0];
         let mut input_next_buf = &self.rref_input_bufs[1];
@@ -1153,11 +1158,12 @@ impl<'a> GpuSimulator<'a> {
             elimination_pass.dispatch_workgroups(workgroups, 1, 1);
             drop(elimination_pass);
 
+            let workgroups = (n + n + 1 + c_cols).div_ceil(WORKGROUP_SIZE);
             let mut swap_pass = self.encoder.begin_compute_pass(&Default::default());
             swap_pass.set_pipeline(&self.gpu.swap_pass_pipeline);
             swap_pass.set_bind_group(0, &self.global_bind_group, &[]);
             swap_pass.set_bind_group(1, &bind_group, &[]);
-            swap_pass.dispatch_workgroups(1, 1, 1);
+            swap_pass.dispatch_workgroups(workgroups, 1, 1);
             drop(swap_pass);
 
             (input_buf, input_next_buf) = (input_next_buf, input_buf);
@@ -1248,6 +1254,198 @@ where
         .flat_map(|c| [c.re as f32, c.im as f32])
         .flat_map(|x| x.to_ne_bytes())
         .collect()
+}
+
+// TEMPORARY: Diagnostics for the macos-15-intel CI failure.
+#[cfg(test)]
+impl GpuSimulator<'_> {
+    /// Submit all pending work and read back the full contents of `buf`.
+    fn read_back(&mut self, buf: &wgpu::Buffer) -> Vec<u8> {
+        self.submit_encoder();
+        let staging = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Read Back"),
+            size: buf.size(),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
+        encoder.copy_buffer_to_buffer(buf, 0, &staging, 0, None);
+        self.gpu.queue.submit([encoder.finish()]);
+
+        let done1 = Arc::new(AtomicBool::new(false));
+        let done2 = Arc::clone(&done1);
+        staging.map_async(wgpu::MapMode::Read, .., move |r| {
+            r.expect("Failed to read back buffer");
+            done1.store(true, atomic::Ordering::Release);
+        });
+        self.gpu
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        assert!(done2.load(atomic::Ordering::Acquire));
+
+        let data = staging
+            .get_mapped_range(..)
+            .expect("failed to read back buffer")
+            .to_vec();
+        staging.unmap();
+        data
+    }
+
+    /// Render the tableau, ws and w_coeffs of the currently contained states.
+    fn dump(&mut self, label: &str) -> String {
+        let n = self.n;
+        let cbl = column_block_length(n);
+        let cols = n + n + 1 + self.c_cols;
+
+        let tableau_bytes = self.read_back(&self.tableau_buf.clone());
+        let ws_bytes = self.read_back(&self.ws_buf.clone());
+        let w_coeffs_bytes = self.read_back(&self.w_coeffs_buf.clone());
+        let tableau: Vec<u32> = tableau_bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&b| u32::from_ne_bytes(b))
+            .collect();
+        let ws: Vec<u32> = ws_bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&b| u32::from_ne_bytes(b))
+            .collect();
+        let w_coeffs: Vec<Complex<f64>> = bytes_to_complex(&w_coeffs_bytes).collect();
+
+        let bit = |row: u32, j: u32| {
+            let block = tableau[(j * cbl + row / BLOCK_SIZE) as usize];
+            (block >> (BLOCK_SIZE - 1 - row % BLOCK_SIZE)) & 1
+        };
+        let mut s = format!("[{label}] c_cols={}\n", self.c_cols);
+        for row in 0..=n {
+            let x: String = (0..n).map(|q| bit(row, 2 * q).to_string()).collect();
+            let z: String = (0..n).map(|q| bit(row, 2 * q + 1).to_string()).collect();
+            let r = bit(row, 2 * n);
+            let c: String = (2 * n + 1..cols).map(|j| bit(row, j).to_string()).collect();
+            s += &format!("  row {row:2}: x={x} z={z} r={r} c={c}\n");
+        }
+        for state in 0..self.contained_states() {
+            let w: String = (0..n)
+                .map(|q| ws[(state * n + q) as usize].to_string())
+                .collect();
+            let c = w_coeffs[state as usize];
+            s += &format!(
+                "  state {state:2}: ws={w} w_coeff={:+.9e}{:+.9e}i\n",
+                c.re, c.im
+            );
+        }
+        s
+    }
+
+    /// Same as `run`, but records the GPU state after every step.
+    fn run_traced(&mut self, path: &[bool]) -> (Complex<f64>, Vec<String>) {
+        let mut trace = Vec::new();
+        self.gpu
+            .queue
+            .write_buffer(&self.path_buf, 0, &encode_bitstring(path.iter().copied()));
+        self.zero();
+        trace.push(self.dump("zero"));
+        let mut seen_p_gates = 0;
+        for &gate in self.circuit.gates() {
+            match gate {
+                CliffordPGate::H(a) => {
+                    self.dispatch_gates();
+                    trace.push(self.dump("apply_gates"));
+                    self.bring_into_rref();
+                    trace.push(self.dump("bring_into_rref"));
+                    self.update_before_h(a);
+                    trace.push(self.dump(&format!("update_before_h({a})")));
+                }
+                CliffordPGate::Piz(ci, cz, a) => {
+                    if seen_p_gates < self.path_length {
+                        seen_p_gates += 1;
+                    } else {
+                        self.dispatch_gates();
+                        trace.push(self.dump("apply_gates"));
+                        self.fork_apply_piz_gate(ci, cz, a);
+                        trace.push(self.dump(&format!("fork_apply_piz_gate({a})")));
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.dispatch_gates();
+        trace.push(self.dump("apply_gates"));
+        self.bring_into_rref();
+        trace.push(self.dump("bring_into_rref"));
+        self.compute_output();
+        let output = self.read_back(&self.output_buf.clone());
+        let outputs: Vec<_> = bytes_to_complex(&output)
+            .take(self.contained_states() as usize)
+            .collect();
+        trace.push(format!("[compute_output] outputs={outputs:?}\n"));
+        (outputs.iter().sum(), trace)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::f64::consts::PI;
+
+    use super::*;
+    use crate::{Circuit, Gate::*, decompose::decompose};
+
+    // TEMPORARY: Diagnostics for the macos-15-intel CI failure.
+    // Run with `cargo test -p qlit trace_gpu_state -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "diagnostic: prints a step-by-step trace of the GPU state"]
+    fn trace_gpu_state() {
+        let cases = [
+            (
+                "smaller_circuit_1",
+                Circuit::new(8, [T(0), H(1), H(2), Cnot(1, 0), Cnot(2, 1)]).unwrap(),
+                0b0110_0000,
+            ),
+            (
+                "rotations_by_pi",
+                Circuit::new(8, [Rx(PI, 0), Ry(PI, 1), H(2), Rz(PI, 2)]).unwrap(),
+                0b0000_0000,
+            ),
+            (
+                "larger_circuit_1",
+                Circuit::new(
+                    8,
+                    [
+                        T(0),
+                        H(1),
+                        S(1),
+                        H(3),
+                        H(0),
+                        S(0),
+                        S(1),
+                        S(2),
+                        T(1),
+                        H(0),
+                        Cnot(1, 0),
+                        T(0),
+                        S(3),
+                    ],
+                )
+                .unwrap(),
+                0b0100_0000,
+            ),
+        ];
+        for (name, circuit, w) in cases {
+            let circuit = decompose(&circuit);
+            let w_bits = BitString::from_u8_ltr(w);
+            // Tracing submits after every step, so also record an untraced run for comparison.
+            let untraced = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates()).run(&[]);
+            let mut g = GpuSimulator::new(&circuit, &w_bits, circuit.p_gates());
+            let (result, trace) = g.run_traced(&[]);
+            println!("=== {name} w={w:08b} traced_result={result} untraced_result={untraced}");
+            for step in trace {
+                print!("{step}");
+            }
+        }
+    }
 }
 
 /// Convert the contents of a slice of bytes into an iterator over Complex<f32> using native endianness.

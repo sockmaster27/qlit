@@ -285,6 +285,10 @@ jobs:
                   uv pip install qlit --no-index --no-deps --find-links dist --reinstall
                   uv pip install qlit pytest
                   cd ./packages/python && pytest
+            # TEMPORARY: Diagnostics for the macos-15-intel GPU failure.
+            - name: Trace GPU state
+              if: ${{ always() }}
+              run: cargo test -p qlit --lib trace_gpu_state -- --ignored --nocapture
 
     # Python tests are authoritative, so Rust tests are run on Linux only
     cargo-test:
