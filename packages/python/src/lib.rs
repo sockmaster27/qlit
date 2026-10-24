@@ -87,7 +87,7 @@ impl From<Gate> for PyGate {
     }
 }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 #[pyo3(name = "Circuit")]
 struct PyCircuit(Circuit);

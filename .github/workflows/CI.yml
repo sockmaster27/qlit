@@ -18,6 +18,9 @@ on:
 permissions:
     contents: read
 
+env:
+    RUSTFLAGS: -D warnings
+
 jobs:
     linux:
         runs-on: ${{ matrix.platform.runner }}
