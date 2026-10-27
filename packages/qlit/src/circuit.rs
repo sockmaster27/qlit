@@ -1,7 +1,5 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
-use std::f64::consts::TAU;
-
 #[cfg(feature = "rand")]
 use rand::{Rng, RngExt, seq::IndexedRandom};
 
@@ -129,6 +127,7 @@ impl Circuit {
                         b = rng.random_range(0..qubits);
                     }
                     if non_clifford_positions.contains(&i) {
+                        use std::f64::consts::TAU;
                         let t = rng.random_range(0.0..TAU);
                         let p = rng.random_range(0.0..TAU);
                         let l = rng.random_range(0.0..TAU);
