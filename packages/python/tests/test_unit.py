@@ -1,5 +1,5 @@
 from cmath import rect
-from math import cos, pi, sin, sqrt
+from math import cos, inf, nan, pi, sin, sqrt
 
 import pytest
 from qlit import (
@@ -40,6 +40,8 @@ class TestCircuit:
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Rz(1.0, 8)])
         with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(1.0, 1.0, 1.0, 8)])
+        with pytest.raises(ValueError):
             Circuit(8, [Gate.Cnot(8, 4)])
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Cnot(4, 8)])
@@ -47,6 +49,48 @@ class TestCircuit:
             Circuit(8, [Gate.Cz(8, 4)])
         with pytest.raises(ValueError):
             Circuit(8, [Gate.Cz(4, 8)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.H(0), Gate.Cnot(0, 1), Gate.X(8)])
+
+    def test_invalid_parameter(self):
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rx(nan, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rx(inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rx(-inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Ry(nan, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Ry(inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Ry(-inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rz(nan, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rz(inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.Rz(-inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(nan, 0.0, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(inf, 0.0, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(-inf, 0.0, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, nan, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, inf, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, -inf, 0.0, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, 0.0, nan, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, 0.0, inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.U(0.0, 0.0, -inf, 4)])
+        with pytest.raises(ValueError):
+            Circuit(8, [Gate.H(0), Gate.Rz(1.0, 0), Gate.Rx(nan, 0)])
 
 
 class TestCpu:
