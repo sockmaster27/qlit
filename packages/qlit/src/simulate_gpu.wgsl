@@ -99,77 +99,6 @@ fn apply_gates(
                 p += 2;
             }
             case 1: {
-                // CZ
-                let a = qubit_params[p];
-                let b = qubit_params[p + 1];
-                if is_block_thread {
-                    let r = r_column_block_index(block_index);
-                    let xa = x_column_block_index(block_index, a);
-                    let za = z_column_block_index(block_index, a);
-                    let xb = x_column_block_index(block_index, b);
-                    let zb = z_column_block_index(block_index, b);
-                    tableau[r] ^= (tableau[xb] & tableau[zb])
-                        ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
-                        ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
-                    tableau[za] ^= tableau[xb];
-                    tableau[zb] ^= tableau[xa];
-                }
-                if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u && ws[w_bit_index(state_index, b)] == 1u {
-                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
-                    }
-                }
-                p += 2;
-            }
-            case 2: {
-                // X
-                let a = qubit_params[p];
-                if is_block_thread {
-                    let r = r_column_block_index(block_index);
-                    let z = z_column_block_index(block_index, a);
-                    tableau[r] ^= tableau[z];
-                }
-                if is_state_thread {
-                    // Flip bit
-                    ws[w_bit_index(state_index, a)] ^= 1u;
-                }
-                p += 1;
-            }
-            case 3: {
-                // Y
-                let a = qubit_params[p];
-                if is_block_thread {
-                    let r = r_column_block_index(block_index);
-                    let x = x_column_block_index(block_index, a);
-                    let z = z_column_block_index(block_index, a);
-                    tableau[r] ^= tableau[x] ^ tableau[z];
-                }
-                if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
-                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
-                    } else {
-                        w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
-                    }
-                    ws[w_bit_index(state_index, a)] ^= 1u;
-                }
-                p += 1;
-            }
-            case 4: {
-                // Z
-                let a = qubit_params[p];
-                if is_block_thread {
-                    let r = r_column_block_index(block_index);
-                    let x = x_column_block_index(block_index, a);
-                    tableau[r] ^= tableau[x];
-                }
-                if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
-                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
-                    }
-                }
-                p += 1;
-            }
-            case 5: {
                 // S
                 let a = qubit_params[p];
                 if is_block_thread {
@@ -186,24 +115,7 @@ fn apply_gates(
                 }
                 p += 1;
             }
-            case 6: {
-                // Sdg
-                let a = qubit_params[p];
-                if is_block_thread {
-                    let r = r_column_block_index(block_index);
-                    let x = x_column_block_index(block_index, a);
-                    let z = z_column_block_index(block_index, a);
-                    tableau[z] ^= tableau[x];
-                    tableau[r] ^= tableau[x] & tableau[z];
-                }
-                if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
-                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
-                    }
-                }
-                p += 1;
-            }
-            case 7: {
+            case 2: {
                 // H
                 // Updates to ws and w_coeffs are handled by update_before_h.
                 let a = qubit_params[p];
@@ -218,7 +130,7 @@ fn apply_gates(
                 }
                 p += 1;
             }
-            case 8: {
+            case 3: {
                 // Piz branch
                 let a = qubit_params[p];
                 if path[seen_p_gates] == 0u {

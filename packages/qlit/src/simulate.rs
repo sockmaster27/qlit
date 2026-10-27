@@ -200,34 +200,6 @@ fn run_cpu(
     let mut seen_p_gates = 0;
     for &gate in circuit.gates() {
         match gate {
-            CliffordPGate::X(a) => {
-                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    xs.flip(i, a);
-                }
-                g.apply_x_gate(a);
-            }
-            CliffordPGate::Y(a) => {
-                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    if xs.get(i, a) {
-                        x_coeffs[i] *= -Complex::I;
-                    } else {
-                        x_coeffs[i] *= Complex::I;
-                    }
-                    xs.flip(i, a);
-                }
-                g.apply_y_gate(a);
-            }
-            CliffordPGate::Z(a) => {
-                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    if xs.get(i, a) {
-                        x_coeffs[i] *= -Complex::ONE;
-                    }
-                }
-                g.apply_z_gate(a);
-            }
             CliffordPGate::S(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
@@ -236,15 +208,6 @@ fn run_cpu(
                     }
                 }
                 g.apply_s_gate(a);
-            }
-            CliffordPGate::Sdg(a) => {
-                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    if xs.get(i, a) {
-                        x_coeffs[i] *= -Complex::I;
-                    }
-                }
-                g.apply_sdg_gate(a);
             }
             CliffordPGate::Cnot(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
@@ -255,16 +218,6 @@ fn run_cpu(
                     }
                 }
                 g.apply_cnot_gate(a, b);
-            }
-            CliffordPGate::Cz(a, b) => {
-                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    if xs.get(i, a) && xs.get(i, b) {
-                        x_coeffs[i] *= -Complex::ONE;
-                    }
-                }
-                g.apply_cz_gate(a, b);
             }
             CliffordPGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
