@@ -81,6 +81,39 @@ fn apply_gates(
                 }
             }
             case 1: {
+                // CZ
+                let a = qubit_params[p];
+                let b = qubit_params[p + 1];
+                p += 2;
+                let r = r_column_block_index(batch_index, block_index);
+                let xa = x_column_block_index(batch_index, block_index, a);
+                let za = z_column_block_index(batch_index, block_index, a);
+                let xb = x_column_block_index(batch_index, block_index, b);
+                let zb = z_column_block_index(batch_index, block_index, b);
+                tableau[r] ^= (tableau[xb] & tableau[zb])
+                    ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
+                    ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
+                tableau[za] ^= tableau[xb];
+                tableau[zb] ^= tableau[xa];
+                if block_index == 0 {
+                    if ws[w_bit_index(batch_index, a)] == 1u && ws[w_bit_index(batch_index, b)] == 1u {
+                        w_coeffs[batch_index] = mul_minus_one(w_coeffs[batch_index]);
+                    }
+                }
+            }
+            case 2: {
+                // X
+                let a = qubit_params[p];
+                p += 1;
+                let r = r_column_block_index(batch_index, block_index);
+                let z = z_column_block_index(batch_index, block_index, a);
+                tableau[r] ^= tableau[z];
+                if block_index == 0 {
+                    // Flip bit
+                    ws[w_bit_index(batch_index, a)] ^= 1u;
+                }
+            }
+            case 3: {
                 // S
                 let a = qubit_params[p];
                 p += 1;
@@ -95,7 +128,7 @@ fn apply_gates(
                     }
                 }
             }
-            case 2: {
+            case 4: {
                 // H
                 // Updates to ws and w_coeffs are handled by update_before_h.
                 let a = qubit_params[p];
@@ -108,7 +141,7 @@ fn apply_gates(
                 tableau[z] = tableau[x];
                 tableau[x] = temp;
             }
-            case 3: {
+            case 5: {
                 // Piz branch
                 if path[seen_p_gates] == 0u {
                     if block_index == 0 {

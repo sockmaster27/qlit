@@ -200,6 +200,13 @@ fn run_cpu(
     let mut seen_p_gates = 0;
     for &gate in circuit.gates() {
         match gate {
+            CliffordPGate::X(a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                for i in 0..g.contained_states() {
+                    xs.flip(i, a);
+                }
+                g.apply_x_gate(a);
+            }
             CliffordPGate::S(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
@@ -218,6 +225,16 @@ fn run_cpu(
                     }
                 }
                 g.apply_cnot_gate(a, b);
+            }
+            CliffordPGate::Cz(a, b) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
+                for i in 0..g.contained_states() {
+                    if xs.get(i, a) && xs.get(i, b) {
+                        x_coeffs[i] *= -Complex::ONE;
+                    }
+                }
+                g.apply_cz_gate(a, b);
             }
             CliffordPGate::H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
