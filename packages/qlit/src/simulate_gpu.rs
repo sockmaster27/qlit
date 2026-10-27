@@ -850,29 +850,8 @@ impl<'a> GpuSimulator<'a> {
                     qubit_params.push(a);
                     qubit_params.push(b);
                 }
-                CliffordPGate::Cz(a, b) => {
-                    gates.push(1);
-                    qubit_params.push(a);
-                    qubit_params.push(b);
-                }
-                CliffordPGate::X(a) => {
-                    gates.push(2);
-                    qubit_params.push(a);
-                }
-                CliffordPGate::Y(a) => {
-                    gates.push(3);
-                    qubit_params.push(a);
-                }
-                CliffordPGate::Z(a) => {
-                    gates.push(4);
-                    qubit_params.push(a);
-                }
                 CliffordPGate::S(a) => {
-                    gates.push(5);
-                    qubit_params.push(a);
-                }
-                CliffordPGate::Sdg(a) => {
-                    gates.push(6);
+                    gates.push(1);
                     qubit_params.push(a);
                 }
                 CliffordPGate::H(a) => {
@@ -887,12 +866,12 @@ impl<'a> GpuSimulator<'a> {
                     );
                     initial_seen_p_gates = seen_p_gates;
 
-                    gates.push(7);
+                    gates.push(2);
                     qubit_params.push(a);
                 }
                 CliffordPGate::Piz(_, _, a) => {
                     if seen_p_gates < path_length {
-                        gates.push(8);
+                        gates.push(3);
                         qubit_params.push(a);
                         seen_p_gates += 1;
                     } else {

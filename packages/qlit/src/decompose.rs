@@ -7,14 +7,9 @@ use std::f64::consts::FRAC_1_SQRT_2;
 /// plus P (Pauli sum decompositions).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CliffordPGate {
-    X(u32),
-    Y(u32),
-    Z(u32),
     S(u32),
-    Sdg(u32),
     H(u32),
     Cnot(u32, u32),
-    Cz(u32, u32),
 
     /// Piz(ci, cz) = ci*I + cz*Z
     Piz(Complex<f64>, Complex<f64>, u32),
@@ -50,14 +45,14 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
     let mut gates = Vec::with_capacity(circuit.gate_count());
     for gate in circuit {
         let decomp: &[CliffordPGate] = match gate {
-            Gate::X(a) => &[X(a)],
-            Gate::Y(a) => &[Y(a)],
-            Gate::Z(a) => &[Z(a)],
+            Gate::X(a) => &[H(a), S(a), S(a), H(a)],
+            Gate::Y(a) => &[S(a), S(a), S(a), H(a), S(a), S(a), H(a), S(a)],
+            Gate::Z(a) => &[S(a); 2],
             Gate::S(a) => &[S(a)],
-            Gate::Sdg(a) => &[Sdg(a)],
+            Gate::Sdg(a) => &[S(a); 3],
             Gate::H(a) => &[H(a)],
             Gate::Cnot(a, b) => &[Cnot(a, b)],
-            Gate::Cz(a, b) => &[Cz(a, b)],
+            Gate::Cz(a, b) => &[H(b), Cnot(a, b), H(b)],
 
             Gate::T(a) => &[Piz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
@@ -71,7 +66,7 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
             )],
 
             Gate::Rx(t, a) => &[H(a), rz(t, a), H(a)],
-            Gate::Ry(t, a) => &[Sdg(a), H(a), rz(t, a), H(a), S(a)],
+            Gate::Ry(t, a) => &[S(a), S(a), S(a), H(a), rz(t, a), H(a), S(a)],
             Gate::Rz(t, a) => &[rz(t, a)],
         };
         gates.extend(decomp);
