@@ -792,19 +792,19 @@ fn apply_phase_shift_reference(
     *phase_bit1 ^= sub;
 }
 
-/// Get the index of the i'th block of the `j`th column.
+/// Get the index of the i'th block of the j'th column.
 #[inline]
 fn column_block_index(n: usize, i: usize, j: usize) -> usize {
     debug_assert!(i < column_block_length(n));
     j * column_block_length(n) + i
 }
-/// Get the index of the i'th block of the column representing the x part of the `q`th tensor element.
+/// Get the index of the i'th block of the column representing the x part of the q'th tensor element.
 #[inline]
 fn x_column_block_index(n: usize, i: usize, q: usize) -> usize {
     debug_assert!(q < n);
     column_block_index(n, i, 2 * q)
 }
-/// Get the index of the i'th block of the column representing the z part of the `q`th tensor element.
+/// Get the index of the i'th block of the column representing the z part of the q'th tensor element.
 #[inline]
 fn z_column_block_index(n: usize, i: usize, q: usize) -> usize {
     debug_assert!(q < n);
