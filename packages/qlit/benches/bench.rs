@@ -3,7 +3,7 @@ use qlit::{BitString, Circuit, initialize_global};
 use rand::{SeedableRng, rngs::Xoshiro128PlusPlus};
 use std::{hint::black_box, time::Duration};
 
-fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
+fn setup(qubits: u32, gates: usize, non_clifford: usize) -> (BitString, Circuit) {
     let _ = rayon::ThreadPoolBuilder::new().build_global();
     initialize_global();
 
@@ -12,7 +12,7 @@ fn setup(qubits: u32, gates: usize, t_gates: usize) -> (BitString, Circuit) {
     // Useful for CI testing and benchmarking.
     let rng = &mut Xoshiro128PlusPlus::seed_from_u64(123);
     let w = BitString::random(qubits.try_into().unwrap(), rng);
-    let circuit = Circuit::random_clifford_t(qubits, gates, t_gates, rng);
+    let circuit = Circuit::random(qubits, gates, non_clifford, rng);
     (w, circuit)
 }
 

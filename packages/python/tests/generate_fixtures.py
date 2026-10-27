@@ -18,11 +18,11 @@ FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
 def setup(
     qubits,
     gates, 
-    t_gates, 
+    non_clifford, 
     w_samples,
     seed,
 ) -> tuple[QuantumCircuit, list[str]]:
-    circuit = Circuit.random_clifford_t(qubits, gates, t_gates, seed)
+    circuit = Circuit.random(qubits, gates, non_clifford, seed)
     random.seed(seed)
 
     ws = []
@@ -52,6 +52,14 @@ def setup(
                 qiskit_circuit.t(a)
             case Gate.Tdg(a):
                 qiskit_circuit.tdg(a)
+            case Gate.Rx(t, a):
+                qiskit_circuit.rx(t, a)
+            case Gate.Ry(t, a):
+                qiskit_circuit.ry(t, a)
+            case Gate.Rz(t, a):
+                qiskit_circuit.rz(t, a)
+            case Gate.U(t, p, l, a):
+                qiskit_circuit.u(t, p, l, a)
             case _:
                 raise ValueError(f"Unknown gate: {gate}")
 
@@ -66,10 +74,10 @@ def generate_fixtures():
     w_samples = 50
     for i in range(iterations):
         qubits = 10
-        t_gates = 5
+        non_clifford = 5
         gates = 100
         seed = 1234 + i
-        qiskit_circuit, ws = setup(qubits, gates, t_gates, w_samples, seed)
+        qiskit_circuit, ws = setup(qubits, gates, non_clifford, w_samples, seed)
         
         state = Statevector.from_instruction(qiskit_circuit)
         w_data = []
@@ -78,7 +86,7 @@ def generate_fixtures():
             w_be = w[::-1]
             w_coeff = state.data[int(w_be, 2)]
             w_data.append({"w": w, "w_coeff_re": w_coeff.real, "w_coeff_im": w_coeff.imag})
-        data.append({"qubits": qubits, "t_gates": t_gates, "gates": gates, "seed": seed, "w_data": w_data})
+        data.append({"qubits": qubits, "non_clifford": non_clifford, "gates": gates, "seed": seed, "w_data": w_data})
 
     with open(FIXTURES_PATH, "w") as f:
         f.write(json.dumps(data, indent=2))

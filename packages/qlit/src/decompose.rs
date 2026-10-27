@@ -73,6 +73,8 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
             Gate::Rx(t, a) => &[H(a), rz(t, a), H(a)],
             Gate::Ry(t, a) => &[Sdg(a), H(a), rz(t, a), H(a), S(a)],
             Gate::Rz(t, a) => &[rz(t, a)],
+
+            Gate::U(t, p, l, a) => &[phase(l, a), Sdg(a), H(a), rz(t, a), H(a), S(a), phase(p, a)],
         };
         gates.extend(decomp);
     }
@@ -89,6 +91,11 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
         p_gates,
         gates,
     }
+}
+
+fn phase(t: f64, a: u32) -> CliffordPGate {
+    let e = Complex::from_polar(1.0, t);
+    CliffordPGate::Piz((1.0 + e) / 2.0, (1.0 - e) / 2.0, a)
 }
 
 fn rz(t: f64, a: u32) -> CliffordPGate {

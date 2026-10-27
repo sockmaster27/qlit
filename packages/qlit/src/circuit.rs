@@ -1,5 +1,7 @@
 use std::{error::Error, fmt::Display, iter::Copied, slice, vec};
 
+use std::f64::consts::TAU;
+
 #[cfg(feature = "rand")]
 use rand::{Rng, RngExt, seq::IndexedRandom};
 
@@ -25,6 +27,8 @@ pub enum Gate {
     Rx(f64, u32),
     Ry(f64, u32),
     Rz(f64, u32),
+
+    U(f64, f64, f64, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct Circuit {
@@ -82,32 +86,33 @@ impl Circuit {
                     check_index(a)?;
                     check_param(t)?;
                 }
+                U(t, p, l, a) => {
+                    check_index(a)?;
+                    check_param(t)?;
+                    check_param(p)?;
+                    check_param(l)?;
+                }
             }
         }
         Ok(Self { qubits, gates })
     }
 
-    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    /// Create a random circuit from the full supported gate set, with the given number of `qubits` and `gates` of which `non_clifford` are non-Clifford gates.
     #[cfg(feature = "rand")]
-    pub fn random_clifford_t(
-        qubits: u32,
-        gates: usize,
-        t_gates: usize,
-        rng: &mut impl Rng,
-    ) -> Self {
+    pub fn random(qubits: u32, gates: usize, non_clifford: usize, rng: &mut impl Rng) -> Self {
         assert!(1 < qubits, "qubits must be greater than 1");
         assert!(
-            t_gates <= gates,
-            "t_gates must be less than or equal to gates"
+            non_clifford <= gates,
+            "non_clifford must be less than or equal to gates"
         );
 
-        let mut t_gate_positions = Vec::new();
-        for _ in 0..t_gates {
+        let mut non_clifford_positions = Vec::new();
+        for _ in 0..non_clifford {
             let mut pos;
             loop {
                 pos = rng.random_range(0..gates);
-                if !t_gate_positions.contains(&pos) {
-                    t_gate_positions.push(pos);
+                if !non_clifford_positions.contains(&pos) {
+                    non_clifford_positions.push(pos);
                     break;
                 }
             }
@@ -123,8 +128,14 @@ impl Circuit {
                     while b == a {
                         b = rng.random_range(0..qubits);
                     }
-                    if t_gate_positions.contains(&i) {
-                        [T(a), Tdg(a)].choose(rng).unwrap().clone()
+                    if non_clifford_positions.contains(&i) {
+                        let t = rng.random_range(0.0..TAU);
+                        let p = rng.random_range(0.0..TAU);
+                        let l = rng.random_range(0.0..TAU);
+                        [T(a), Tdg(a), Rx(t, a), Ry(t, a), Rz(t, a), U(t, p, l, a)]
+                            .choose(rng)
+                            .unwrap()
+                            .clone()
                     } else {
                         [X(a), Y(a), Z(a), H(a), S(a), Sdg(a), Cnot(a, b), Cz(a, b)]
                             .choose(rng)
