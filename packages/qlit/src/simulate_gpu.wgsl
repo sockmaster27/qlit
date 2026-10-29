@@ -108,9 +108,7 @@ fn apply_gates(
                     let za = z_column_block_index(block_index, a);
                     let xb = x_column_block_index(block_index, b);
                     let zb = z_column_block_index(block_index, b);
-                    tableau[r] ^= (tableau[xb] & tableau[zb])
-                        ^ (tableau[xa] & tableau[xb] & ~(tableau[zb] ^ tableau[za]))
-                        ^ (tableau[xb] & (tableau[zb] ^ tableau[xa]));
+                    tableau[r] ^= tableau[xa] & tableau[xb] & (tableau[za] ^ tableau[zb]);
                     tableau[za] ^= tableau[xb];
                     tableau[zb] ^= tableau[xa];
                 }
