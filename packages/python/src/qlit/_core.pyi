@@ -28,15 +28,21 @@ class Gate:
         qubit: int
     @dataclass
     class Rx(Gate):
-        angle: float
+        theta: float
         qubit: int
     @dataclass
     class Ry(Gate):
-        angle: float
+        theta: float
         qubit: int
     @dataclass
     class Rz(Gate):
-        angle: float
+        theta: float
+        qubit: int
+    @dataclass
+    class U(Gate):
+        theta: float
+        phi: float
+        lamb: float
         qubit: int
     @dataclass
     class Cnot(Gate):
@@ -50,7 +56,7 @@ class Gate:
 class Circuit:
     def __init__(self, qubits: int, gates: Iterable[Gate]) -> None: ...
     @staticmethod
-    def random_clifford_t(qubits: int, gates: int, t_gates: int, seed: int) -> Circuit: ...
+    def random(qubits: int, gates: int, non_clifford: int, seed: int) -> Circuit: ...
 
     @property
     def qubits(self) -> int: ...

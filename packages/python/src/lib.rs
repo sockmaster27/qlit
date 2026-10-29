@@ -25,6 +25,7 @@ enum PyGate {
     Rx(f64, u32),
     Ry(f64, u32),
     Rz(f64, u32),
+    U(f64, f64, f64, u32),
 }
 #[pymethods]
 impl PyGate {
@@ -45,6 +46,7 @@ impl PyGate {
             Rx(t, a) => format!("{pre}Rx({t}, {a})"),
             Ry(t, a) => format!("{pre}Ry({t}, {a})"),
             Rz(t, a) => format!("{pre}Rz({t}, {a})"),
+            U(t, p, l, a) => format!("{pre}U({t}, {p}, {l}, {a})"),
         }
     }
 }
@@ -64,6 +66,7 @@ impl From<PyGate> for Gate {
             PyGate::Rx(t, a) => Gate::Rx(t, a),
             PyGate::Ry(t, a) => Gate::Ry(t, a),
             PyGate::Rz(t, a) => Gate::Rz(t, a),
+            PyGate::U(t, p, l, a) => Gate::U(t, p, l, a),
         }
     }
 }
@@ -83,6 +86,7 @@ impl From<Gate> for PyGate {
             Gate::Rx(t, a) => PyGate::Rx(t, a),
             Gate::Ry(t, a) => PyGate::Ry(t, a),
             Gate::Rz(t, a) => PyGate::Rz(t, a),
+            Gate::U(t, p, l, a) => PyGate::U(t, p, l, a),
         }
     }
 }
@@ -106,14 +110,14 @@ impl PyCircuit {
         }
     }
 
-    /// Create a random circuit from the Clifford+T fragment, with the given number of `qubits` and `gates` of which `t_gates` are T gates.
+    /// Create a random circuit from the full supported gate set, with the given number of `qubits` and `gates` of which `non_clifford` are non-Clifford gates.
     #[staticmethod]
-    fn random_clifford_t(qubits: u32, gates: usize, t_gates: usize, seed: u64) -> Self {
+    fn random(qubits: u32, gates: usize, non_clifford: usize, seed: u64) -> Self {
         // Xoshiro128++ (unlike SmallRng) is portable across platforms, so a given
         // seed always produces the same circuit regardless of pointer width.
         // Useful for CI testing and benchmarking.
         let rng = &mut Xoshiro128PlusPlus::seed_from_u64(seed);
-        PyCircuit(Circuit::random_clifford_t(qubits, gates, t_gates, rng))
+        PyCircuit(Circuit::random(qubits, gates, non_clifford, rng))
     }
 
     /// The number of qubits in the circuit.

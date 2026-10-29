@@ -288,6 +288,13 @@ mod circuit {
             })
         );
         assert_eq!(
+            Circuit::new(8, [U(1.0, 1.0, 1.0, 8)]),
+            Err(CircuitCreationError::InvalidQubitIndex {
+                index: 0,
+                qubits: 8
+            })
+        );
+        assert_eq!(
             Circuit::new(8, [Cnot(8, 4)]),
             Err(CircuitCreationError::InvalidQubitIndex {
                 index: 0,
@@ -360,6 +367,42 @@ mod circuit {
         );
         assert_eq!(
             Circuit::new(8, [Rz(f64::NEG_INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(f64::NAN, 0.0, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(f64::INFINITY, 0.0, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(f64::NEG_INFINITY, 0.0, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, f64::NAN, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, f64::INFINITY, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, f64::NEG_INFINITY, 0.0, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, 0.0, f64::NAN, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, 0.0, f64::INFINITY, 4)]),
+            Err(CircuitCreationError::InvalidParameter { index: 0 })
+        );
+        assert_eq!(
+            Circuit::new(8, [U(0.0, 0.0, f64::NEG_INFINITY, 4)]),
             Err(CircuitCreationError::InvalidParameter { index: 0 })
         );
         assert_eq!(
