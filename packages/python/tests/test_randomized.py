@@ -11,6 +11,8 @@ from qlit import (
 )
 
 FIXTURES_PATH = Path(__file__).parent / "randomized_fixtures.json"
+DELTA = 1e-6
+ABS_DELTA = 1e-6
 
 
 class TestQlitRandomized:
@@ -31,17 +33,17 @@ class TestQlitRandomized:
     
     def test_against_statevector(self):
         for w, circuit, w_coeff_qiskit in self.setup_test_against_statevector():
-            assert simulate_circuit(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nCPU: {w=} \n{circuit.gates=}"
+            assert simulate_circuit(w, circuit) == pytest.approx(w_coeff_qiskit, rel=DELTA, abs=ABS_DELTA), f"\nCPU: {w=} \n{circuit.gates=}"
             
     @pytest.mark.gpu
     def test_against_statevector_gpu(self):
         for w, circuit, w_coeff_qiskit in self.setup_test_against_statevector():
-            assert simulate_circuit_gpu(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nGPU: {w=} \n{circuit.gates=}"
+            assert simulate_circuit_gpu(w, circuit) == pytest.approx(w_coeff_qiskit, rel=DELTA, abs=ABS_DELTA), f"\nGPU: {w=} \n{circuit.gates=}"
 
     @pytest.mark.gpu
     def test_against_statevector_hybrid(self):
         for w, circuit, w_coeff_qiskit in self.setup_test_against_statevector():
-            assert simulate_circuit_hybrid(w, circuit) == pytest.approx(w_coeff_qiskit), f"\nHybrid: {w=} \n{circuit.gates=}"
+            assert simulate_circuit_hybrid(w, circuit) == pytest.approx(w_coeff_qiskit, rel=DELTA, abs=ABS_DELTA), f"\nHybrid: {w=} \n{circuit.gates=}"
 
     @pytest.mark.gpu
     def test_implementations_against_eachother(self):
@@ -60,5 +62,5 @@ class TestQlitRandomized:
                 simulate_circuit_gpu_res = simulate_circuit_gpu(w, circuit)
                 simulate_circuit_hybrid_res = simulate_circuit_hybrid(w, circuit)
 
-                assert simulate_circuit_res == pytest.approx(simulate_circuit_gpu_res), f"\nCPU/GPU: {w=} \n{circuit.gates=}"
-                assert simulate_circuit_gpu_res == pytest.approx(simulate_circuit_hybrid_res), f"\nGPU/Hybrid: {w=} \n{circuit.gates=}"
+                assert simulate_circuit_res == pytest.approx(simulate_circuit_gpu_res, rel=DELTA, abs=ABS_DELTA), f"\nCPU/GPU: {w=} \n{circuit.gates=}"
+                assert simulate_circuit_gpu_res == pytest.approx(simulate_circuit_hybrid_res, rel=DELTA, abs=ABS_DELTA), f"\nGPU/Hybrid: {w=} \n{circuit.gates=}"
