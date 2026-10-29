@@ -192,7 +192,7 @@ impl ExtendedTableau {
         }
     }
 
-    /// Attempts to fork the tableau by duplicating the column starting at block index i and appedning it as a new c-column.
+    /// Attempts to fork the tableau by duplicating the column starting at block index i and appending it as a new c-column.
     fn try_fork(&mut self, i: usize) -> ForkResult {
         let n = self.n;
         let c_cols = self.c_cols;
