@@ -309,34 +309,40 @@ fn run_cpu(
                     }
                 } else {
                     let contained_states = g.contained_states();
-                    for i in 0..contained_states {
-                        let index_i = i;
-                        let index_z = i + contained_states;
-                        xs.copy_within(index_i, index_z);
-                        x_coeffs.push(x_coeffs[index_i]);
-
-                        x_coeffs[index_i] *= ci;
-
-                        if xs.get(index_z, a) {
-                            x_coeffs[index_z] *= -Complex::ONE;
-                        }
-                        x_coeffs[index_z] *= cz;
-                    }
                     let fork_result = g.try_fork_apply_z_gate(a);
                     if let ForkResult::Redundant(c) = fork_result {
+                        for (i1, i2) in xor_pairs(contained_states, c) {
+                            let coeff1 = x_coeffs[i1];
+                            let coeff2 = x_coeffs[i2];
+                            let mut r1 = Complex::ONE;
+                            let mut r2 = Complex::ONE;
+                            if xs.get(i1, a) {
+                                r1 *= -Complex::ONE;
+                            }
+                            if xs.get(i2, a) {
+                                r2 *= -Complex::ONE;
+                            }
+                            if !xs.equal_within(i1, i2) {
+                                r1 *= g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i1);
+                                r2 *= g.coeff_ratio(&xs.slice_string(i1), &xs.slice_string(i2), i2);
+                            }
+                            x_coeffs[i1] = ci * coeff1 + cz * coeff2 * r1;
+                            x_coeffs[i2] = ci * coeff2 + cz * coeff1 * r2;
+                        }
+                    } else {
                         for i in 0..contained_states {
                             let index_i = i;
-                            let index_z = (i ^ c) + contained_states;
-                            if !xs.equal_within(index_i, index_z) {
-                                x_coeffs[index_z] *= g.coeff_ratio(
-                                    &xs.slice_string(index_z),
-                                    &xs.slice_string(index_i),
-                                    index_i,
-                                );
+                            let index_z = i + contained_states;
+                            xs.copy_within(index_i, index_z);
+                            x_coeffs.push(x_coeffs[index_i]);
+
+                            x_coeffs[index_i] *= ci;
+
+                            if xs.get(index_z, a) {
+                                x_coeffs[index_z] *= -Complex::ONE;
                             }
-                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_z];
+                            x_coeffs[index_z] *= cz;
                         }
-                        x_coeffs.truncate(contained_states);
                     }
                 }
 
@@ -364,4 +370,40 @@ fn increment_path(path: &mut Vec<bool>) -> bool {
         }
     }
     true
+}
+
+/// Iterate over all pairs `(i, i ^ c)` of indices into an array of length `len` (a power of two),
+/// such that every index occurs in exactly one pair.
+fn xor_pairs(len: usize, c: usize) -> impl Iterator<Item = (usize, usize)> {
+    // Insert a 0 at the lowest set bit of c (nothing if c = 0), so only one member of each pair is generated.
+    let low_mask = c.isolate_lowest_one().wrapping_sub(1);
+    (0..len >> (c != 0) as usize).map(move |m| {
+        let i = ((m & !low_mask) << 1) | (m & low_mask);
+        (i, i ^ c)
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_xor_pairs1() {
+        let res: Vec<_> = xor_pairs(0, 0).collect();
+        assert_eq!(res, vec![]);
+    }
+    #[test]
+    fn test_xor_pairs2() {
+        let len = 1 << 7;
+        let mut seen = vec![false; len];
+        let c = 0b0110100;
+        for (i1, i2) in xor_pairs(len, c) {
+            assert_eq!(i1, i2 ^ c);
+            assert!(!seen[i1]);
+            assert!(!seen[i2]);
+            seen[i1] = true;
+            seen[i2] = true;
+        }
+        assert_eq!(seen, vec![true; len]);
+    }
 }
