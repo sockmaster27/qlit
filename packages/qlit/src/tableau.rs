@@ -25,7 +25,7 @@ pub enum ForkResult {
     /// The tableau was forked and [`ExtendedTableau::contained_states`] is now doubled.
     Forked,
     /// The tableau was not forked as it would introduce duplicate states.
-    /// The contained value, `c`, indicates that applying the Z-gate to the
+    /// The contained value, `c`, indicates that applying the given gate to the
     /// state at index `i` would result in a state identical to the one
     /// currently contained in index `i ^ c`, (`i` bitwise XOR'ed by `c`).
     ///
@@ -192,18 +192,10 @@ impl ExtendedTableau {
         }
     }
 
-    /// Attempts to fork the extended tableau such that it represents the current sequence of states,
-    /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
-    /// doubling the number of states represented by the tableau.
-    ///
-    /// If this forking would introduce duplicate state, the tableau is not mutated.
-    ///
-    /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
-    /// in which case the information about which states would be duplicates is included.
-    pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
+    /// Attempts to fork the tableau by duplicating the column starting at block index i and appending it as a new c-column.
+    fn try_fork(&mut self, i: usize) -> ForkResult {
         let n = self.n;
         let c_cols = self.c_cols;
-        let x = x_column_block_index(n, 0, a);
         let c = c_column_block_index(n, 0, c_cols);
 
         // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
@@ -238,15 +230,41 @@ impl ExtendedTableau {
             }
         }
         let mut tag = 0;
-        let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
+        let mut v = self.tableau[i..(i + column_block_length(n))].to_vec();
         reduce(&basis, (&mut v, &mut tag));
         if pivot(&v).is_none() {
             return ForkResult::Redundant(tag);
         }
 
-        self.tableau.copy_within(x..(x + column_block_length(n)), c);
+        self.tableau.copy_within(i..(i + column_block_length(n)), c);
         self.c_cols += 1;
         ForkResult::Forked
+    }
+    /// Attempts to fork the extended tableau such that it represents the current sequence of states,
+    /// appended by the same sequence but with the X-gate applied to qubit `a` of each state,
+    /// doubling the number of states represented by the tableau.
+    ///
+    /// If this forking would introduce duplicate state, the tableau is not mutated.
+    ///
+    /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
+    /// in which case the information about which states would be duplicates is included.
+    pub fn try_fork_apply_x_gate(&mut self, a: usize) -> ForkResult {
+        let n = self.n;
+        let z = z_column_block_index(n, 0, a);
+        self.try_fork(z)
+    }
+    /// Attempts to fork the extended tableau such that it represents the current sequence of states,
+    /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
+    /// doubling the number of states represented by the tableau.
+    ///
+    /// If this forking would introduce duplicate state, the tableau is not mutated.
+    ///
+    /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
+    /// in which case the information about which states would be duplicates is included.
+    pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
+        let n = self.n;
+        let x = x_column_block_index(n, 0, a);
+        self.try_fork(x)
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that

@@ -16,8 +16,10 @@ pub enum CliffordPGate {
     Cnot(u32, u32),
     Cz(u32, u32),
 
-    /// Piz(ci, cz) = ci*I + cz*Z
-    Piz(Complex<f64>, Complex<f64>, u32),
+    /// Pz(ci, cz) = ci*I + cz*Z
+    Pz(Complex<f64>, Complex<f64>, u32),
+    /// Px(ci, cx) = ci*I + cx*X
+    Px(Complex<f64>, Complex<f64>, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct CliffordPCircuit {
@@ -59,32 +61,29 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
             Gate::Cnot(a, b) => &[Cnot(a, b)],
             Gate::Cz(a, b) => &[Cz(a, b)],
 
-            Gate::T(a) => &[Piz(
+            Gate::T(a) => &[Pz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 + Complex::I)) / 2.0,
                 a,
             )],
-            Gate::Tdg(a) => &[Piz(
+            Gate::Tdg(a) => &[Pz(
                 (1.0 + FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 (1.0 - FRAC_1_SQRT_2 * (1.0 - Complex::I)) / 2.0,
                 a,
             )],
 
-            Gate::Rx(t, a) => &[H(a), rz(t, a), H(a)],
-            Gate::Ry(t, a) => &[Sdg(a), H(a), rz(t, a), H(a), S(a)],
+            Gate::Rx(t, a) => &[rx(t, a)],
+            Gate::Ry(t, a) => &[Sdg(a), rx(t, a), S(a)],
             Gate::Rz(t, a) => &[rz(t, a)],
 
-            Gate::U(t, p, l, a) => &[phase(l, a), Sdg(a), H(a), rz(t, a), H(a), S(a), phase(p, a)],
+            Gate::U(t, p, l, a) => &[phase(l, a), Sdg(a), rx(t, a), S(a), phase(p, a)],
         };
         gates.extend(decomp);
     }
 
     let p_gates = gates
         .iter()
-        .filter(|gate| match gate {
-            Piz(_, _, _) => true,
-            _ => false,
-        })
+        .filter(|gate| matches!(gate, Px(_, _, _) | Pz(_, _, _)))
         .count();
     CliffordPCircuit {
         qubits,
@@ -95,11 +94,18 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
 
 fn phase(t: f64, a: u32) -> CliffordPGate {
     let e = Complex::from_polar(1.0, t);
-    CliffordPGate::Piz((1.0 + e) / 2.0, (1.0 - e) / 2.0, a)
+    CliffordPGate::Pz((1.0 + e) / 2.0, (1.0 - e) / 2.0, a)
 }
 
+fn rx(t: f64, a: u32) -> CliffordPGate {
+    CliffordPGate::Px(
+        Complex::new((t / 2.0).cos(), 0.0),
+        Complex::new(0.0, -(t / 2.0).sin()),
+        a,
+    )
+}
 fn rz(t: f64, a: u32) -> CliffordPGate {
-    CliffordPGate::Piz(
+    CliffordPGate::Pz(
         Complex::new((t / 2.0).cos(), 0.0),
         Complex::new(0.0, -(t / 2.0).sin()),
         a,

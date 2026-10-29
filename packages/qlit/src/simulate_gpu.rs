@@ -747,7 +747,7 @@ impl<'a> GpuSimulator<'a> {
             .gates()
             .iter()
             .filter_map(|&gate| match gate {
-                CliffordPGate::Piz(ci, cz, _) => Some((ci, cz)),
+                CliffordPGate::Pz(ci, cz, _) => Some((ci, cz)),
                 _ => None,
             })
             .take(path_length as usize)
@@ -893,7 +893,10 @@ impl<'a> GpuSimulator<'a> {
                     gates.push(7);
                     qubit_params.push(a);
                 }
-                CliffordPGate::Piz(_, _, a) => {
+                CliffordPGate::Px(_, _, a) => {
+                    unreachable!()
+                }
+                CliffordPGate::Pz(_, _, a) => {
                     if seen_p_gates < path_length {
                         gates.push(8);
                         qubit_params.push(a);
@@ -942,7 +945,7 @@ impl<'a> GpuSimulator<'a> {
                     // to get the GPU started as soon as possible and avoid a single huge submission timing out.
                     self.submit_encoder();
                 }
-                CliffordPGate::Piz(ci, cz, a) => {
+                CliffordPGate::Pz(ci, cz, a) => {
                     if seen_p_gates < self.path_length {
                         seen_p_gates += 1;
                     } else {

@@ -291,7 +291,54 @@ fn run_cpu(
                 g.apply_h_gate(a);
             }
 
-            CliffordPGate::Piz(ci, cz, a) => {
+            CliffordPGate::Px(ci, cx, a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                if seen_p_gates < path.len() {
+                    if path[seen_p_gates] {
+                        for i in 0..g.contained_states() {
+                            xs.flip(i, a);
+                            x_coeffs[i] *= cx;
+                        }
+                        g.apply_x_gate(a);
+                    } else {
+                        for i in 0..g.contained_states() {
+                            x_coeffs[i] *= ci;
+                        }
+                    }
+                } else {
+                    let contained_states = g.contained_states();
+                    for i in 0..contained_states {
+                        let index_i = i;
+                        let index_x = i + contained_states;
+                        xs.copy_within(index_i, index_x);
+                        x_coeffs.push(x_coeffs[index_i]);
+
+                        x_coeffs[index_i] *= ci;
+
+                        xs.flip(index_x, a);
+                        x_coeffs[index_x] *= cx;
+                    }
+                    let fork_result = g.try_fork_apply_x_gate(a);
+                    if let ForkResult::Redundant(c) = fork_result {
+                        for i in 0..contained_states {
+                            let index_i = i;
+                            let index_x = (i ^ c) + contained_states;
+                            if !xs.equal_within(index_i, index_x) {
+                                x_coeffs[index_x] *= g.coeff_ratio(
+                                    &xs.slice_string(index_x),
+                                    &xs.slice_string(index_i),
+                                    index_i,
+                                );
+                            }
+                            x_coeffs[i] = x_coeffs[index_i] + x_coeffs[index_x];
+                        }
+                        x_coeffs.truncate(contained_states);
+                    }
+                }
+
+                seen_p_gates += 1;
+            }
+            CliffordPGate::Pz(ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 if seen_p_gates < path.len() {
                     if path[seen_p_gates] {
