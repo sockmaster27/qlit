@@ -128,17 +128,13 @@ impl Circuit {
                     }
                     if non_clifford_positions.contains(&i) {
                         use std::f64::consts::TAU;
-                        // let t = rng.random_range(0.0..TAU);
-                        // let p = rng.random_range(0.0..TAU);
-                        // let l = rng.random_range(0.0..TAU);
-                        [
-                            T(a),
-                            Tdg(a),
-                            // Rx(t, a), Ry(t, a), Rz(t, a), U(t, p, l, a)
-                        ]
-                        .choose(rng)
-                        .unwrap()
-                        .clone()
+                        let t = rng.random_range(0.0..TAU);
+                        let p = rng.random_range(0.0..TAU);
+                        let l = rng.random_range(0.0..TAU);
+                        [T(a), Tdg(a), Rx(t, a), Ry(t, a), Rz(t, a), U(t, p, l, a)]
+                            .choose(rng)
+                            .unwrap()
+                            .clone()
                     } else {
                         [X(a), Y(a), Z(a), H(a), S(a), Sdg(a), Cnot(a, b), Cz(a, b)]
                             .choose(rng)
