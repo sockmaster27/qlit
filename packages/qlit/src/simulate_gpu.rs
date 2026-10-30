@@ -45,6 +45,7 @@ struct GpuContext {
     global_bind_group_layout: wgpu::BindGroupLayout,
     single_qubit_bind_group_layout: wgpu::BindGroupLayout,
     fork_apply_piz_gate_bind_group_layout: wgpu::BindGroupLayout,
+    dedup_apply_piz_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     bring_into_rref_bind_group_layout: wgpu::BindGroupLayout,
     compute_output_bind_group_layout: wgpu::BindGroupLayout,
@@ -52,6 +53,8 @@ struct GpuContext {
     zero_pipeline: wgpu::ComputePipeline,
     apply_gates_pipeline: wgpu::ComputePipeline,
     fork_apply_piz_gate_pipeline: wgpu::ComputePipeline,
+    dedup_apply_piz_gate_c_zero_pipeline: wgpu::ComputePipeline,
+    dedup_apply_piz_gate_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
     swap_pass_pipeline: wgpu::ComputePipeline,
     update_before_h_pipeline: wgpu::ComputePipeline,
@@ -204,6 +207,56 @@ impl GpuContext {
                     // cz
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let dedup_apply_piz_gate_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Dedup Apply Piz Gate"),
+                entries: &[
+                    // qubit
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // ci
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // cz
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // c
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -395,6 +448,35 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
 
+        let dedup_apply_piz_gate_c_zero_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Dedup Apply Piz Gate C Zero"),
+                layout: Some(&fork_apply_piz_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("dedup_apply_piz_gate_c_zero"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
+        let dedup_apply_piz_gate_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Dedup Apply Piz Gate"),
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&dedup_apply_piz_gate_bind_group_layout),
+                ],
+                immediate_size: 0,
+            });
+        let dedup_apply_piz_gate_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Dedup Apply Piz Gate"),
+                layout: Some(&dedup_apply_piz_gate_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("dedup_apply_piz_gate"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
         let bring_into_rref_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Bring Into RREF"),
@@ -467,6 +549,7 @@ impl GpuContext {
             global_bind_group_layout,
             single_qubit_bind_group_layout,
             fork_apply_piz_gate_bind_group_layout,
+            dedup_apply_piz_gate_bind_group_layout,
             apply_gates_bind_group_layout,
             bring_into_rref_bind_group_layout,
             compute_output_bind_group_layout,
@@ -474,6 +557,8 @@ impl GpuContext {
             zero_pipeline,
             apply_gates_pipeline,
             fork_apply_piz_gate_pipeline,
+            dedup_apply_piz_gate_c_zero_pipeline,
+            dedup_apply_piz_gate_pipeline,
             elimination_pass_pipeline,
             swap_pass_pipeline,
             update_before_h_pipeline,
@@ -747,9 +832,7 @@ impl<'a> GpuSimulator<'a> {
             .gates()
             .iter()
             .filter_map(|&gate| match gate {
-                PizSequential(ci, cz, _) | PizFork(ci, cz, _) | PizDeduplicate(_, ci, cz, _) => {
-                    Some((ci, cz))
-                }
+                PizSequential(ci, cz, _) => Some((ci, cz)),
                 _ => None,
             })
             .take(path_length as usize)
@@ -944,9 +1027,17 @@ impl<'a> GpuSimulator<'a> {
                     // to get the GPU started as soon as possible and avoid a single huge submission timing out.
                     self.submit_encoder();
                 }
-                PizFork(ci, cz, a) | PizDeduplicate(_, ci, cz, a) => {
+                PizFork(ci, cz, a) => {
                     self.dispatch_gates();
                     self.fork_apply_piz_gate(ci, cz, a);
+                }
+                PizDeduplicate(0, ci, cz, a) => {
+                    self.dispatch_gates();
+                    self.dedup_apply_piz_gate_c_zero(ci, cz, a);
+                }
+                PizDeduplicate(c, ci, cz, a) => {
+                    self.dispatch_gates();
+                    self.dedup_apply_piz_gate(c, ci, cz, a);
                 }
                 _ => {}
             }
@@ -1029,6 +1120,97 @@ impl<'a> GpuSimulator<'a> {
         let new_encoder = self.gpu.device.create_command_encoder(&Default::default());
         let encoder = mem::replace(&mut self.encoder, new_encoder);
         self.gpu.queue.submit([encoder.finish()]);
+    }
+
+    fn dedup_apply_piz_gate_c_zero(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
+        let bind_group = self.piz_bind_group(
+            &self.gpu.fork_apply_piz_gate_bind_group_layout,
+            "Dedup Apply Piz Gate C Zero Bind Group",
+            ci,
+            cz,
+            a,
+            None,
+        );
+
+        let workgroups = self.contained_states().div_ceil(WORKGROUP_SIZE);
+        let mut pass = self.encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&self.gpu.dedup_apply_piz_gate_c_zero_pipeline);
+        pass.set_bind_group(0, &self.global_bind_group, &[]);
+        pass.set_bind_group(1, &bind_group, &[]);
+        pass.dispatch_workgroups(workgroups, 1, 1);
+    }
+
+    fn dedup_apply_piz_gate(&mut self, c: usize, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
+        let bind_group = self.piz_bind_group(
+            &self.gpu.dedup_apply_piz_gate_bind_group_layout,
+            "Dedup Apply Piz Gate Bind Group",
+            ci,
+            cz,
+            a,
+            Some(c as u32),
+        );
+
+        // One thread per pair of states.
+        let workgroups = (self.contained_states() / 2).div_ceil(WORKGROUP_SIZE);
+        let mut pass = self.encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&self.gpu.dedup_apply_piz_gate_pipeline);
+        pass.set_bind_group(0, &self.global_bind_group, &[]);
+        pass.set_bind_group(1, &bind_group, &[]);
+        pass.dispatch_workgroups(workgroups, 1, 1);
+    }
+
+    /// Creates the group 1 bind group shared by the piz gate kernels.
+    fn piz_bind_group(
+        &self,
+        layout: &wgpu::BindGroupLayout,
+        label: &str,
+        ci: Complex<f64>,
+        cz: Complex<f64>,
+        a: u32,
+        c: Option<u32>,
+    ) -> wgpu::BindGroup {
+        let uniform = |label: &str, contents: &[u8]| {
+            self.gpu
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(label),
+                    contents,
+                    usage: wgpu::BufferUsages::UNIFORM,
+                })
+        };
+        let qubit_buf = uniform("qubit", &a.to_ne_bytes());
+        let ci_buf = uniform("ci", &encode_complex([ci]));
+        let cz_buf = uniform("cz", &encode_complex([cz]));
+        let c_buf = c.map(|c| uniform("c", &c.to_ne_bytes()));
+
+        let mut entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: qubit_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: ci_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: cz_buf.as_entire_binding(),
+            },
+        ];
+        if let Some(c_buf) = &c_buf {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 3,
+                resource: c_buf.as_entire_binding(),
+            });
+        }
+
+        self.gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(label),
+                layout,
+                entries: &entries,
+            })
     }
 
     fn fork_apply_piz_gate(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {

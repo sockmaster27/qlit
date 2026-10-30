@@ -281,6 +281,57 @@ fn fork_apply_piz_gate(
     }
 }
 
+@compute
+@workgroup_size(64)
+fn dedup_apply_piz_gate_c_zero(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    let state_index = id.x;
+    if state_index >= contained_states() {
+        return;
+    }
+
+    var z_coeff = w_coeffs[state_index];
+    if ws[w_bit_index(state_index, qubit)] == 1u {
+        z_coeff = mul_minus_one(z_coeff);
+    }
+    w_coeffs[state_index] = add(mul(ci, w_coeffs[state_index]), mul(cz, z_coeff));
+}
+
+@group(1) @binding(3) var<uniform> c: u32;
+
+@compute
+@workgroup_size(64)
+fn dedup_apply_piz_gate(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    let m = id.x;
+    if m >= contained_states() / 2 {
+        return;
+    }
+
+    let i = xor_pair(m, c);
+    var z_coeff1 = w_coeffs[i.x];
+    var z_coeff2 = w_coeffs[i.y];
+    if ws[w_bit_index(i.y, qubit)] == 1u {
+        z_coeff1 = mul_minus_one(z_coeff1);
+    }
+    if ws[w_bit_index(i.x, qubit)] == 1u {
+        z_coeff2 = mul_minus_one(z_coeff2);
+    }
+    // TODO: Adjust when w1 != w2
+    w_coeffs[i.x] = add(mul(ci, w_coeffs[i.x]), mul(cz, z_coeff1));
+    w_coeffs[i.y] = add(mul(ci, w_coeffs[i.y]), mul(cz, z_coeff2));
+}
+
+fn xor_pair(m: u32, c: u32) -> vec2<u32> {
+    let low_mask = (1u << countTrailingZeros(c)) - 1;
+    let high_bits = (m & ~low_mask) << 1;
+    let low_bits = m & low_mask;
+    let i = high_bits | low_bits;
+    return vec2(i, i ^ c);
+}
+
 
 struct PassInput {
     col: u32,
@@ -751,6 +802,9 @@ struct Complex {
 }
 fn eq(c1: Complex, c2: Complex) -> bool {
     return c1.re == c2.re && c1.im == c2.im;
+}
+fn add(c1: Complex, c2: Complex) -> Complex {
+    return Complex(c1.re + c2.re, c1.im + c2.im);
 }
 fn add_real(c1: Complex, f2: f32) -> Complex {
     return Complex(c1.re + f2, c1.im);
