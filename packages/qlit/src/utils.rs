@@ -5,6 +5,9 @@ use std::{
 
 use num_traits::PrimInt;
 
+pub const N_TOO_LARGE: &str = "Number of qubits too large";
+pub const INDEX_TOO_LARGE: &str = "Qubit index too large";
+
 pub trait BitBlock: PrimInt + ShlAssign<usize> + BitAndAssign {
     const SIZE: usize = mem::size_of::<Self>() * 8;
 }

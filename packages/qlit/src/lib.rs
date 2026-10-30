@@ -1,6 +1,7 @@
 mod bitstring;
 mod circuit;
 mod decompose;
+mod plan;
 mod simulate;
 #[cfg(feature = "gpu")]
 mod simulate_gpu;

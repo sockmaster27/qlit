@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     BitString,
-    decompose::{CliffordPCircuit, CliffordPGate},
+    decompose::{CircuitDecomposed, GateDecomposed},
 };
 
 type BitBlock = u32;
@@ -483,7 +483,7 @@ impl GpuContext {
 }
 
 pub struct GpuSimulator<'a> {
-    circuit: &'a CliffordPCircuit,
+    circuit: &'a CircuitDecomposed,
 
     gpu: &'static GpuContext,
     encoder: wgpu::CommandEncoder,
@@ -514,7 +514,7 @@ pub struct GpuSimulator<'a> {
     compute_output_bind_group: wgpu::BindGroup,
 }
 impl<'a> GpuSimulator<'a> {
-    pub fn new(circuit: &'a CliffordPCircuit, w: &BitString, batch_size_log2: usize) -> Self {
+    pub fn new(circuit: &'a CircuitDecomposed, w: &BitString, batch_size_log2: usize) -> Self {
         let gpu = get_gpu();
 
         let n: u32 = circuit.qubits();
@@ -734,7 +734,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn apply_gates_bind_groups(
         gpu: &GpuContext,
-        circuit: &CliffordPCircuit,
+        circuit: &CircuitDecomposed,
         path_length: u32,
     ) -> Vec<Option<wgpu::BindGroup>> {
         let mut bind_groups = Vec::new();
@@ -747,7 +747,7 @@ impl<'a> GpuSimulator<'a> {
             .gates()
             .iter()
             .filter_map(|&gate| match gate {
-                CliffordPGate::Piz(ci, cz, _) => Some((ci, cz)),
+                GateDecomposed::Piz(ci, cz, _) => Some((ci, cz)),
                 _ => None,
             })
             .take(path_length as usize)
@@ -848,37 +848,37 @@ impl<'a> GpuSimulator<'a> {
         let mut seen_p_gates: u32 = 0;
         for &gate in circuit.gates() {
             match gate {
-                CliffordPGate::Cnot(a, b) => {
+                GateDecomposed::Cnot(a, b) => {
                     gates.push(0);
                     qubit_params.push(a);
                     qubit_params.push(b);
                 }
-                CliffordPGate::Cz(a, b) => {
+                GateDecomposed::Cz(a, b) => {
                     gates.push(1);
                     qubit_params.push(a);
                     qubit_params.push(b);
                 }
-                CliffordPGate::X(a) => {
+                GateDecomposed::X(a) => {
                     gates.push(2);
                     qubit_params.push(a);
                 }
-                CliffordPGate::Y(a) => {
+                GateDecomposed::Y(a) => {
                     gates.push(3);
                     qubit_params.push(a);
                 }
-                CliffordPGate::Z(a) => {
+                GateDecomposed::Z(a) => {
                     gates.push(4);
                     qubit_params.push(a);
                 }
-                CliffordPGate::S(a) => {
+                GateDecomposed::S(a) => {
                     gates.push(5);
                     qubit_params.push(a);
                 }
-                CliffordPGate::Sdg(a) => {
+                GateDecomposed::Sdg(a) => {
                     gates.push(6);
                     qubit_params.push(a);
                 }
-                CliffordPGate::H(a) => {
+                GateDecomposed::H(a) => {
                     commit_buffer(
                         gpu,
                         &mut gates,
@@ -893,7 +893,7 @@ impl<'a> GpuSimulator<'a> {
                     gates.push(7);
                     qubit_params.push(a);
                 }
-                CliffordPGate::Piz(_, _, a) => {
+                GateDecomposed::Piz(_, _, a) => {
                     if seen_p_gates < path_length {
                         gates.push(8);
                         qubit_params.push(a);
@@ -933,7 +933,7 @@ impl<'a> GpuSimulator<'a> {
         let mut seen_p_gates = 0;
         for &gate in self.circuit.gates() {
             match gate {
-                CliffordPGate::H(a) => {
+                GateDecomposed::H(a) => {
                     self.dispatch_gates();
                     self.bring_into_rref();
                     self.update_before_h(a);
@@ -942,7 +942,7 @@ impl<'a> GpuSimulator<'a> {
                     // to get the GPU started as soon as possible and avoid a single huge submission timing out.
                     self.submit_encoder();
                 }
-                CliffordPGate::Piz(ci, cz, a) => {
+                GateDecomposed::Piz(ci, cz, a) => {
                     if seen_p_gates < self.path_length {
                         seen_p_gates += 1;
                     } else {
