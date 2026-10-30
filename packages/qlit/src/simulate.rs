@@ -91,10 +91,10 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
 pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
-    let circuit = decompose(circuit);
+    let circuit_decomposed = decompose(circuit);
     let w_len = w.len();
-    let n = circuit.qubits();
-    let t = circuit.p_gates();
+    let n = circuit_decomposed.qubits();
+    let t = circuit_decomposed.p_gates();
     assert_eq!(
         n.try_into(),
         Ok(w_len),
@@ -102,9 +102,11 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
     );
 
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t);
+    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
+
     let mut path = vec![false; t - batch_size_log2];
     let mut w_coeff = Complex::ZERO;
-    let mut g = GpuSimulator::new(&circuit, w, batch_size_log2);
+    let mut g = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
     let mut done = false;
     while !done {
         w_coeff += g.run(&path);
@@ -146,7 +148,7 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
     let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
 
-    let mut gpu_sim = GpuSimulator::new(&circuit_decomposed, w, batch_size_log2);
+    let mut gpu_sim = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
 
     let mut w_coeff_local = Complex::<f64>::ZERO;
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);

@@ -30,6 +30,7 @@ pub enum GatePlanned {
 pub struct CircuitPlanned {
     qubits: u32,
     gates: Vec<GatePlanned>,
+    p_gates: usize,
 }
 impl CircuitPlanned {
     pub fn qubits(&self) -> u32 {
@@ -38,6 +39,10 @@ impl CircuitPlanned {
 
     pub fn gates(&self) -> &[GatePlanned] {
         &self.gates
+    }
+
+    pub fn p_gates(&self) -> usize {
+        self.p_gates
     }
 }
 
@@ -114,5 +119,6 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
     CircuitPlanned {
         qubits: circuit.qubits(),
         gates,
+        p_gates: circuit.p_gates(),
     }
 }
