@@ -311,8 +311,8 @@ fn dedup_apply_piz_gate(
     }
 
     let i = xor_pair(m, c);
-    var z_coeff1 = w_coeffs[i.x];
-    var z_coeff2 = w_coeffs[i.y];
+    var z_coeff1 = w_coeffs[i.y];
+    var z_coeff2 = w_coeffs[i.x];
     if ws[w_bit_index(i.y, qubit)] == 1u {
         z_coeff1 = mul_minus_one(z_coeff1);
     }
