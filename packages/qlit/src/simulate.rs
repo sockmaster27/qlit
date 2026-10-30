@@ -313,7 +313,7 @@ fn run_cpu(
             PizFork(ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
-                g.try_fork_apply_z_gate(a);
+                g.fork_apply_z_gate(a);
                 for i in 0..contained_states {
                     let index_i = i;
                     let index_z = i + contained_states;
