@@ -41,6 +41,7 @@ impl CircuitPlanned {
         &self.gates
     }
 
+    #[cfg(feature = "gpu")]
     pub fn p_gates(&self) -> usize {
         self.p_gates
     }
