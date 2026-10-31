@@ -6,6 +6,7 @@ mod simulate;
 #[cfg(feature = "gpu")]
 mod simulate_gpu;
 mod tableau;
+mod tableau_plan;
 mod utils;
 
 pub use bitstring::BitString;

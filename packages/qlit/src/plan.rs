@@ -2,7 +2,7 @@ use num_complex::Complex;
 
 use crate::{
     decompose::{CircuitDecomposed, GateDecomposed},
-    tableau::{ExtendedTableau, ForkResult},
+    tableau_plan::{ForkResult, PlanningTableau},
     utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
 
@@ -52,7 +52,7 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let path_len = circuit.p_gates() - batch_size_log2;
-    let mut g = ExtendedTableau::zero(n, circuit.p_gates());
+    let mut g = PlanningTableau::zero(n, circuit.p_gates());
     let mut seen_p_gates = 0;
     let gates = circuit
         .gates()

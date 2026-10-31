@@ -19,21 +19,6 @@ enum Pauli {
     Z,
 }
 
-/// Result returned by [`ExtendedTableau::try_fork_apply_z_gate`], indicating whether fork operation was carried out.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[must_use]
-pub enum ForkResult {
-    /// The tableau was forked and [`ExtendedTableau::contained_states`] is now doubled.
-    Forked,
-    /// The tableau was not forked as it would introduce duplicate states.
-    /// The contained value, `c`, indicates that applying the Z-gate to the
-    /// state at index `i` would result in a state identical to the one
-    /// currently contained in index `i ^ c`, (`i` bitwise XOR'ed by `c`).
-    ///
-    /// [`ExtendedTableau::contained_states`] remains unchanged.
-    Redundant(usize),
-}
-
 /// An extended stabilizer tableau.
 ///
 /// Able to represent a sequence of stabilizer states, differing by single-qubit Pauli rotations.
@@ -43,7 +28,7 @@ pub struct ExtendedTableau {
     n: usize,
     /// The current number of active c-columns in the tableau.
     c_cols: usize,
-    /// The augmented stabilizer tableau,
+    /// The extended stabilizer tableau,
     /// ```text
     /// P1 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
     /// P2 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
@@ -193,60 +178,6 @@ impl ExtendedTableau {
         }
     }
 
-    /// Attempts to fork the extended tableau such that it represents the current sequence of states,
-    /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
-    /// doubling the number of states represented by the tableau.
-    ///
-    /// If this forking would introduce duplicate state, the tableau is not mutated.
-    ///
-    /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
-    /// in which case the information about which states would be duplicates is included.
-    pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
-        let n = self.n;
-        let c_cols = self.c_cols;
-        let x = x_column_block_index(n, 0, a);
-
-        // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
-        // If it is, the tag is a bit-vector indicating which columns are part of his combination.
-        let mut basis: Vec<(usize, Vec<BitBlock>, usize)> = Vec::with_capacity(c_cols);
-        fn reduce(basis: &[(usize, Vec<BitBlock>, usize)], v: (&mut [BitBlock], &mut usize)) {
-            for (pivot, b, tag) in basis {
-                if v.0[pivot / BLOCK_SIZE] & bitmask::<BitBlock>(pivot % BLOCK_SIZE) != 0 {
-                    for (vi, bi) in v.0.iter_mut().zip(b) {
-                        *vi ^= bi;
-                    }
-                    *v.1 ^= tag;
-                }
-            }
-        }
-        fn pivot(v: &[BitBlock]) -> Option<usize> {
-            v.iter().position(|&block| block != 0).map(|i| {
-                let leading_zeros: usize = v[i]
-                    .leading_zeros()
-                    .try_into()
-                    .expect("u32 does not fit into usize");
-                BLOCK_SIZE * i + leading_zeros
-            })
-        }
-        for j in 0..c_cols {
-            let cj = c_column_block_index(n, 0, j);
-            let mut v = self.tableau[cj..(cj + column_block_length(n))].to_vec();
-            let mut tag = 1 << j;
-            reduce(&basis, (&mut v, &mut tag));
-            if let Some(pivot) = pivot(&v) {
-                basis.push((pivot, v, tag));
-            }
-        }
-        let mut tag = 0;
-        let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
-        reduce(&basis, (&mut v, &mut tag));
-        if pivot(&v).is_none() {
-            return ForkResult::Redundant(tag);
-        }
-
-        self.fork_apply_z_gate(a);
-        ForkResult::Forked
-    }
     pub fn fork_apply_z_gate(&mut self, a: usize) {
         let n = self.n;
         let c_cols = self.c_cols;
@@ -1062,10 +993,10 @@ mod test {
     }
 
     #[test]
-    fn try_fork_apply_z_gate() {
+    fn fork_apply_z_gate() {
         let mut g = ExtendedTableau::zero(8, 1);
         g.apply_h_gate(0);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.fork_apply_z_gate(0);
 
         let w1 = BitStringArray::from_u8s_ltr(&[0b0000_0000, 0b1000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -1083,55 +1014,14 @@ mod test {
     }
 
     #[test]
-    fn try_fork_apply_z_gate_redundant() {
-        let mut g = ExtendedTableau::zero(100, 3);
-        // Zero x column is trivially derivable.
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b0));
-        assert_eq!(g.contained_states(), 1);
-
-        g.apply_h_gate(0);
-        g.apply_h_gate(70);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b1));
-        assert_eq!(g.try_fork_apply_z_gate(70), ForkResult::Forked);
-        assert_eq!(g.contained_states(), 4);
-
-        // x column of qubit 70 becomes the XOR of the two existing c columns.
-        g.apply_cnot_gate(0, 70);
-        let before = g.tableau.clone();
-        assert_eq!(g.try_fork_apply_z_gate(70), ForkResult::Redundant(0b11));
-        assert_eq!(g.contained_states(), 4);
-        assert_eq!(g.tableau, before);
-
-        g.apply_h_gate(99);
-        assert_eq!(g.try_fork_apply_z_gate(99), ForkResult::Forked);
-        assert_eq!(g.contained_states(), 8);
-    }
-
-    #[test]
-    fn try_fork_apply_z_gate_redundant_reduced_basis() {
-        let mut g = ExtendedTableau::zero(2, 2);
-        g.apply_h_gate(0);
-        // c0 = [1, 0]
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
-        g.apply_h_gate(1);
-        g.apply_cnot_gate(1, 0);
-        // c1 = [1, 1], which must be reduced by c0 when building the basis.
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
-        g.apply_cnot_gate(1, 0);
-        // x column of qubit 0 is [1, 0] = c0.
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Redundant(0b01));
-    }
-
-    #[test]
     fn large_tableau() {
         let mut g = ExtendedTableau::zero(300, 3);
         g.apply_h_gate(1);
-        assert_eq!(g.try_fork_apply_z_gate(1), ForkResult::Forked);
+        g.fork_apply_z_gate(1);
         g.apply_h_gate(78);
-        assert_eq!(g.try_fork_apply_z_gate(78), ForkResult::Forked);
+        g.fork_apply_z_gate(78);
         g.apply_h_gate(123);
-        assert_eq!(g.try_fork_apply_z_gate(123), ForkResult::Forked);
+        g.fork_apply_z_gate(123);
 
         let w1 = BitStringArray::new(300, 8);
         let mut w2 = BitString::zero(300);
@@ -1252,7 +1142,7 @@ mod test {
     fn coeff_ratio_forked() {
         let mut g = ExtendedTableau::zero(8, 1);
         g.apply_h_gate(0);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.fork_apply_z_gate(0);
 
         let w1 = BitString::from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -1277,7 +1167,7 @@ mod test {
         let mut g = ExtendedTableau::zero(8, 1);
         g.apply_h_gate(0);
         g.apply_s_gate(0);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.fork_apply_z_gate(0);
 
         let w1 = BitString::from_u8_ltr(0b0000_0000);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -1302,7 +1192,7 @@ mod test {
         let mut g = ExtendedTableau::zero(8, 1);
         g.apply_h_gate(0);
         g.apply_cnot_gate(0, 1);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
+        g.fork_apply_z_gate(0);
 
         let w1 = BitStringArray::from_u8s_ltr(&[0b1100_0000, 0b0000_0000]);
         for i in 0b0000_0000..=0b1111_1111 {
@@ -1324,8 +1214,8 @@ mod test {
         let mut g = ExtendedTableau::zero(8, 2);
         g.apply_h_gate(0);
         g.apply_h_gate(1);
-        assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);
-        assert_eq!(g.try_fork_apply_z_gate(1), ForkResult::Forked);
+        g.fork_apply_z_gate(0);
+        g.fork_apply_z_gate(1);
 
         let w1 =
             BitStringArray::from_u8s_ltr(&[0b0000_0000, 0b0000_0000, 0b1100_0000, 0b1100_0000]);
