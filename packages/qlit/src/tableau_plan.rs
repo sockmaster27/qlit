@@ -6,18 +6,16 @@ use crate::utils::bitmask;
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
-/// Result returned by [`ExtendedTableau::try_fork_apply_z_gate`], indicating whether fork operation was carried out.
+/// Result returned by [`PlanningTableau::try_fork_apply_z_gate`], indicating whether fork operation was carried out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub enum ForkResult {
-    /// The tableau was forked and [`ExtendedTableau::contained_states`] is now doubled.
+    /// The tableau was forked and [`PlanningTableau::contained_states`] is now doubled.
     Forked,
     /// The tableau was not forked as it would introduce duplicate states.
-    /// The contained value, `c`, indicates that applying the Z-gate to the
+    /// The contained value, `c`, indicates that applying the given gate to the
     /// state at index `i` would result in a state identical to the one
     /// currently contained in index `i ^ c`, (`i` bitwise XOR'ed by `c`).
-    ///
-    /// [`ExtendedTableau::contained_states`] remains unchanged.
     Redundant(usize),
 }
 
@@ -40,10 +38,8 @@ pub struct PlanningTableau {
     /// P2 -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// ...
     /// Pn -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
-    /// (E -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct)
     /// ```
-    /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
-    /// This auxiliary row is assumed to be kept zeroed.
+    /// Note that the x and z columns are interleaved.
     tableau: Vec<BitBlock>,
 }
 impl PlanningTableau {
@@ -69,6 +65,10 @@ impl PlanningTableau {
             let z = z_column_block_index(n, i, a);
             self.tableau[z] ^= self.tableau[x];
         }
+    }
+    pub fn apply_sdg_gate(&mut self, a: usize) {
+        // Since we're not tracking sign bits, these are identical
+        self.apply_s_gate(a)
     }
     pub fn apply_h_gate(&mut self, a: usize) {
         let n = self.n;
@@ -100,6 +100,15 @@ impl PlanningTableau {
             self.tableau[zb] ^= self.tableau[xa];
         }
     }
+    pub fn apply_x_gate(&mut self, _a: usize) {
+        // Only affects signs, not tracked here
+    }
+    pub fn apply_y_gate(&mut self, _a: usize) {
+        // Only affects signs, not tracked here
+    }
+    pub fn apply_z_gate(&mut self, _a: usize) {
+        // Only affects signs, not tracked here
+    }
 
     /// Attempts to fork the extended tableau such that it represents the current sequence of states,
     /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
@@ -113,7 +122,7 @@ impl PlanningTableau {
         let n = self.n;
         let c_cols = self.c_cols;
         let x = x_column_block_index(n, 0, a);
-        let c = c_column_block_index(n, 0, a);
+        let c = c_column_block_index(n, 0, c_cols);
 
         // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
         // If it is, the tag is a bit-vector indicating which columns are part of his combination.
@@ -186,8 +195,7 @@ fn c_column_block_index(n: usize, i: usize, j: usize) -> usize {
 /// Get the block-length of the columns in the tableau.
 #[inline]
 fn column_block_length(n: usize) -> usize {
-    // Make room for the auxiliary row.
-    (n + 1).div_ceil(BLOCK_SIZE)
+    n.div_ceil(BLOCK_SIZE)
 }
 /// Get the block-length of the tableau.
 #[inline]
