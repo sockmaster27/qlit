@@ -54,7 +54,7 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
         .unwrap_or(usize::MAX);
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
-    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
+    let circuit_planned = plan(circuit_decomposed, batch_size_log2);
 
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
     let w_coeff = Mutex::new(Complex::ZERO);
@@ -102,7 +102,7 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
     );
 
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t);
-    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
+    let circuit_planned = plan(circuit_decomposed, batch_size_log2);
 
     let mut path = vec![false; t - batch_size_log2];
     let mut w_coeff = Complex::ZERO;
@@ -146,7 +146,7 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
 
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
-    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
+    let circuit_planned = plan(circuit_decomposed, batch_size_log2);
 
     let mut gpu_sim = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
 

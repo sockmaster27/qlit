@@ -29,8 +29,8 @@ impl CircuitDecomposed {
         self.qubits
     }
 
-    pub fn gates(&self) -> &[GateDecomposed] {
-        &self.gates
+    pub fn gates(self) -> impl Iterator<Item = GateDecomposed> {
+        self.gates.into_iter()
     }
 
     pub fn p_gates(&self) -> usize {
