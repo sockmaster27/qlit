@@ -2,7 +2,7 @@ use num_complex::Complex;
 
 use crate::{
     decompose::{CircuitDecomposed, GateDecomposed},
-    tableau::{ExtendedTableau, ForkResult},
+    tableau_plan::{ForkResult, PlanningTableau},
     utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
 
@@ -52,28 +52,16 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let path_len = circuit.p_gates() - batch_size_log2;
-    let mut g = ExtendedTableau::zero(n, circuit.p_gates());
+    let mut g = PlanningTableau::zero(n, circuit.p_gates());
     let mut seen_p_gates = 0;
     let gates = circuit
         .gates()
         .iter()
         .copied()
         .map(|gate| match gate {
-            GateDecomposed::X(a) => {
-                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                g.apply_x_gate(au);
-                X(a)
-            }
-            GateDecomposed::Y(a) => {
-                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                g.apply_y_gate(au);
-                Y(a)
-            }
-            GateDecomposed::Z(a) => {
-                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                g.apply_z_gate(au);
-                Z(a)
-            }
+            GateDecomposed::X(a) => X(a),
+            GateDecomposed::Y(a) => Y(a),
+            GateDecomposed::Z(a) => Z(a),
             GateDecomposed::S(a) => {
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 g.apply_s_gate(au);
@@ -81,7 +69,7 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
             }
             GateDecomposed::Sdg(a) => {
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                g.apply_sdg_gate(au);
+                g.apply_s_gate(au);
                 Sdg(a)
             }
             GateDecomposed::H(a) => {
