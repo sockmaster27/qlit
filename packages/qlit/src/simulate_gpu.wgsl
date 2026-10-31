@@ -9,7 +9,6 @@ alias BitBlock = u32;
 // P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
 // ...
 // Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-// (E -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct)
 // See ExtendedTableau in tableau.rs.
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
 // The current number of active c columns in the tableau.
@@ -361,21 +360,12 @@ fn elimination_pass(
         input_next.col = input.col + 1;
     }
 
-    let aux_row = n;
-    let aux_block_index = aux_row / BLOCK_SIZE;
-    let aux_bit_index = aux_row % BLOCK_SIZE;
-
     // Find pivot row.
     var pivot_found = false;
     var pivot: u32 = 0;
     let a_block_index = input.a / BLOCK_SIZE;
     for (var i = a_block_index; i < column_block_length(); i += 1) {
-        // Bitmask blocking out the auxiliary row.
-        var aux_mask: BitBlock = ~0u;
-        if i == aux_block_index {
-            aux_mask = ~bitmask(aux_bit_index);
-        }
-        let block = tableau[x_column_block_index(i, input.col)] & aux_mask;
+        let block = tableau[x_column_block_index(i, input.col)];
         if block != 0 {
             let row = BLOCK_SIZE * i + lsb_index(block);
             if row >= input.a {
@@ -766,8 +756,7 @@ fn c_column_block_index(i: u32, j: u32) -> u32 {
 
 // Get the block-length of the columns in the tableau.
 fn column_block_length() -> u32 {
-    // Make room for the auxiliary row.
-    return div_ceil(n + 1, BLOCK_SIZE);
+    return div_ceil(n, BLOCK_SIZE);
 }
 
 // Get the number of states currently represented by the tableau.
