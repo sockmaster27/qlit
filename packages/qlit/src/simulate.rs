@@ -334,6 +334,11 @@ fn run_cpu(
             PizDeduplicate(c, ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for (i1, i2) in xor_pairs(g.contained_states(), c) {
+                    if !xs.equal_within(i1, i2) {
+                        x_coeffs[i2] *=
+                            g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i2);
+                        xs.copy_within(i1, i2);
+                    }
                     let mut z_coeff1 = x_coeffs[i2];
                     let mut z_coeff2 = x_coeffs[i1];
                     if xs.get(i2, a) {
@@ -341,10 +346,6 @@ fn run_cpu(
                     }
                     if xs.get(i1, a) {
                         z_coeff2 *= -Complex::ONE;
-                    }
-                    if !xs.equal_within(i1, i2) {
-                        z_coeff1 *= g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i1);
-                        z_coeff2 *= g.coeff_ratio(&xs.slice_string(i1), &xs.slice_string(i2), i2);
                     }
                     let new_coeff1 = ci * x_coeffs[i1] + cz * z_coeff1;
                     let new_coeff2 = ci * x_coeffs[i2] + cz * z_coeff2;
