@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::mem;
 
-use crate::utils::bitmask;
+use crate::utils::{bitmask, msb_index};
 
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -33,6 +33,8 @@ pub struct PlanningTableau {
     /// Pn -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// ```
     tableau: Vec<BitBlock>,
+    c_col_pivots: Vec<usize>,
+    c_col_tags: Vec<usize>,
 }
 impl PlanningTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
@@ -47,6 +49,8 @@ impl PlanningTableau {
             n,
             c_cols: 0,
             tableau,
+            c_col_pivots: vec![0; capacity_log2],
+            c_col_tags: vec![0; capacity_log2],
         }
     }
 
@@ -113,50 +117,49 @@ impl PlanningTableau {
     pub fn try_fork_apply_z_gate(&mut self, a: usize) -> ForkResult {
         let n = self.n;
         let c_cols = self.c_cols;
+        let new_c_col = c_cols;
         let x = x_column_block_index(n, 0, a);
-        let c = c_column_block_index(n, 0, c_cols);
-
-        // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
-        // If it is, the tag is a bit-vector indicating which columns are part of his combination.
-        let mut basis: Vec<(usize, Vec<BitBlock>, usize)> = Vec::with_capacity(c_cols);
-        fn reduce(basis: &[(usize, Vec<BitBlock>, usize)], v: (&mut [BitBlock], &mut usize)) {
-            for (pivot, b, tag) in basis {
-                if v.0[pivot / BLOCK_SIZE] & bitmask::<BitBlock>(pivot % BLOCK_SIZE) != 0 {
-                    for (vi, bi) in v.0.iter_mut().zip(b) {
-                        *vi ^= bi;
-                    }
-                    *v.1 ^= tag;
-                }
-            }
-        }
-        fn pivot(v: &[BitBlock]) -> Option<usize> {
-            v.iter().position(|&block| block != 0).map(|i| {
-                let leading_zeros: usize = v[i]
-                    .leading_zeros()
-                    .try_into()
-                    .expect("u32 does not fit into usize");
-                BLOCK_SIZE * i + leading_zeros
-            })
-        }
-        for j in 0..c_cols {
-            let cj = c_column_block_index(n, 0, j);
-            let mut v = self.tableau[cj..(cj + column_block_length(n))].to_vec();
-            let mut tag = 1 << j;
-            reduce(&basis, (&mut v, &mut tag));
-            if let Some(pivot) = pivot(&v) {
-                basis.push((pivot, v, tag));
-            }
-        }
-        let mut tag = 0;
-        let mut v = self.tableau[x..(x + column_block_length(n))].to_vec();
-        reduce(&basis, (&mut v, &mut tag));
-        if pivot(&v).is_none() {
-            return ForkResult::Redundant(tag);
-        }
+        let c = c_column_block_index(n, 0, new_c_col);
 
         self.tableau.copy_within(x..(x + column_block_length(n)), c);
-        self.c_cols += 1;
-        ForkResult::Forked
+
+        for j in 0..c_cols {
+            let pivot = self.c_col_pivots[j];
+            let block_index = pivot / BLOCK_SIZE;
+            let bit_index = pivot % BLOCK_SIZE;
+            let bit_mask: BitBlock = bitmask(bit_index);
+            let bit_set =
+                self.tableau[c_column_block_index(n, block_index, new_c_col)] & bit_mask != 0;
+            if bit_set {
+                for i in 0..column_block_length(n) {
+                    self.tableau[c_column_block_index(n, i, new_c_col)] ^=
+                        self.tableau[c_column_block_index(n, i, j)];
+                }
+                self.c_col_tags[new_c_col] ^= self.c_col_tags[j];
+            }
+        }
+
+        let mut pivot = None;
+        for block_index in 0..column_block_length(n) {
+            let block = self.tableau[c_column_block_index(n, block_index, new_c_col)];
+            if block != 0 {
+                pivot = Some(block_index * BLOCK_SIZE + msb_index(block));
+                break;
+            }
+        }
+
+        if let Some(pivot) = pivot {
+            self.c_col_pivots[new_c_col] = pivot;
+            self.c_col_tags[new_c_col] |= 1 << c_cols;
+            self.c_cols += 1;
+            ForkResult::Forked
+        } else {
+            // No pivot found, i.e. the column is all-zero, meaning that
+            // it was exactly equal to the combination of the columns indicated by c_col_tags
+            let c = self.c_col_tags[new_c_col];
+            self.c_col_tags[new_c_col] = 0;
+            ForkResult::Redundant(c)
+        }
     }
 }
 
@@ -223,7 +226,7 @@ mod test {
 
     #[test]
     fn try_fork_apply_z_gate_redundant_reduced_basis() {
-        let mut g = PlanningTableau::zero(2, 2);
+        let mut g = PlanningTableau::zero(2, 3);
         g.apply_h_gate(0);
         // c0 = [1, 0]
         assert_eq!(g.try_fork_apply_z_gate(0), ForkResult::Forked);

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     mem,
     ops::{BitAndAssign, ShlAssign},
 };
@@ -8,10 +9,10 @@ use num_traits::PrimInt;
 pub const N_TOO_LARGE: &str = "Number of qubits too large";
 pub const INDEX_TOO_LARGE: &str = "Qubit index too large";
 
-pub trait BitBlock: PrimInt + ShlAssign<usize> + BitAndAssign {
+pub trait BitBlock: PrimInt + ShlAssign<usize> + BitAndAssign + Debug {
     const SIZE: usize = mem::size_of::<Self>() * 8;
 }
-impl<B: PrimInt + ShlAssign<usize> + BitAndAssign> BitBlock for B {}
+impl<B: PrimInt + ShlAssign<usize> + BitAndAssign + Debug> BitBlock for B {}
 
 /// Get an iterator over the indices of the set bits in the given block, e.g.
 /// ```text
@@ -92,6 +93,23 @@ pub fn unset_bit<B: BitBlock>(block: B, i: usize) -> B {
 pub fn flip_bit<B: BitBlock>(block: B, i: usize) -> B {
     debug_assert!(i < B::SIZE);
     block ^ bitmask::<B>(i)
+}
+
+/// Get the index of the most significant (left-most) bit in the given block, e.g.
+/// ```text
+/// msb_index(10000000)
+///           ^0
+/// msb_index(01000000)
+///            ^1
+/// msb_index(00010011)
+///              ^3
+/// ```
+pub fn msb_index<B: BitBlock>(block: B) -> usize {
+    debug_assert_ne!(block, B::zero());
+    block
+        .leading_zeros()
+        .try_into()
+        .expect("msb_index does not fit into usize")
 }
 
 #[cfg(test)]
