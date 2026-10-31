@@ -59,9 +59,21 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
         .iter()
         .copied()
         .map(|gate| match gate {
-            GateDecomposed::X(a) => X(a),
-            GateDecomposed::Y(a) => Y(a),
-            GateDecomposed::Z(a) => Z(a),
+            GateDecomposed::X(a) => {
+                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                g.apply_x_gate(au);
+                X(a)
+            }
+            GateDecomposed::Y(a) => {
+                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                g.apply_y_gate(au);
+                Y(a)
+            }
+            GateDecomposed::Z(a) => {
+                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                g.apply_z_gate(au);
+                Z(a)
+            }
             GateDecomposed::S(a) => {
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 g.apply_s_gate(au);
@@ -69,7 +81,7 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
             }
             GateDecomposed::Sdg(a) => {
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                g.apply_s_gate(au);
+                g.apply_sdg_gate(au);
                 Sdg(a)
             }
             GateDecomposed::H(a) => {
