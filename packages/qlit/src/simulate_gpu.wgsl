@@ -319,7 +319,9 @@ fn dedup_apply_piz_gate(
     if ws[w_bit_index(i.x, qubit)] == 1u {
         z_coeff2 = mul_minus_one(z_coeff2);
     }
-    // TODO: Adjust when w1 != w2
+    z_coeff1 = mul(z_coeff1, coeff_ratio(i.y, i.x, i.x));
+    z_coeff2 = mul(z_coeff2, coeff_ratio(i.x, i.y, i.y));
+    
     w_coeffs[i.x] = add(mul(ci, w_coeffs[i.x]), mul(cz, z_coeff1));
     w_coeffs[i.y] = add(mul(ci, w_coeffs[i.y]), mul(cz, z_coeff2));
 }
@@ -538,60 +540,70 @@ fn compute_output(
         return;
     }
 
-    let r = coeff_ratio(state_index);
+    let r = coeff_ratio_target(state_index);
     output[state_index] = mul(w_coeffs[state_index], r);
 }
 
 
 // Assume tableau in RREF.
-fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
-    let flipped_bit = qubit;
+// Get the ratio between the basis state ws[w1] and ws[w2].
+// Respects the sign of the s'th state.
+fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
+    // We encode the result as i^phase, and let the phase wrap around modulo 4.
+    var phase: u32 = 0;
 
-    // Find pivot row.
+    // Determine the sign of the derived stabilizer.
     var row: u32 = 0;
-    for (var j: u32 = 0; j < n; j += 1) {
-        if x_bit(j, flipped_bit) {
-            row = j;
-            break;
+    for (var q: u32 = 0; q < n; q += 1) {
+        if x_bit(row, q) {
+            if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] && row_negative(s, row) {
+                phase += 2;
+            }
+            row += 1;
         }
     }
 
-    var res = Complex(1.0, 0.0);
-    if row_negative(state_index, row) {
-        res = Complex(-1.0, 0.0);
-    }
-    for (var q: u32 = 0; q < n; q += 1) {
+    for (var q2: u32 = 0; q2 < n; q2 += 1) {
+        // Derive the q2'th tensor element of the stabilizer,
+        // including the phase change caused by multiplication of the individual Pauli matrices.
+        var x_acc = false;
+        var z_acc = false;
+        var row2: u32 = 0;
+        for (var q: u32 = 0; q < n; q += 1) {
+            if x_bit(row2, q) {
+                if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] {
+                    let x_row = x_bit(row2, q2);
+                    let z_row = z_bit(row2, q2);
+                    phase += product_phase(x_acc, z_acc, x_row, z_row);
+                    x_acc = x_acc != x_row;
+                    z_acc = z_acc != z_row;
+                }
+                row2 += 1;
+            }
+        }
+
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        if i(row, q) && (flipped_bit != q) {
-            // Multiply by 1
-        } else if x(row, q) && (flipped_bit == q) {
-            // Multiply by 1
-        } else if y(row, q) && (flipped_bit == q) {
-            if ws[w_bit_index(state_index, q)] == 0 {
-                res = mul_i(res);
-            } else {
-                res = mul_minus_i(res);
-            }
-        } else if z(row, q) && (flipped_bit != q) {
-            if ws[w_bit_index(state_index, q)] == 0 {
-                // Multiply by 1
-            } else {
-                res = mul_minus_one(res);
-            }
-        } else {
+        let w1_bit = ws[w_bit_index(w1, q2)];
+        let differs = w1_bit != ws[w_bit_index(w2, q2)];
+        if x_acc != differs {
             // Multiply by 0
             return Complex(0.0, 0.0);
         }
+        if x_acc && z_acc {
+            // Y
+            phase += 1;
+        }
+        if z_acc && w1_bit == 1 {
+            // Z or Y
+            phase += 2;
+        }
     }
-    return res;
+    return i_pow(phase);
 }
 
 // Assume tableau in RREF.
-//
-// Since the auxiliary row is shared between all contained states,
-// the stabilizer with anti-diagonal Pauli matrices in the positions where w1 and w2 differ
-// is derived one tensor element at a time instead of being stored in the auxiliary row.
-fn coeff_ratio(state_index: u32) -> Complex {
+// Same as coeff_ratio but with w1 and s both being state_index and w2 being ws_target.
+fn coeff_ratio_target(state_index: u32) -> Complex {
     // We encode the result as i^phase, and let the phase wrap around modulo 4.
     var phase: u32 = 0;
 
@@ -642,6 +654,50 @@ fn coeff_ratio(state_index: u32) -> Complex {
         }
     }
     return i_pow(phase);
+}
+
+// Assume tableau in RREF.
+// Same as coeff_ratio but with w1 and s both being state_index and w2 being w1 but with the qubit'th bit flipped.
+fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
+    let flipped_bit = qubit;
+
+    // Find pivot row.
+    var row: u32 = 0;
+    for (var j: u32 = 0; j < n; j += 1) {
+        if x_bit(j, flipped_bit) {
+            row = j;
+            break;
+        }
+    }
+
+    var res = Complex(1.0, 0.0);
+    if row_negative(state_index, row) {
+        res = Complex(-1.0, 0.0);
+    }
+    for (var q: u32 = 0; q < n; q += 1) {
+        // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
+        if i(row, q) && (flipped_bit != q) {
+            // Multiply by 1
+        } else if x(row, q) && (flipped_bit == q) {
+            // Multiply by 1
+        } else if y(row, q) && (flipped_bit == q) {
+            if ws[w_bit_index(state_index, q)] == 0 {
+                res = mul_i(res);
+            } else {
+                res = mul_minus_i(res);
+            }
+        } else if z(row, q) && (flipped_bit != q) {
+            if ws[w_bit_index(state_index, q)] == 0 {
+                // Multiply by 1
+            } else {
+                res = mul_minus_one(res);
+            }
+        } else {
+            // Multiply by 0
+            return Complex(0.0, 0.0);
+        }
+    }
+    return res;
 }
 
 // Get the exponent of the phase, i^phase, resulting from multiplying the Pauli matrices (x1, z1) and (x2, z2) in that order.

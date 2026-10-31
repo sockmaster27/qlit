@@ -17,13 +17,13 @@ pub enum GatePlanned {
     Cnot(u32, u32),
     Cz(u32, u32),
 
-    /// Piz gate where only one branch is applied to the tableau for the given path
+    /// Piz gate where only one branch is applied to the tableau for the given path.
     PizSequential(Complex<f64>, Complex<f64>, u32),
-    /// Piz gate applied by forking the extended tableu, so both branches are kept in memory simultaniously
+    /// Piz gate applied by forking the extended tableau, so both branches are kept in memory simultaniously.
     PizFork(Complex<f64>, Complex<f64>, u32),
-    /// Piz gate where forking would create duplicate states, so they can be merged
+    /// Piz gate where forking would create duplicate states, so they can be merged.
     /// PizDeduplicate(c, ci, cz, a) indicates that for the index of any state, i,
-    /// applying the Z gate to this state creates a tableau identical to the one currently at index i ^ c (i bitwise XOR c)
+    /// applying the Z gate to this state creates a tableau identical to the one currently at index i ^ c (i bitwise XOR c).
     PizDeduplicate(usize, Complex<f64>, Complex<f64>, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
