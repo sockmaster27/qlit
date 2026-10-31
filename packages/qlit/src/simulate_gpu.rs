@@ -1022,7 +1022,7 @@ impl<'a> GpuSimulator<'a> {
                     self.dispatch_gates();
                     self.bring_into_rref();
                     self.update_before_h(a);
-                    // This is the single heaviest operation for the circuit,
+                    // This is a heavy operation,
                     // therefore we perform a submission of the full pipeline up to this point before moving on,
                     // to get the GPU started as soon as possible and avoid a single huge submission timing out.
                     self.submit_encoder();
