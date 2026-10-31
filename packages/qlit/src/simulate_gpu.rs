@@ -1037,6 +1037,7 @@ impl<'a> GpuSimulator<'a> {
                 }
                 PizDeduplicate(c, ci, cz, a) => {
                     self.dispatch_gates();
+                    self.bring_into_rref();
                     self.dedup_apply_piz_gate(c, ci, cz, a);
                 }
                 _ => {}
