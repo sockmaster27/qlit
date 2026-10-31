@@ -1403,8 +1403,7 @@ impl<'a> GpuSimulator<'a> {
 
 // Get the block-length of the columns in the tableau.
 fn column_block_length(n: u32) -> u32 {
-    // Make room for the auxiliary row.
-    (n + 1).div_ceil(BLOCK_SIZE)
+    n.div_ceil(BLOCK_SIZE)
 }
 /// Get the length of the tableau in blocks, with room for `max_c_cols` c columns.
 fn tableau_block_length(n: u32, max_c_cols: u32) -> u32 {

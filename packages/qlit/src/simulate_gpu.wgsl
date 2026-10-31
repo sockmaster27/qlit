@@ -9,7 +9,6 @@ alias BitBlock = u32;
 // P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
 // ...
 // Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-// (E -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct)
 // See ExtendedTableau in tableau.rs.
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
 // The current number of active c columns in the tableau.
@@ -763,8 +762,7 @@ fn c_column_block_index(i: u32, j: u32) -> u32 {
 
 // Get the block-length of the columns in the tableau.
 fn column_block_length() -> u32 {
-    // Make room for the auxiliary row.
-    return div_ceil(n + 1, BLOCK_SIZE);
+    return div_ceil(n, BLOCK_SIZE);
 }
 
 // Get the number of states currently represented by the tableau.
