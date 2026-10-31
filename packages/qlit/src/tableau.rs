@@ -6,7 +6,7 @@ use num_complex::Complex;
 use rand::{Rng, RngExt};
 
 use crate::bitstring::{BitStringArray, BitStringSlice};
-use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
+use crate::utils::{bit_indices, bitmask, set_bit, unset_bit};
 
 type BitBlock = u64;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
@@ -56,10 +56,8 @@ pub struct ExtendedTableau {
     /// P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
     /// ...
     /// Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-    /// (E -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct)
     /// ```
-    /// Note that the x and z columns are interleaved, and that an auxiliary row, E, is added at the end.
-    /// This auxiliary row is assumed to be kept zeroed.
+    /// Note that the x and z columns are interleaved.
     tableau: Vec<BitBlock>,
     row_pivots: Vec<Option<usize>>,
     /// Buffer used to store the output of [`Self::coeff_ratios`] and [`Self::coeff_ratios_flipped_bit`].
@@ -92,7 +90,9 @@ impl ExtendedTableau {
             .collect();
         for j in 0..(n + n + 1 + c_cols) {
             let block_index = column_block_index(n, column_block_length(n) - 1, j);
-            tableau[block_index] &= !0 << (BLOCK_SIZE - (n % BLOCK_SIZE));
+            if n % BLOCK_SIZE != 0 {
+                tableau[block_index] &= !0 << (BLOCK_SIZE - (n % BLOCK_SIZE));
+            }
         }
         ExtendedTableau {
             n,
@@ -269,24 +269,18 @@ impl ExtendedTableau {
         s: usize,
     ) -> Complex<f64> {
         let n = self.n;
-        let c_cols = self.c_cols;
         debug_assert_eq!(w1.len(), n, "w1 must have length {n}");
         debug_assert_eq!(w2.len(), n, "w2 must have length {n}");
 
-        let aux_row = n;
-        let aux_block_index = aux_row / BLOCK_SIZE;
-        let aux_bit_index = aux_row % BLOCK_SIZE;
-
         self.bring_into_rref();
-        self.derive_ratio_stabilizer(w1, w2);
-        let output = self.stabilizer_matrix_entry(aux_row, w1, w2, s);
-
-        // Reset the auxiliary row.
-        for j in 0..(n + n + 1 + c_cols) {
-            let block_index = column_block_index(n, aux_block_index, j);
-            self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
-        }
-        output
+        let mask = self.ratio_mask(w1, w2);
+        let phase_flip = self.ratio_phase_flip(&mask);
+        Self::stabilizer_matrix_entry(
+            self.derived_xz(&mask),
+            self.derived_negative(&mask, phase_flip, s),
+            w1,
+            w2,
+        )
     }
     /// Same as [`Self::coeff_ratios`] but for computing the individual ratios betwen an array of `w1s` corresponding to a state each, and a single `w2`.
     ///
@@ -296,7 +290,6 @@ impl ExtendedTableau {
     /// The output will have length exactly equal to [`Self::contained_states`].
     pub fn coeff_ratios(&mut self, w1s: &BitStringArray, w2: &BitStringSlice) -> &[Complex<f64>] {
         let n = self.n;
-        let c_cols = self.c_cols;
         let contained_states = self.contained_states();
         debug_assert!(
             w1s.len() >= contained_states,
@@ -304,23 +297,22 @@ impl ExtendedTableau {
         );
         debug_assert_eq!(w2.len(), n, "w2 must have length {n}");
 
-        let aux_row = n;
-        let aux_block_index = aux_row / BLOCK_SIZE;
-        let aux_bit_index = aux_row % BLOCK_SIZE;
-
         self.bring_into_rref();
 
+        let mut mask = vec![];
+        let mut phase_flip = false;
         for s in 0..contained_states {
-            if !w1s.equal_to_previous(s) {
-                self.derive_ratio_stabilizer(&w1s.slice_string(s), w2);
+            let w1 = w1s.slice_string(s);
+            if s == 0 || !w1s.equal_to_previous(s) {
+                mask = self.ratio_mask(&w1, w2);
+                phase_flip = self.ratio_phase_flip(&mask);
             }
-
-            self.output[s] = self.stabilizer_matrix_entry(aux_row, &w1s.slice_string(s), w2, s);
-        }
-        // Reset the auxiliary row.
-        for j in 0..(n + n + 1 + c_cols) {
-            let block_index = column_block_index(n, aux_block_index, j);
-            self.tableau[block_index] = unset_bit(self.tableau[block_index], aux_bit_index);
+            self.output[s] = Self::stabilizer_matrix_entry(
+                self.derived_xz(&mask),
+                self.derived_negative(&mask, phase_flip, s),
+                &w1,
+                w2,
+            );
         }
         &self.output[..contained_states]
     }
@@ -453,17 +445,15 @@ impl ExtendedTableau {
             }
         }
     }
-    /// Derive a stabilizer which encodes the coeff. ratio between `w1` and `w2` and store it in the auxiliary row.
+    /// Get a bitmask of the rows which must be multiplied together to derive a stabilizer encoding
+    /// the coeff. ratio between `w1` and `w2`.
+    ///
+    /// The derived stabilizer is never materialized in the tableau.
+    /// Instead its bits are streamed out by [`Self::derived_xz`] and [`Self::derived_negative`].
     ///
     /// Assumes that the tableau is in reduced row echelon form, established via [`Self::bring_into_rref`].
-    fn derive_ratio_stabilizer(&mut self, w1: &BitStringSlice, w2: &BitStringSlice) {
+    fn ratio_mask(&self, w1: &BitStringSlice, w2: &BitStringSlice) -> Vec<BitBlock> {
         let n = self.n;
-        let c_cols = self.c_cols;
-
-        let aux_row = n;
-        let aux_block_index = aux_row / BLOCK_SIZE;
-        let aux_bit_index = aux_row % BLOCK_SIZE;
-
         let mut mask: Vec<BitBlock> = vec![0; column_block_length(n)];
         for row in 0..n {
             if let Some(q) = self.row_pivots[row]
@@ -474,22 +464,47 @@ impl ExtendedTableau {
                 mask[row_block_index] = set_bit(mask[row_block_index], row_bit_index);
             }
         }
-        // XOR
-        for j in 0..(n + n + 1 + c_cols) {
-            // Start by going block-wise, reducing to a single block
-            let mut block: BitBlock = 0;
-            for i in 0..column_block_length(n) {
-                block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
-            }
-            // Reduce last block:
-            // The XOR of all bits in a block is just the parity
-            let block_index = column_block_index(n, aux_block_index, j);
-            self.tableau[block_index] = if block.count_ones() % 2 != 0 {
-                set_bit(self.tableau[block_index], aux_bit_index)
-            } else {
-                unset_bit(self.tableau[block_index], aux_bit_index)
-            };
+        mask
+    }
+    /// Get the parity of the j'th column masked by `mask`,
+    /// i.e. the j'th bit of the product of the rows selected by `mask`.
+    fn masked_parity(&self, mask: &[BitBlock], j: usize) -> bool {
+        let n = self.n;
+        // Start by going block-wise, reducing to a single block
+        let mut block: BitBlock = 0;
+        for i in 0..column_block_length(n) {
+            block ^= self.tableau[column_block_index(n, i, j)] & mask[i];
         }
+        // Reduce last block:
+        // The XOR of all bits in a block is just the parity
+        block.count_ones() % 2 != 0
+    }
+    /// Stream the (x, z) bit pair of each tensor element of the stabilizer derived from `mask`.
+    fn derived_xz<'a>(&'a self, mask: &'a [BitBlock]) -> impl Iterator<Item = (bool, bool)> + 'a {
+        (0..self.n).map(|q| {
+            (
+                self.masked_parity(mask, 2 * q),
+                self.masked_parity(mask, 2 * q + 1),
+            )
+        })
+    }
+    /// Get whether the stabilizer derived from `mask` is negative, for the s'th state.
+    ///
+    /// `phase_flip` is the result of [`Self::ratio_phase_flip`] for the same mask.
+    fn derived_negative(&self, mask: &[BitBlock], phase_flip: bool, s: usize) -> bool {
+        let n = self.n;
+        let mut negative = self.masked_parity(mask, n + n) ^ phase_flip;
+        for j in 0..self.c_cols {
+            if (s >> j) & 1 != 0 {
+                negative ^= self.masked_parity(mask, n + n + 1 + j);
+            }
+        }
+        negative
+    }
+    /// Get whether multiplying the rows selected by `mask` together flips the sign,
+    /// due to the phases of the individual Pauli matrix products.
+    fn ratio_phase_flip(&self, mask: &[BitBlock]) -> bool {
+        let n = self.n;
         // Determine phase change caused by multiplication of the individual Pauli matrices.
         // These phases are encoded with phase = 2*phase_bit2 + phase_bit1.
         let mut phase_bit1: BitBlock = 0;
@@ -524,12 +539,33 @@ impl ExtendedTableau {
         }
         let phase = (2 * phase_bit2.count_ones() + phase_bit1.count_ones()) % 4;
         debug_assert!(phase % 2 == 0, "Imaginary sign");
-        if phase == 2 {
-            let block_index = r_column_block_index(n, aux_block_index);
-            self.tableau[block_index] = flip_bit(self.tableau[block_index], aux_bit_index);
-        }
+        phase == 2
     }
 
+    /// Compute the entry of a stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
+    ///
+    /// The stabilizer is given as a stream of (x, z) bit pairs, one per tensor element,
+    /// together with whether its sign is negative.
+    fn stabilizer_matrix_entry(
+        xz: impl Iterator<Item = (bool, bool)>,
+        mut negative: bool,
+        w1: &BitStringSlice,
+        w2: &BitStringSlice,
+    ) -> Complex<f64> {
+        let mut res = Complex::ONE;
+        for ((x, z), (b1, b2)) in xz.zip(w1.iter().zip(w2.iter())) {
+            if x != (b1 != b2) {
+                return Complex::ZERO;
+            }
+            if x && z {
+                res *= Complex::I;
+            }
+            if z && b1 {
+                negative = !negative;
+            }
+        }
+        if negative { -res } else { res }
+    }
     /// Returns true if and only if [`Self::stabilizer_matrix_entry`] returns [`Complex::ZERO`].
     ///
     /// `w1_xor_w2` should be equal to the bitwise XOR of `w1` and `w2`, i.e. for each bit, whether they differ or not.
@@ -572,28 +608,6 @@ impl ExtendedTableau {
             }
         }
         res
-    }
-    /// Compute the entry of the row'th stabilizer matrix, `P[w2, w1]`, for the given basis state pair.
-    ///
-    /// This will respect the state of the s'th staate in the sequence.
-    fn stabilizer_matrix_entry(
-        &self,
-        row: usize,
-        w1: &BitStringSlice,
-        w2: &BitStringSlice,
-        s: usize,
-    ) -> Complex<f64> {
-        if self
-            .stabilizer_matrix_entry_is_zero(row, w1.iter().zip(w2.iter()).map(|(b1, b2)| b1 != b2))
-        {
-            return Complex::ZERO;
-        }
-        let p = self.stabilizer_matrix_entry_phase_part(row);
-        if self.stabilizer_matrix_entry_sign_part(s, row, w1) {
-            -p
-        } else {
-            p
-        }
     }
     /// This is the less clever version of [`Self::stabilizer_matrix_entry`],
     /// used only in testing to validate the more optimized version.
@@ -712,15 +726,11 @@ impl Debug for ExtendedTableau {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
         let c_cols = self.c_cols;
-        for row in 0..(n + 1) {
+        for row in 0..n {
             write!(
                 f,
                 "\n\t{} -> ",
-                if row == n {
-                    "E".to_owned()
-                } else {
-                    self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
-                }
+                self.row_pivots[row].map_or("-".to_owned(), |v| v.to_string())
             )?;
             for q in 0..n {
                 write!(f, "{} ", if self.x_bit(row, q) { "1" } else { "0" })?;
@@ -832,8 +842,7 @@ fn c_column_block_index(n: usize, i: usize, j: usize) -> usize {
 /// Get the block-length of the columns in the tableau.
 #[inline]
 fn column_block_length(n: usize) -> usize {
-    // Make room for the auxiliary row.
-    (n + 1).div_ceil(BLOCK_SIZE)
+    n.div_ceil(BLOCK_SIZE)
 }
 /// Get the block-length of the tableau.
 #[inline]
@@ -1373,7 +1382,12 @@ mod test {
             let w1 = BitString::random(8, rng);
             let w2 = BitString::random(8, rng);
             assert_eq!(
-                tableau.stabilizer_matrix_entry(row, &w1.slice(), &w2.slice(), s),
+                ExtendedTableau::stabilizer_matrix_entry(
+                    (0..8).map(|q| (tableau.x_bit(row, q), tableau.z_bit(row, q))),
+                    tableau.row_negative(s, row),
+                    &w1.slice(),
+                    &w2.slice(),
+                ),
                 tableau.stabilizer_matrix_entry_reference(row, &w1.slice(), &w2.slice(), s),
             );
         }
