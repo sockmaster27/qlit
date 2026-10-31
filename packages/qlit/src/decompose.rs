@@ -3,10 +3,8 @@ use num_complex::Complex;
 use crate::{Circuit, Gate};
 use std::f64::consts::FRAC_1_SQRT_2;
 
-/// The Clifford+P gate set contains all Clifford/stabilizer gates,
-/// plus P (Pauli sum decompositions).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CliffordPGate {
+pub enum GateDecomposed {
     X(u32),
     Y(u32),
     Z(u32),
@@ -20,36 +18,34 @@ pub enum CliffordPGate {
     Piz(Complex<f64>, Complex<f64>, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct CliffordPCircuit {
-    /// The number of qubits in the circuit.
+pub struct CircuitDecomposed {
     qubits: u32,
+    gates: Vec<GateDecomposed>,
     /// The number of Pauli decomposition gates in the circuit.
     p_gates: usize,
-    /// The ordered list of gates in the circuit.
-    gates: Vec<CliffordPGate>,
 }
-impl CliffordPCircuit {
+impl CircuitDecomposed {
     pub fn qubits(&self) -> u32 {
         self.qubits
+    }
+
+    pub fn gates(&self) -> &[GateDecomposed] {
+        &self.gates
     }
 
     pub fn p_gates(&self) -> usize {
         self.p_gates
     }
-
-    pub fn gates(&self) -> &[CliffordPGate] {
-        &self.gates
-    }
 }
 
 /// Decomposes the given circuit to the Clifford+P gate set.
-pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
-    use CliffordPGate::*;
+pub fn decompose(circuit: &Circuit) -> CircuitDecomposed {
+    use GateDecomposed::*;
 
     let qubits = circuit.qubits();
     let mut gates = Vec::with_capacity(circuit.gate_count());
     for gate in circuit {
-        let decomp: &[CliffordPGate] = match gate {
+        let decomp: &[GateDecomposed] = match gate {
             Gate::X(a) => &[X(a)],
             Gate::Y(a) => &[Y(a)],
             Gate::Z(a) => &[Z(a)],
@@ -86,20 +82,20 @@ pub fn decompose(circuit: &Circuit) -> CliffordPCircuit {
             _ => false,
         })
         .count();
-    CliffordPCircuit {
+    CircuitDecomposed {
         qubits,
         p_gates,
         gates,
     }
 }
 
-fn phase(t: f64, a: u32) -> CliffordPGate {
+fn phase(t: f64, a: u32) -> GateDecomposed {
     let e = Complex::from_polar(1.0, t);
-    CliffordPGate::Piz((1.0 + e) / 2.0, (1.0 - e) / 2.0, a)
+    GateDecomposed::Piz((1.0 + e) / 2.0, (1.0 - e) / 2.0, a)
 }
 
-fn rz(t: f64, a: u32) -> CliffordPGate {
-    CliffordPGate::Piz(
+fn rz(t: f64, a: u32) -> GateDecomposed {
+    GateDecomposed::Piz(
         Complex::new((t / 2.0).cos(), 0.0),
         Complex::new(0.0, -(t / 2.0).sin()),
         a,

@@ -16,12 +16,11 @@ use crate::simulate_gpu::GpuSimulator;
 use crate::{
     Circuit,
     bitstring::{BitString, BitStringArray},
-    decompose::{CliffordPCircuit, CliffordPGate, decompose},
-    tableau::{ExtendedTableau, ForkResult},
+    decompose::decompose,
+    plan::{CircuitPlanned, GatePlanned, plan},
+    tableau::ExtendedTableau,
+    utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
-
-const N_TOO_LARGE: &str = "Number of qubits too large";
-const INDEX_TOO_LARGE: &str = "Qubit index too large";
 
 /// TODO: Find an optimal value for this.
 const MAX_BATCH_SIZE_LOG2: usize = 20;
@@ -34,10 +33,10 @@ const MAX_BATCH_SIZE_LOG2: usize = 20;
 /// # Panics
 /// If `w` has a length different from `circuit.qubits()`.
 pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
-    let circuit = decompose(circuit);
+    let circuit_decomposed = decompose(circuit);
     let w_len = w.len();
-    let n = circuit.qubits();
-    let t = circuit.p_gates();
+    let n = circuit_decomposed.qubits();
+    let t = circuit_decomposed.p_gates();
     assert_eq!(
         n.try_into(),
         Ok(w_len),
@@ -53,9 +52,9 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
         .ilog2()
         .try_into()
         .unwrap_or(usize::MAX);
-
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
+    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
 
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
     let w_coeff = Mutex::new(Complex::ZERO);
@@ -73,7 +72,7 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                w_coeff_local += run_cpu(w, &circuit, &path, batch_size_log2);
+                w_coeff_local += run_cpu(w, &circuit_planned, &path, batch_size_log2);
             }
 
             *w_coeff.lock().unwrap() += w_coeff_local;
@@ -92,10 +91,10 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
 pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
-    let circuit = decompose(circuit);
+    let circuit_decomposed = decompose(circuit);
     let w_len = w.len();
-    let n = circuit.qubits();
-    let t = circuit.p_gates();
+    let n = circuit_decomposed.qubits();
+    let t = circuit_decomposed.p_gates();
     assert_eq!(
         n.try_into(),
         Ok(w_len),
@@ -103,9 +102,11 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
     );
 
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t);
+    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
+
     let mut path = vec![false; t - batch_size_log2];
     let mut w_coeff = Complex::ZERO;
-    let mut g = GpuSimulator::new(&circuit, w, batch_size_log2);
+    let mut g = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
     let mut done = false;
     while !done {
         w_coeff += g.run(&path);
@@ -123,10 +124,10 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
 /// If `w` has a length different from `circuit.qubits()`.
 #[cfg(feature = "gpu")]
 pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64> {
-    let circuit = decompose(circuit);
+    let circuit_decomposed = decompose(circuit);
     let w_len = w.len();
-    let n = circuit.qubits();
-    let t = circuit.p_gates();
+    let n = circuit_decomposed.qubits();
+    let t = circuit_decomposed.p_gates();
     assert_eq!(
         n.try_into(),
         Ok(w_len),
@@ -145,8 +146,9 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
 
     // Ensure that there is at least one batch per thread.
     let batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
+    let circuit_planned = plan(&circuit_decomposed, batch_size_log2);
 
-    let mut gpu_sim = GpuSimulator::new(&circuit, w, batch_size_log2);
+    let mut gpu_sim = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
 
     let mut w_coeff_local = Complex::<f64>::ZERO;
     let next_path = Mutex::new(vec![false; t - batch_size_log2]);
@@ -165,7 +167,7 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                w_coeff_local += run_cpu(w, &circuit, &path, batch_size_log2);
+                w_coeff_local += run_cpu(w, &circuit_planned, &path, batch_size_log2);
             }
 
             *w_coeff.lock().unwrap() += w_coeff_local;
@@ -189,10 +191,12 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
 
 fn run_cpu(
     w: &BitString,
-    circuit: &CliffordPCircuit,
+    circuit: &CircuitPlanned,
     path: &[bool],
     batch_size_log2: usize,
 ) -> Complex<f64> {
+    use GatePlanned::*;
+
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
     let mut x_coeffs = vec![Complex::ONE];
@@ -200,14 +204,14 @@ fn run_cpu(
     let mut seen_p_gates = 0;
     for &gate in circuit.gates() {
         match gate {
-            CliffordPGate::X(a) => {
+            X(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
                     xs.flip(i, a);
                 }
                 g.apply_x_gate(a);
             }
-            CliffordPGate::Y(a) => {
+            Y(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
                     if xs.get(i, a) {
@@ -219,7 +223,7 @@ fn run_cpu(
                 }
                 g.apply_y_gate(a);
             }
-            CliffordPGate::Z(a) => {
+            Z(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
                     if xs.get(i, a) {
@@ -228,7 +232,7 @@ fn run_cpu(
                 }
                 g.apply_z_gate(a);
             }
-            CliffordPGate::S(a) => {
+            S(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
                     if xs.get(i, a) {
@@ -237,7 +241,7 @@ fn run_cpu(
                 }
                 g.apply_s_gate(a);
             }
-            CliffordPGate::Sdg(a) => {
+            Sdg(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
                     if xs.get(i, a) {
@@ -246,7 +250,7 @@ fn run_cpu(
                 }
                 g.apply_sdg_gate(a);
             }
-            CliffordPGate::Cnot(a, b) => {
+            Cnot(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
@@ -256,7 +260,7 @@ fn run_cpu(
                 }
                 g.apply_cnot_gate(a, b);
             }
-            CliffordPGate::Cz(a, b) => {
+            Cz(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
                 for i in 0..g.contained_states() {
@@ -266,7 +270,7 @@ fn run_cpu(
                 }
                 g.apply_cz_gate(a, b);
             }
-            CliffordPGate::H(a) => {
+            H(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
                 let (r, signs) = g.coeff_ratios_flipped_bit(&xs, a);
@@ -291,63 +295,62 @@ fn run_cpu(
                 g.apply_h_gate(a);
             }
 
-            CliffordPGate::Piz(ci, cz, a) => {
+            PizSequential(ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                if seen_p_gates < path.len() {
-                    if path[seen_p_gates] {
-                        for i in 0..g.contained_states() {
-                            if xs.get(i, a) {
-                                x_coeffs[i] *= -Complex::ONE;
-                            }
-                            x_coeffs[i] *= cz;
+                if path[seen_p_gates] {
+                    for i in 0..g.contained_states() {
+                        if xs.get(i, a) {
+                            x_coeffs[i] *= -Complex::ONE;
                         }
-                        g.apply_z_gate(a);
-                    } else {
-                        for i in 0..g.contained_states() {
-                            x_coeffs[i] *= ci;
-                        }
+                        x_coeffs[i] *= cz;
                     }
+                    g.apply_z_gate(a);
                 } else {
-                    let contained_states = g.contained_states();
-                    let fork_result = g.try_fork_apply_z_gate(a);
-                    if let ForkResult::Redundant(c) = fork_result {
-                        for (i1, i2) in xor_pairs(contained_states, c) {
-                            let mut z_coeff1 = x_coeffs[i2];
-                            let mut z_coeff2 = x_coeffs[i1];
-                            if xs.get(i2, a) {
-                                z_coeff1 *= -Complex::ONE;
-                            }
-                            if xs.get(i1, a) {
-                                z_coeff2 *= -Complex::ONE;
-                            }
-                            if !xs.equal_within(i1, i2) {
-                                z_coeff1 *=
-                                    g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i1);
-                                z_coeff2 *=
-                                    g.coeff_ratio(&xs.slice_string(i1), &xs.slice_string(i2), i2);
-                            }
-                            let new_coeff1 = ci * x_coeffs[i1] + cz * z_coeff1;
-                            let new_coeff2 = ci * x_coeffs[i2] + cz * z_coeff2;
-                            x_coeffs[i1] = new_coeff1;
-                            x_coeffs[i2] = new_coeff2;
-                        }
-                    } else {
-                        for i in 0..contained_states {
-                            let index_i = i;
-                            let index_z = i + contained_states;
-                            xs.copy_within(index_i, index_z);
-                            x_coeffs.push(x_coeffs[index_i]);
-
-                            x_coeffs[index_i] *= ci;
-
-                            if xs.get(index_z, a) {
-                                x_coeffs[index_z] *= -Complex::ONE;
-                            }
-                            x_coeffs[index_z] *= cz;
-                        }
+                    for i in 0..g.contained_states() {
+                        x_coeffs[i] *= ci;
                     }
                 }
+                seen_p_gates += 1;
+            }
+            PizFork(ci, cz, a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                let contained_states = g.contained_states();
+                g.fork_apply_z_gate(a);
+                for i in 0..contained_states {
+                    let index_i = i;
+                    let index_z = i + contained_states;
+                    xs.copy_within(index_i, index_z);
+                    x_coeffs.push(x_coeffs[index_i]);
 
+                    x_coeffs[index_i] *= ci;
+
+                    if xs.get(index_z, a) {
+                        x_coeffs[index_z] *= -Complex::ONE;
+                    }
+                    x_coeffs[index_z] *= cz;
+                }
+                seen_p_gates += 1;
+            }
+            PizDeduplicate(c, ci, cz, a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                for (i1, i2) in xor_pairs(g.contained_states(), c) {
+                    let mut z_coeff1 = x_coeffs[i2];
+                    let mut z_coeff2 = x_coeffs[i1];
+                    if xs.get(i2, a) {
+                        z_coeff1 *= -Complex::ONE;
+                    }
+                    if xs.get(i1, a) {
+                        z_coeff2 *= -Complex::ONE;
+                    }
+                    if !xs.equal_within(i1, i2) {
+                        z_coeff1 *= g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i1);
+                        z_coeff2 *= g.coeff_ratio(&xs.slice_string(i1), &xs.slice_string(i2), i2);
+                    }
+                    let new_coeff1 = ci * x_coeffs[i1] + cz * z_coeff1;
+                    let new_coeff2 = ci * x_coeffs[i2] + cz * z_coeff2;
+                    x_coeffs[i1] = new_coeff1;
+                    x_coeffs[i2] = new_coeff2;
+                }
                 seen_p_gates += 1;
             }
         }

@@ -21,6 +21,7 @@ enum Pauli {
 
 /// Result returned by [`ExtendedTableau::try_fork_apply_z_gate`], indicating whether fork operation was carried out.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub enum ForkResult {
     /// The tableau was forked and [`ExtendedTableau::contained_states`] is now doubled.
     Forked,
@@ -204,7 +205,6 @@ impl ExtendedTableau {
         let n = self.n;
         let c_cols = self.c_cols;
         let x = x_column_block_index(n, 0, a);
-        let c = c_column_block_index(n, 0, c_cols);
 
         // Bring the c columns into column echelon form to detect whether the new one is equal to some combination of the old ones XOR'ed together.
         // If it is, the tag is a bit-vector indicating which columns are part of his combination.
@@ -244,9 +244,17 @@ impl ExtendedTableau {
             return ForkResult::Redundant(tag);
         }
 
+        self.fork_apply_z_gate(a);
+        ForkResult::Forked
+    }
+    pub fn fork_apply_z_gate(&mut self, a: usize) {
+        let n = self.n;
+        let c_cols = self.c_cols;
+        let x = x_column_block_index(n, 0, a);
+        let c = c_column_block_index(n, 0, c_cols);
+
         self.tableau.copy_within(x..(x + column_block_length(n)), c);
         self.c_cols += 1;
-        ForkResult::Forked
     }
 
     /// The coeff. ratio describes the ratio of the coefficients of `w1` and `w2`, such that
