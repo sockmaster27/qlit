@@ -10,7 +10,6 @@ const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub enum ForkResult {
-    /// The tableau was forked and [`PlanningTableau::contained_states`] is now doubled.
     Forked,
     /// The tableau was not forked as it would introduce duplicate states.
     /// The contained value, `c`, indicates that applying the given gate to the
@@ -19,27 +18,20 @@ pub enum ForkResult {
     Redundant(usize),
 }
 
+/// The fragment of the state of [`crate::tableau::ExtendedTableau`] needed for the planning phase.
 #[derive(Clone)]
 pub struct PlanningTableau {
     /// The number of qubits in the tableau.
     n: usize,
     /// The current number of active c-columns in the tableau.
     c_cols: usize,
-    /// The augmented stabilizer tableau,
-    /// ```text
-    /// P1 -> x1 x2 ... xn | z1 z2 ... zn | c1 c2 ... ct
-    /// P2 -> x1 x2 ... xn | z1 z2 ... zn | c1 c2 ... ct
-    /// ...
-    /// Pn -> x1 x2 ... xn | z1 z2 ... zn | c1 c2 ... ct
-    /// ```
-    /// is laid out column-wise in the following way:
+    /// The tableau is laid out in the following way:
     /// ```text
     /// P1 -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// P2 -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// ...
     /// Pn -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// ```
-    /// Note that the x and z columns are interleaved.
     tableau: Vec<BitBlock>,
 }
 impl PlanningTableau {
@@ -114,7 +106,7 @@ impl PlanningTableau {
     /// appended by the same sequence but with the Z-gate applied to qubit `a` of each state,
     /// doubling the number of states represented by the tableau.
     ///
-    /// If this forking would introduce duplicate state, the tableau is not mutated.
+    /// If this forking would introduce duplicate states, the tableau is not mutated.
     ///
     /// Returns a [`ForkResult`] indicating whether the fork was carried out or found to be redundant,
     /// in which case the information about which states would be duplicates is included.

@@ -28,7 +28,7 @@ pub struct ExtendedTableau {
     n: usize,
     /// The current number of active c-columns in the tableau.
     c_cols: usize,
-    /// The augmented stabilizer tableau,
+    /// The extended stabilizer tableau,
     /// ```text
     /// P1 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
     /// P2 -> x1 x2 ... xn | z1 z2 ... zn | r | c1 c2 ... ct
