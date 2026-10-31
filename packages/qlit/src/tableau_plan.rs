@@ -33,7 +33,13 @@ pub struct PlanningTableau {
     /// Pn -> x1 z1 x2 z2 ... xn zn | c1 c2 ... ct
     /// ```
     tableau: Vec<BitBlock>,
+    /// For each active c column, its pivot indicates the index of the first occurring set bit.
     c_col_pivots: Vec<usize>,
+    /// For each active c column, its tag indicates the set of the originally inserted c columns it is a combination of.
+    /// The c columns are continuously kept in column echelon form, so every time a column is appended,
+    /// it is reduced by XOR'ing some set of existing c columns into it.
+    /// This is a bitstring where bit i being set indicates that the c column originating from the i'th succesful call
+    /// to [`PlanningTableau::try_fork_apply_z_gate`] has been XOR'ed into this column.
     c_col_tags: Vec<usize>,
 }
 impl PlanningTableau {
