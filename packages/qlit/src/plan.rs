@@ -144,8 +144,8 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
     let mut sequential_gates = 0;
     let mut fork_gates = dedup_dependencies.len();
     if max_batch_size_log2 < fork_gates {
-        fork_gates = max_batch_size_log2;
         let to_delete = fork_gates - max_batch_size_log2;
+        fork_gates = max_batch_size_log2;
 
         // Delete the forks with the fewest dependents first.
         let mut order: Vec<usize> = (0..dedup_dependencies.len()).collect();
@@ -176,10 +176,11 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
         // Adjust c's of the surviving PizDeduplicate gates.
         // None of them refer to a deleted fork, so the corresponding bits are all zero.
         // Remove from the most significant bit down so lower positions stay valid.
-        deleted.sort_unstable();
-        for gate in gates.iter_mut().rev() {
+        deleted.sort_unstable_by(|a, b| b.cmp(a));
+        for gate in &mut gates {
             if let PizDeduplicate(c, _, _, _) = gate {
                 for &i in &deleted {
+                    debug_assert_eq!(*c >> i & 1, 0);
                     *c = remove_bit(*c, i);
                 }
             }
