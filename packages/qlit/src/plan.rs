@@ -3,7 +3,7 @@ use num_complex::Complex;
 use crate::{
     decompose::{CircuitDecomposed, GateDecomposed},
     tableau_plan::{ForkResult, PlanningTableau},
-    utils::{INDEX_TOO_LARGE, N_TOO_LARGE, bit_indices},
+    utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,6 +62,8 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let mut g = PlanningTableau::zero(n, circuit.p_gates());
+    // For each successful fork, in order of occurrence (i.e. indexed by the bit positions in `c`),
+    // the index of the fork gate and the indices of the PizDeduplicate gates depending on it.
     let mut dedup_dependencies: Vec<(usize, Vec<usize>)> = vec![];
     let mut gates: Vec<GatePlanned> = circuit
         .gates()
@@ -122,9 +124,13 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
                         PizFork(ci, cz, a)
                     }
                     ForkResult::Redundant(c) => {
-                        for j in bit_indices(c) {
-                            let (_, deps) = &mut dedup_dependencies[j];
-                            deps.push(i);
+                        // `c` is a plain integer, so bit j (from the least significant end)
+                        // refers to the j'th fork.
+                        let mut remaining = c;
+                        while remaining != 0 {
+                            let j = remaining.trailing_zeros() as usize;
+                            remaining &= remaining - 1;
+                            dedup_dependencies[j].1.push(i);
                         }
                         PizDeduplicate(c, ci, cz, a)
                     }
@@ -139,10 +145,16 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
     let mut fork_gates = dedup_dependencies.len();
     if max_batch_size_log2 < fork_gates {
         fork_gates = max_batch_size_log2;
-        let to_delete = circuit.p_gates() - max_batch_size_log2;
-        dedup_dependencies.sort_by_key(|(_, deps)| deps.len());
-        for &(fork_index, ref deps) in dedup_dependencies.iter().take(to_delete) {
-            gates[fork_index] = match gates[fork_index] {
+        let to_delete = fork_gates - max_batch_size_log2;
+
+        // Delete the forks with the fewest dependents first.
+        let mut order: Vec<usize> = (0..dedup_dependencies.len()).collect();
+        order.sort_by_key(|&ordinal| dedup_dependencies[ordinal].1.len());
+        let mut deleted: Vec<usize> = order.into_iter().take(to_delete).collect();
+
+        for &ordinal in &deleted {
+            let (fork_index, deps) = &dedup_dependencies[ordinal];
+            gates[*fork_index] = match gates[*fork_index] {
                 PizFork(ci, cz, a) => {
                     sequential_gates += 1;
                     PizSequential(ci, cz, a)
@@ -160,19 +172,18 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
                 };
             }
         }
-        // Adjust c's
-        gates = gates
-            .into_iter()
-            .map(|gate| match gate {
-                PizDeduplicate(mut c, ci, cz, a) => {
-                    for &(fork_index, _) in dedup_dependencies.iter().take(to_delete) {
-                        c = remove_bit(c, fork_index);
-                    }
-                    PizDeduplicate(c, ci, cz, a)
+
+        // Adjust c's of the surviving PizDeduplicate gates.
+        // None of them refer to a deleted fork, so the corresponding bits are all zero.
+        // Remove from the most significant bit down so lower positions stay valid.
+        deleted.sort_unstable();
+        for gate in gates.iter_mut().rev() {
+            if let PizDeduplicate(c, _, _, _) = gate {
+                for &i in &deleted {
+                    *c = remove_bit(*c, i);
                 }
-                gate => gate,
-            })
-            .collect();
+            }
+        }
     }
 
     CircuitPlanned {
@@ -194,4 +205,57 @@ fn remove_bit(word: usize, i: usize) -> usize {
     let low_mask = (1 << i) - 1;
     let high_mask = !(low_mask | 1 << i);
     ((high_mask & word) >> 1) | (low_mask & word)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{Circuit, Gate::*, decompose::decompose};
+
+    #[test]
+    fn remove_bit_shifts_higher_bits_down() {
+        assert_eq!(remove_bit(0b11101001, 3), 0b01110001);
+        assert_eq!(remove_bit(0b1, 0), 0b0);
+        assert_eq!(remove_bit(0b10, 0), 0b1);
+    }
+
+    #[test]
+    fn plan_deletes_forks_with_fewest_dependents() {
+        // Forks: T0 (ordinal 0), T1 (ordinal 1), T2 (ordinal 2).
+        // Deduplicates: T0 again (c = 0b001) and T2 again (c = 0b100).
+        let circuit = Circuit::new(3, [H(0), H(1), H(2), T(0), T(1), T(2), T(0), T(2)]).unwrap();
+        let decomposed = decompose(&circuit);
+        let planned = plan(&decomposed, 2);
+
+        assert_eq!(planned.sequential_gates(), 1);
+        assert_eq!(planned.fork_gates(), 2);
+        let piz: Vec<_> = planned
+            .gates()
+            .iter()
+            .filter(|g| {
+                matches!(
+                    g,
+                    GatePlanned::PizSequential(..)
+                        | GatePlanned::PizFork(..)
+                        | GatePlanned::PizDeduplicate(..)
+                )
+            })
+            .map(|g| match g {
+                GatePlanned::PizSequential(..) => ("seq", 0),
+                GatePlanned::PizFork(..) => ("fork", 0),
+                GatePlanned::PizDeduplicate(c, ..) => ("dedup", *c),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            piz,
+            vec![
+                ("fork", 0),
+                ("seq", 0),
+                ("fork", 0),
+                ("dedup", 0b01),
+                ("dedup", 0b10)
+            ]
+        );
+    }
 }
