@@ -331,6 +331,17 @@ fn run_cpu(
                 }
                 seen_p_gates += 1;
             }
+            PizDeduplicate(0, ci, cz, a) => {
+                let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                for i in 0..g.contained_states() {
+                    let mut z_coeff = x_coeffs[i];
+                    if xs.get(i, a) {
+                        z_coeff *= -Complex::ONE;
+                    }
+                    x_coeffs[i] = ci * x_coeffs[i] + cz * z_coeff;
+                }
+                seen_p_gates += 1;
+            }
             PizDeduplicate(c, ci, cz, a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 for (i1, i2) in xor_pairs(g.contained_states(), c) {
@@ -346,10 +357,8 @@ fn run_cpu(
                         z_coeff1 *= g.coeff_ratio(&xs.slice_string(i2), &xs.slice_string(i1), i1);
                         z_coeff2 *= g.coeff_ratio(&xs.slice_string(i1), &xs.slice_string(i2), i2);
                     }
-                    let new_coeff1 = ci * x_coeffs[i1] + cz * z_coeff1;
-                    let new_coeff2 = ci * x_coeffs[i2] + cz * z_coeff2;
-                    x_coeffs[i1] = new_coeff1;
-                    x_coeffs[i2] = new_coeff2;
+                    x_coeffs[i1] = ci * x_coeffs[i1] + cz * z_coeff1;
+                    x_coeffs[i2] = ci * x_coeffs[i2] + cz * z_coeff2;
                 }
                 seen_p_gates += 1;
             }
@@ -379,13 +388,13 @@ fn increment_path(path: &mut Vec<bool>) -> bool {
 
 /// Iterate over all pairs `(i, i ^ c)` of indices into an array of length `len` (a power of two),
 /// such that every index occurs in exactly one pair.
+///
+/// # Panics
+/// In debug mode if `c == 0`.
 fn xor_pairs(len: usize, c: usize) -> impl Iterator<Item = (usize, usize)> {
-    let (pair_count, low_mask) = if c == 0 {
-        (len, usize::MAX)
-    } else {
-        (len / 2, c.isolate_lowest_one() - 1)
-    };
-    (0..pair_count).map(move |m| {
+    debug_assert_ne!(c, 0);
+    let low_mask = c.isolate_lowest_one() - 1;
+    (0..(len / 2)).map(move |m| {
         let high_bits = (m & !low_mask) << 1;
         let low_bits = m & low_mask;
         let i = high_bits | low_bits;
@@ -397,11 +406,6 @@ fn xor_pairs(len: usize, c: usize) -> impl Iterator<Item = (usize, usize)> {
 mod test {
     use super::*;
 
-    #[test]
-    fn test_xor_pairs1() {
-        let res: Vec<_> = xor_pairs(0, 0).collect();
-        assert_eq!(res, vec![]);
-    }
     #[test]
     fn test_xor_pairs2() {
         let len = 1 << 7;
