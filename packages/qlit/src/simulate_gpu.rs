@@ -681,11 +681,10 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        // First n entries: for each row, the column of its pivot plus one (0 if none).
-        // Next n entries: for each column, the row of its pivot plus one (0 if none).
+        // See `pivots` in the shader.
         let pivots_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pivots"),
-            size: U32_SIZE * 2 * u64::from(n),
+            size: U32_SIZE * u64::from(n),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1337,29 +1336,20 @@ impl<'a> GpuSimulator<'a> {
         self.encoder.clear_buffer(&self.rref_state_buf, 0, None);
         self.encoder.clear_buffer(&self.rref_used_buf, 0, None);
 
-        let select_workgroups = 1;
-        let elimination_workgroups = column_block_length(n).div_ceil(WORKGROUP_SIZE);
+        // Dispatches within a single pass are synchronized with each other,
+        // so we can run all the steps in one pass.
+        let mut pass = self.encoder.begin_compute_pass(&Default::default());
+        pass.set_bind_group(0, &self.global_bind_group, &[]);
+        pass.set_bind_group(1, &self.rref_bind_group, &[]);
         for _ in 0..n {
-            let mut select_pass = self.encoder.begin_compute_pass(&Default::default());
-            select_pass.set_pipeline(&self.gpu.select_pass_pipeline);
-            select_pass.set_bind_group(0, &self.global_bind_group, &[]);
-            select_pass.set_bind_group(1, &self.rref_bind_group, &[]);
-            select_pass.dispatch_workgroups(select_workgroups, 1, 1);
-            drop(select_pass);
+            pass.set_pipeline(&self.gpu.select_pass_pipeline);
+            pass.dispatch_workgroups(1, 1, 1);
 
-            let mut elimination_pass = self.encoder.begin_compute_pass(&Default::default());
-            elimination_pass.set_pipeline(&self.gpu.elimination_pass_pipeline);
-            elimination_pass.set_bind_group(0, &self.global_bind_group, &[]);
-            elimination_pass.set_bind_group(1, &self.rref_bind_group, &[]);
-            elimination_pass.dispatch_workgroups(elimination_workgroups, 1, 1);
-            drop(elimination_pass);
+            pass.set_pipeline(&self.gpu.elimination_pass_pipeline);
+            pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
         }
-
-        let mut finish_pass = self.encoder.begin_compute_pass(&Default::default());
-        finish_pass.set_pipeline(&self.gpu.finish_rref_pipeline);
-        finish_pass.set_bind_group(0, &self.global_bind_group, &[]);
-        finish_pass.set_bind_group(1, &self.rref_bind_group, &[]);
-        finish_pass.dispatch_workgroups(n.div_ceil(WORKGROUP_SIZE), 1, 1);
+        pass.set_pipeline(&self.gpu.finish_rref_pipeline);
+        pass.dispatch_workgroups(n.div_ceil(WORKGROUP_SIZE), 1, 1);
     }
 
     fn update_before_h(&mut self, a: u32) {

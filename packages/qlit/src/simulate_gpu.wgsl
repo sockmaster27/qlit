@@ -16,8 +16,7 @@ alias BitBlock = u32;
 @group(0) @binding(5) var<storage, read_write> ws: array<u32>;
 @group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 // Pivot bookkeeping established by bring_into_rref, instead of physically reordering the rows of the tableau.
-// The first n entries hold, for each row, the column of its pivot plus one (0 if the row has no pivot).
-// The next n entries hold, for each column, the row of its pivot plus one (0 if the column has no pivot).
+// For each row, holds the column of its pivot plus one (0 if the row has no pivot).
 @group(0) @binding(7) var<storage, read_write> pivots: array<u32>;
 
 fn w_bit_index(state_index: u32, q: u32) -> u32 {
@@ -379,13 +378,10 @@ fn select_pass() {
 
     if !pivot_found {
         state.pivot_plus1 = 0;
-        pivots[n + col] = 0;
         return;
     }
 
     used[pivot / BLOCK_SIZE] = set_bit(used[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
-    pivots[pivot] = col + 1;
-    pivots[n + col] = pivot + 1;
     state.pivot_plus1 = pivot + 1;
 }
 
@@ -544,10 +540,11 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
     var phase: u32 = 0;
 
     // Determine the sign of the derived stabilizer.
-    for (var q: u32 = 0; q < n; q += 1) {
-        let pivot_plus1 = pivots[n + q];
+    for (var row: u32 = 0; row < n; row += 1) {
+        let pivot_plus1 = pivots[row];
         if pivot_plus1 != 0 {
-            if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] && row_negative(s, pivot_plus1 - 1) {
+            let q = pivot_plus1 - 1;
+            if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] && row_negative(s, row) {
                 phase += 2;
             }
         }
@@ -558,11 +555,11 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
         // including the phase change caused by multiplication of the individual Pauli matrices.
         var x_acc = false;
         var z_acc = false;
-        for (var q: u32 = 0; q < n; q += 1) {
-            let pivot_plus1 = pivots[n + q];
+        for (var row2: u32 = 0; row2 < n; row2 += 1) {
+            let pivot_plus1 = pivots[row2];
             if pivot_plus1 != 0 {
+                let q = pivot_plus1 - 1;
                 if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] {
-                    let row2 = pivot_plus1 - 1;
                     let x_row = x_bit(row2, q2);
                     let z_row = z_bit(row2, q2);
                     phase += product_phase(x_acc, z_acc, x_row, z_row);
@@ -598,10 +595,11 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
     var phase: u32 = 0;
 
     // Determine the sign of the derived stabilizer.
-    for (var q: u32 = 0; q < n; q += 1) {
-        let pivot_plus1 = pivots[n + q];
+    for (var row: u32 = 0; row < n; row += 1) {
+        let pivot_plus1 = pivots[row];
         if pivot_plus1 != 0 {
-            if ws[w_bit_index(state_index, q)] != w_target[q] && row_negative(state_index, pivot_plus1 - 1) {
+            let q = pivot_plus1 - 1;
+            if ws[w_bit_index(state_index, q)] != w_target[q] && row_negative(state_index, row) {
                 phase += 2;
             }
         }
@@ -612,11 +610,11 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
         // including the phase change caused by multiplication of the individual Pauli matrices.
         var x_acc = false;
         var z_acc = false;
-        for (var q: u32 = 0; q < n; q += 1) {
-            let pivot_plus1 = pivots[n + q];
+        for (var row2: u32 = 0; row2 < n; row2 += 1) {
+            let pivot_plus1 = pivots[row2];
             if pivot_plus1 != 0 {
+                let q = pivot_plus1 - 1;
                 if ws[w_bit_index(state_index, q)] != w_target[q] {
-                    let row2 = pivot_plus1 - 1;
                     let x_row = x_bit(row2, q2);
                     let z_row = z_bit(row2, q2);
                     phase += product_phase(x_acc, z_acc, x_row, z_row);
@@ -651,11 +649,18 @@ fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
     let flipped_bit = qubit;
 
     // Find pivot row.
-    let pivot_plus1 = pivots[n + flipped_bit];
-    if pivot_plus1 == 0 {
+    var row: u32 = 0;
+    var found = false;
+    for (var j: u32 = 0; j < n; j += 1) {
+        if pivots[j] == flipped_bit + 1 {
+            row = j;
+            found = true;
+            break;
+        }
+    }
+    if !found {
         return Complex(0.0, 0.0);
     }
-    let row = pivot_plus1 - 1;
 
     var res = Complex(1.0, 0.0);
     if row_negative(state_index, row) {
