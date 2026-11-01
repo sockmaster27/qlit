@@ -616,7 +616,8 @@ impl<'a> GpuSimulator<'a> {
         let gpu = get_gpu();
 
         let n: u32 = circuit.qubits();
-        let path_length: u32 = (circuit.p_gates() - batch_size_log2)
+        let path_length: u32 = circuit
+            .sequential_gates()
             .try_into()
             .expect("Number of non-clifford gates exceeds maximum supported by GPU simulator");
         debug_assert!(

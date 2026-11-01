@@ -30,7 +30,6 @@ pub enum GatePlanned {
 pub struct CircuitPlanned {
     qubits: u32,
     gates: Vec<GatePlanned>,
-    p_gates: usize,
     sequential_gates: usize,
     fork_gates: usize,
 }
@@ -41,11 +40,6 @@ impl CircuitPlanned {
 
     pub fn gates(&self) -> &[GatePlanned] {
         &self.gates
-    }
-
-    #[cfg(feature = "gpu")]
-    pub fn p_gates(&self) -> usize {
-        self.p_gates
     }
 
     pub fn sequential_gates(&self) -> usize {
@@ -116,7 +110,7 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
 
             GateDecomposed::Piz(ci, cz, a) => {
                 // Start by aggressively forking, we later determine which gates should be
-                // converted to PizSequential to fit inside memory budget while maximizing number of surviving PizDeduplicate.
+                // converted to PizSequential to fit inside memory budget while maximizing number of surviving PizDeduplicate gates.
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 match g.try_fork_apply_z_gate(au) {
                     ForkResult::Forked => {
@@ -190,7 +184,6 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
     CircuitPlanned {
         qubits: circuit.qubits(),
         gates,
-        p_gates: circuit.p_gates(),
         sequential_gates,
         fork_gates,
     }
