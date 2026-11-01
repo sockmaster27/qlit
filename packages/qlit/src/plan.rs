@@ -3,7 +3,7 @@ use num_complex::Complex;
 use crate::{
     decompose::{CircuitDecomposed, GateDecomposed},
     tableau_plan::{ForkResult, PlanningTableau},
-    utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
+    utils::{INDEX_TOO_LARGE, N_TOO_LARGE, bit_indices},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +31,8 @@ pub struct CircuitPlanned {
     qubits: u32,
     gates: Vec<GatePlanned>,
     p_gates: usize,
+    sequential_gates: usize,
+    fork_gates: usize,
 }
 impl CircuitPlanned {
     pub fn qubits(&self) -> u32 {
@@ -45,20 +47,28 @@ impl CircuitPlanned {
     pub fn p_gates(&self) -> usize {
         self.p_gates
     }
+
+    pub fn sequential_gates(&self) -> usize {
+        self.sequential_gates
+    }
+
+    pub fn fork_gates(&self) -> usize {
+        self.fork_gates
+    }
 }
 
-pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlanned {
+pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitPlanned {
     use GatePlanned::*;
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
-    let path_len = circuit.p_gates() - batch_size_log2;
     let mut g = PlanningTableau::zero(n, circuit.p_gates());
-    let mut seen_p_gates = 0;
-    let gates = circuit
+    let mut dedup_dependencies: Vec<(usize, Vec<usize>)> = vec![];
+    let mut gates: Vec<GatePlanned> = circuit
         .gates()
         .iter()
         .copied()
-        .map(|gate| match gate {
+        .enumerate()
+        .map(|(i, gate)| match gate {
             GateDecomposed::X(a) => {
                 let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 g.apply_x_gate(au);
@@ -103,23 +113,85 @@ pub fn plan(circuit: &CircuitDecomposed, batch_size_log2: usize) -> CircuitPlann
             }
 
             GateDecomposed::Piz(ci, cz, a) => {
-                if seen_p_gates < path_len {
-                    seen_p_gates += 1;
-                    PizSequential(ci, cz, a)
-                } else {
-                    let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                    match g.try_fork_apply_z_gate(au) {
-                        ForkResult::Forked => PizFork(ci, cz, a),
-                        ForkResult::Redundant(c) => PizDeduplicate(c, ci, cz, a),
+                // Start by aggressively forking, we later determine which gates should be
+                // converted to PizSequential to fit inside memory budget while maximizing number of surviving PizDeduplicate.
+                let au: usize = a.try_into().expect(INDEX_TOO_LARGE);
+                match g.try_fork_apply_z_gate(au) {
+                    ForkResult::Forked => {
+                        dedup_dependencies.push((i, vec![]));
+                        PizFork(ci, cz, a)
+                    }
+                    ForkResult::Redundant(c) => {
+                        for j in bit_indices(c) {
+                            let (_, deps) = &mut dedup_dependencies[j];
+                            deps.push(i);
+                        }
+                        PizDeduplicate(c, ci, cz, a)
                     }
                 }
             }
         })
         .collect();
 
+    // Naive greedy reduction
+    // Exact optimization is NP-hard
+    let mut sequential_gates = 0;
+    let mut fork_gates = dedup_dependencies.len();
+    if max_batch_size_log2 < fork_gates {
+        fork_gates = max_batch_size_log2;
+        let to_delete = circuit.p_gates() - max_batch_size_log2;
+        dedup_dependencies.sort_by_key(|(_, deps)| deps.len());
+        for &(fork_index, ref deps) in dedup_dependencies.iter().take(to_delete) {
+            gates[fork_index] = match gates[fork_index] {
+                PizFork(ci, cz, a) => {
+                    sequential_gates += 1;
+                    PizSequential(ci, cz, a)
+                }
+                _ => unreachable!("dedup_dependencies contains index of non-fork gate"),
+            };
+            for &dedup_index in deps {
+                gates[dedup_index] = match gates[dedup_index] {
+                    PizDeduplicate(_, ci, cz, a) => {
+                        sequential_gates += 1;
+                        PizSequential(ci, cz, a)
+                    }
+                    // Might have already been converted
+                    gate => gate,
+                };
+            }
+        }
+        // Adjust c's
+        gates = gates
+            .into_iter()
+            .map(|gate| match gate {
+                PizDeduplicate(mut c, ci, cz, a) => {
+                    for &(fork_index, _) in dedup_dependencies.iter().take(to_delete) {
+                        c = remove_bit(c, fork_index);
+                    }
+                    PizDeduplicate(c, ci, cz, a)
+                }
+                gate => gate,
+            })
+            .collect();
+    }
+
     CircuitPlanned {
         qubits: circuit.qubits(),
         gates,
         p_gates: circuit.p_gates(),
+        sequential_gates,
+        fork_gates,
     }
+}
+
+/// Remove the i'th least significant bit of the given word, shifting the more significant bits down by one to fill the gap.
+/// ```text
+/// remove_bit(11101001, 3) -> 01110001
+///                ^
+/// ```
+#[inline]
+fn remove_bit(word: usize, i: usize) -> usize {
+    let low_mask = (1 << i) - 1;
+    let high_mask = !(low_mask | 1 << i);
+    ((high_mask & word) >> 1) | (low_mask & word)
 }
