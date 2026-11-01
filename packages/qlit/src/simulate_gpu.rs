@@ -56,7 +56,8 @@ struct GpuContext {
     dedup_apply_piz_gate_c_zero_pipeline: wgpu::ComputePipeline,
     dedup_apply_piz_gate_pipeline: wgpu::ComputePipeline,
     elimination_pass_pipeline: wgpu::ComputePipeline,
-    swap_pass_pipeline: wgpu::ComputePipeline,
+    select_pass_pipeline: wgpu::ComputePipeline,
+    finish_rref_pipeline: wgpu::ComputePipeline,
     update_before_h_pipeline: wgpu::ComputePipeline,
     compute_output_pipeline: wgpu::ComputePipeline,
 }
@@ -151,6 +152,17 @@ impl GpuContext {
                     // w_coeffs
                     wgpu::BindGroupLayoutEntry {
                         binding: 6,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // pivots
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 7,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -332,20 +344,9 @@ impl GpuContext {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Bring Into RREF"),
                 entries: &[
-                    // input
+                    // state
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // input_next
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -354,9 +355,9 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // pivot_out
+                    // used
                     wgpu::BindGroupLayoutEntry {
-                        binding: 2,
+                        binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -495,11 +496,19 @@ impl GpuContext {
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
-        let swap_pass_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Swap Pass"),
+        let select_pass_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Select Pass"),
             layout: Some(&bring_into_rref_pipeline_layout),
             module: &shader_module,
-            entry_point: Some("swap_pass"),
+            entry_point: Some("select_pass"),
+            cache: None,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        });
+        let finish_rref_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Finish RREF"),
+            layout: Some(&bring_into_rref_pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("finish_rref"),
             cache: None,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         });
@@ -560,7 +569,8 @@ impl GpuContext {
             dedup_apply_piz_gate_c_zero_pipeline,
             dedup_apply_piz_gate_pipeline,
             elimination_pass_pipeline,
-            swap_pass_pipeline,
+            select_pass_pipeline,
+            finish_rref_pipeline,
             update_before_h_pipeline,
             compute_output_pipeline,
         }
@@ -590,8 +600,10 @@ pub struct GpuSimulator<'a> {
     apply_gates_bind_group_index: usize,
     apply_gates_bind_groups: Vec<Option<wgpu::BindGroup>>,
 
-    rref_input_bufs: [wgpu::Buffer; 2],
-    pivot_buf: wgpu::Buffer,
+    pivots_buf: wgpu::Buffer,
+    rref_state_buf: wgpu::Buffer,
+    rref_used_buf: wgpu::Buffer,
+    rref_bind_group: wgpu::BindGroup,
 
     output_buf: wgpu::Buffer,
     output_read_buf: wgpu::Buffer,
@@ -669,6 +681,13 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
+        // See `pivots` in the shader.
+        let pivots_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("pivots"),
+            size: U32_SIZE * u64::from(n),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let global_bind_group = Self::new_global_bind_group(
             gpu,
             &n_buf,
@@ -678,29 +697,36 @@ impl<'a> GpuSimulator<'a> {
             &c_cols_buf,
             &ws_buf,
             &w_coeffs_buf,
+            &pivots_buf,
         );
 
         let apply_gates_bind_groups = Self::apply_gates_bind_groups(gpu, circuit, path_length);
 
-        let rref_input_bufs = [
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("RREF Pass Input 1"),
-                size: 2 * U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("RREF Pass Input 2"),
-                size: 2 * U32_SIZE,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            }),
-        ];
-        let pivot_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pivot"),
-            size: U32_SIZE,
-            usage: wgpu::BufferUsages::STORAGE,
+        let rref_state_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("RREF state"),
+            size: 2 * U32_SIZE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
+        });
+        let rref_used_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("RREF used rows"),
+            size: BLOCK_SIZE_BYTES * u64::from(column_block_length(n)),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let rref_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Bring-into-RREF Bind Group"),
+            layout: &gpu.bring_into_rref_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: rref_state_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: rref_used_buf.as_entire_binding(),
+                },
+            ],
         });
 
         let w_target_buf = gpu
@@ -760,8 +786,10 @@ impl<'a> GpuSimulator<'a> {
             apply_gates_bind_group_index: 0,
             apply_gates_bind_groups,
 
-            rref_input_bufs,
-            pivot_buf,
+            pivots_buf,
+            rref_state_buf,
+            rref_used_buf,
+            rref_bind_group,
 
             output_buf,
             output_read_buf,
@@ -778,6 +806,7 @@ impl<'a> GpuSimulator<'a> {
         c_cols_buf: &wgpu::Buffer,
         ws_buf: &wgpu::Buffer,
         w_coeffs_buf: &wgpu::Buffer,
+        pivots_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Tableau"),
@@ -810,6 +839,10 @@ impl<'a> GpuSimulator<'a> {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: w_coeffs_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: pivots_buf.as_entire_binding(),
                 },
             ],
         })
@@ -1087,6 +1120,7 @@ impl<'a> GpuSimulator<'a> {
         self.encoder.clear_buffer(&self.seen_p_gates_buf, 0, None);
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
         self.encoder.clear_buffer(&self.c_cols_buf, 0, None);
+        self.encoder.clear_buffer(&self.pivots_buf, 0, None);
 
         self.c_cols = 0;
         self.apply_gates_bind_group_index = 0;
@@ -1292,59 +1326,30 @@ impl<'a> GpuSimulator<'a> {
             &self.c_cols_buf,
             &self.ws_buf,
             &self.w_coeffs_buf,
+            &self.pivots_buf,
         )
     }
 
     fn bring_into_rref(&mut self) {
         let n = self.n;
-        let c_cols = self.c_cols;
 
-        let mut input_buf = &self.rref_input_bufs[0];
-        let mut input_next_buf = &self.rref_input_bufs[1];
+        self.encoder.clear_buffer(&self.rref_state_buf, 0, None);
+        self.encoder.clear_buffer(&self.rref_used_buf, 0, None);
 
-        self.encoder.clear_buffer(input_buf, 0, None);
-
+        // Dispatches within a single pass are synchronized with each other,
+        // so we can run all the steps in one pass.
+        let mut pass = self.encoder.begin_compute_pass(&Default::default());
+        pass.set_bind_group(0, &self.global_bind_group, &[]);
+        pass.set_bind_group(1, &self.rref_bind_group, &[]);
         for _ in 0..n {
-            let bind_group = self
-                .gpu
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Bring-into-RREF Pass Bind Group"),
-                    layout: &self.gpu.bring_into_rref_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: input_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: input_next_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: self.pivot_buf.as_entire_binding(),
-                        },
-                    ],
-                });
+            pass.set_pipeline(&self.gpu.select_pass_pipeline);
+            pass.dispatch_workgroups(1, 1, 1);
 
-            let workgroups = column_block_length(n).div_ceil(WORKGROUP_SIZE);
-            let mut elimination_pass = self.encoder.begin_compute_pass(&Default::default());
-            elimination_pass.set_pipeline(&self.gpu.elimination_pass_pipeline);
-            elimination_pass.set_bind_group(0, &self.global_bind_group, &[]);
-            elimination_pass.set_bind_group(1, &bind_group, &[]);
-            elimination_pass.dispatch_workgroups(workgroups, 1, 1);
-            drop(elimination_pass);
-
-            let workgroups = (n + n + 1 + c_cols).div_ceil(WORKGROUP_SIZE);
-            let mut swap_pass = self.encoder.begin_compute_pass(&Default::default());
-            swap_pass.set_pipeline(&self.gpu.swap_pass_pipeline);
-            swap_pass.set_bind_group(0, &self.global_bind_group, &[]);
-            swap_pass.set_bind_group(1, &bind_group, &[]);
-            swap_pass.dispatch_workgroups(workgroups, 1, 1);
-            drop(swap_pass);
-
-            (input_buf, input_next_buf) = (input_next_buf, input_buf);
+            pass.set_pipeline(&self.gpu.elimination_pass_pipeline);
+            pass.dispatch_workgroups(column_block_length(n).div_ceil(WORKGROUP_SIZE), 1, 1);
         }
+        pass.set_pipeline(&self.gpu.finish_rref_pipeline);
+        pass.dispatch_workgroups(n.div_ceil(WORKGROUP_SIZE), 1, 1);
     }
 
     fn update_before_h(&mut self, a: u32) {
