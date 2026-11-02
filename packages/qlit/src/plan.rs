@@ -56,7 +56,11 @@ impl CircuitPlanned {
     }
 }
 
-pub fn plan(circuit: &CircuitDecomposed, min_path_len: usize) -> CircuitPlanned {
+/// Plan which strategy should be used to execute each non-Clifford gate in the given circuit.
+///
+/// - `min_sequential_gates`: Soft hint for minimum number of sequential gates to be included in the circuit.
+///     Useful for taking advantage of available parallelism.
+pub fn plan(circuit: &CircuitDecomposed, min_sequential_gates: usize) -> CircuitPlanned {
     use GatePlanned::*;
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
@@ -138,11 +142,11 @@ pub fn plan(circuit: &CircuitDecomposed, min_path_len: usize) -> CircuitPlanned 
         })
         .collect();
 
-    // Naive greedy reduction
-    // Exact optimization is NP-hard
     let mut sequential_gates = 0;
     let mut fork_gates = dedup_dependencies.len();
 
+    // Naive greedy reduction.
+    // Exact optimization is NP-hard.
     // Delete the forks with the fewest dependents first.
     let mut order: Vec<usize> = (0..dedup_dependencies.len()).collect();
     order.sort_by_key(|&ordinal| dedup_dependencies[ordinal].1.len());
@@ -152,7 +156,7 @@ pub fn plan(circuit: &CircuitDecomposed, min_path_len: usize) -> CircuitPlanned 
         // min_path_len should never cause a PizDeduplicate to disappear,
         // so bound it by number of forks with no dependents.
         min(
-            min_path_len,
+            min_sequential_gates,
             order
                 .iter()
                 .copied()
