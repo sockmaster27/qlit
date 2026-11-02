@@ -164,9 +164,9 @@ pub fn plan(circuit: &CircuitDecomposed, min_sequential_gates: usize) -> Circuit
                 .count(),
         ),
     );
-    let mut deleted: Vec<usize> = order.into_iter().take(to_delete).collect();
+    let deleted = &order[..to_delete];
 
-    for &ordinal in &deleted {
+    for &ordinal in deleted {
         let (fork_index, deps) = &dedup_dependencies[ordinal];
         gates[*fork_index] = match gates[*fork_index] {
             PizFork(ci, cz, a) => {
@@ -190,14 +190,13 @@ pub fn plan(circuit: &CircuitDecomposed, min_sequential_gates: usize) -> Circuit
 
     // Adjust c's of the surviving PizDeduplicate gates.
     // None of them refer to a deleted fork, so the corresponding bits are all zero.
-    // Remove from the most significant bit down so lower positions stay valid.
-    deleted.sort_unstable_by(|a, b| b.cmp(a));
+    // Removing the deleted bits is a bit compression by the mask of surviving forks.
+    let deleted_mask = deleted.iter().fold(0, |mask, &i| mask | 1 << i);
+    let compressor = BitCompressor::new(!deleted_mask);
     for gate in &mut gates {
         if let PizDeduplicate(c, _, _, _) = gate {
-            for &i in &deleted {
-                debug_assert_eq!(*c >> i & 1, 0);
-                *c = remove_bit(*c, i);
-            }
+            debug_assert_eq!(*c & deleted_mask, 0);
+            *c = compressor.compress(*c);
         }
     }
 
@@ -209,16 +208,50 @@ pub fn plan(circuit: &CircuitDecomposed, min_sequential_gates: usize) -> Circuit
     }
 }
 
-/// Remove the i'th least significant bit of the given word, shifting the more significant bits down by one to fill the gap.
+const WORD_BITS_LOG2: usize = usize::BITS.trailing_zeros() as usize;
+
+/// Gathers the bits of a word selected by a fixed mask into the least significant end,
+/// preserving their order (equivalent to the BMI2 `pext` instruction).
 /// ```text
-/// remove_bit(11101001, 3) -> 01110001
-///                ^
+/// mask:            00111011
+/// compress(abcdefgh) -> 000cdegh
 /// ```
-#[inline]
-fn remove_bit(word: usize, i: usize) -> usize {
-    let low_mask = (1 << i) - 1;
-    let high_mask = !(low_mask | 1 << i);
-    ((high_mask & word) >> 1) | (low_mask & word)
+///
+/// The mask-dependent work is done once in [`BitCompressor::new`],
+/// so each call to [`BitCompressor::compress`] is a fixed number of shifts (Hacker's Delight, 7-4).
+struct BitCompressor {
+    mask: usize,
+    /// Bits to move right by 2^i in step i.
+    move_masks: [usize; WORD_BITS_LOG2],
+}
+impl BitCompressor {
+    fn new(mask: usize) -> Self {
+        let mut m = mask;
+        // Bits whose number of zeros to the right in `mask` is to be counted.
+        let mut mk = !mask << 1;
+        let mut move_masks = [0; WORD_BITS_LOG2];
+        for (i, mv) in move_masks.iter_mut().enumerate() {
+            // Parallel prefix XOR: bit j of mp is the parity of the number of zeros below j.
+            let mut mp = mk;
+            for j in 0..WORD_BITS_LOG2 {
+                mp ^= mp << (1 << j);
+            }
+            *mv = mp & m;
+            m = (m ^ *mv) | (*mv >> (1 << i));
+            mk &= !mp;
+        }
+        BitCompressor { mask, move_masks }
+    }
+
+    #[inline]
+    fn compress(&self, word: usize) -> usize {
+        let mut x = word & self.mask;
+        for (i, &mv) in self.move_masks.iter().enumerate() {
+            let t = x & mv;
+            x = (x ^ t) | (t >> (1 << i));
+        }
+        x
+    }
 }
 
 #[cfg(test)]
@@ -227,10 +260,40 @@ mod test {
     use crate::{Circuit, Gate::*, decompose::decompose};
 
     #[test]
-    fn remove_bit_shifts_higher_bits_down() {
-        assert_eq!(remove_bit(0b11101001, 3), 0b01110001);
-        assert_eq!(remove_bit(0b1, 0), 0b0);
-        assert_eq!(remove_bit(0b10, 0), 0b1);
+    fn bit_compressor_removes_unmasked_bits() {
+        assert_eq!(BitCompressor::new(!0b1000).compress(0b11101001), 0b01110001);
+        assert_eq!(BitCompressor::new(!0b1).compress(0b1), 0b0);
+        assert_eq!(BitCompressor::new(!0b1).compress(0b10), 0b1);
+        assert_eq!(BitCompressor::new(0b00111011).compress(0b10101101), 0b10101);
+        assert_eq!(BitCompressor::new(!0).compress(0b1011), 0b1011);
+        assert_eq!(BitCompressor::new(0).compress(usize::MAX), 0);
+        assert_eq!(BitCompressor::new(1 << (usize::BITS - 1)).compress(usize::MAX), 1);
+    }
+
+    #[test]
+    fn bit_compressor_matches_naive() {
+        use rand::{RngExt, SeedableRng, rngs::Xoshiro128PlusPlus};
+
+        let naive = |word: usize, mask: usize| {
+            let mut result = 0;
+            let mut k = 0;
+            for j in 0..usize::BITS {
+                if mask >> j & 1 == 1 {
+                    result |= (word >> j & 1) << k;
+                    k += 1;
+                }
+            }
+            result
+        };
+        let mut rng = Xoshiro128PlusPlus::seed_from_u64(0);
+        for _ in 0..1000 {
+            let mask = rng.random::<u64>() as usize;
+            let compressor = BitCompressor::new(mask);
+            for _ in 0..10 {
+                let word = rng.random::<u64>() as usize;
+                assert_eq!(compressor.compress(word), naive(word, mask));
+            }
+        }
     }
 
     #[test]
