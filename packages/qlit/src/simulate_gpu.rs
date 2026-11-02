@@ -327,7 +327,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // initial_seen_p_gates
+                    // initial_path_index
                     wgpu::BindGroupLayoutEntry {
                         binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -496,22 +496,24 @@ impl GpuContext {
                 cache: None,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
-        let select_pass_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Select Pass"),
-            layout: Some(&bring_into_rref_pipeline_layout),
-            module: &shader_module,
-            entry_point: Some("select_pass"),
-            cache: None,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
-        let finish_rref_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Finish RREF"),
-            layout: Some(&bring_into_rref_pipeline_layout),
-            module: &shader_module,
-            entry_point: Some("finish_rref"),
-            cache: None,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
+        let select_pass_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Select Pass"),
+                layout: Some(&bring_into_rref_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("select_pass"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+        let finish_rref_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Finish RREF"),
+                layout: Some(&bring_into_rref_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("finish_rref"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
 
         let update_before_h_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -592,7 +594,7 @@ pub struct GpuSimulator<'a> {
     path_buf: wgpu::Buffer,
     tableau_buf: wgpu::Buffer,
     c_cols_buf: wgpu::Buffer,
-    seen_p_gates_buf: wgpu::Buffer,
+    path_index_buf: wgpu::Buffer,
     ws_buf: wgpu::Buffer,
     w_coeffs_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
@@ -614,7 +616,8 @@ impl<'a> GpuSimulator<'a> {
         let gpu = get_gpu();
 
         let n: u32 = circuit.qubits();
-        let path_length: u32 = (circuit.p_gates() - batch_size_log2)
+        let path_length: u32 = circuit
+            .sequential_gates()
             .try_into()
             .expect("Number of non-clifford gates exceeds maximum supported by GPU simulator");
         debug_assert!(
@@ -663,8 +666,8 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let seen_p_gates_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("seen_p_gates"),
+        let path_index_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("path_index"),
             size: U32_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -778,7 +781,7 @@ impl<'a> GpuSimulator<'a> {
             path_buf,
             tableau_buf,
             c_cols_buf,
-            seen_p_gates_buf,
+            path_index_buf,
             ws_buf,
             w_coeffs_buf,
             global_bind_group,
@@ -860,7 +863,7 @@ impl<'a> GpuSimulator<'a> {
         let mut gates = Vec::new();
         let mut qubit_params = Vec::new();
 
-        // The coefficients of every P gate on the path, indexed by seen_p_gates in the shader.
+        // The coefficients of every P gate on the path, indexed by path_index in the shader.
         let (mut ci_params, mut cz_params): (Vec<_>, Vec<_>) = circuit
             .gates()
             .iter()
@@ -896,7 +899,7 @@ impl<'a> GpuSimulator<'a> {
             qubit_params: &mut Vec<u32>,
             ci_params_buf: &wgpu::Buffer,
             cz_params_buf: &wgpu::Buffer,
-            initial_seen_p_gates: u32,
+            initial_path_index: u32,
             bind_groups: &mut Vec<Option<wgpu::BindGroup>>,
         ) {
             if gates.is_empty() {
@@ -924,11 +927,11 @@ impl<'a> GpuSimulator<'a> {
                             .collect::<Vec<u8>>(),
                         usage: wgpu::BufferUsages::STORAGE,
                     });
-            let initial_seen_p_gates_buf =
+            let initial_path_index_buf =
                 gpu.device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("initial_seen_p_gates"),
-                        contents: &initial_seen_p_gates.to_ne_bytes(),
+                        label: Some("initial_path_index"),
+                        contents: &initial_path_index.to_ne_bytes(),
                         usage: wgpu::BufferUsages::UNIFORM,
                     });
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -953,7 +956,7 @@ impl<'a> GpuSimulator<'a> {
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: initial_seen_p_gates_buf.as_entire_binding(),
+                        resource: initial_path_index_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -962,8 +965,8 @@ impl<'a> GpuSimulator<'a> {
             qubit_params.clear();
         }
 
-        let mut initial_seen_p_gates = 0;
-        let mut seen_p_gates: u32 = 0;
+        let mut initial_path_index = 0;
+        let mut path_index: u32 = 0;
         for &gate in circuit.gates() {
             match gate {
                 Cnot(a, b) => {
@@ -1003,10 +1006,10 @@ impl<'a> GpuSimulator<'a> {
                         &mut qubit_params,
                         &ci_params_buf,
                         &cz_params_buf,
-                        initial_seen_p_gates,
+                        initial_path_index,
                         &mut bind_groups,
                     );
-                    initial_seen_p_gates = seen_p_gates;
+                    initial_path_index = path_index;
 
                     gates.push(7);
                     qubit_params.push(a);
@@ -1014,7 +1017,7 @@ impl<'a> GpuSimulator<'a> {
                 PizSequential(_, _, a) => {
                     gates.push(8);
                     qubit_params.push(a);
-                    seen_p_gates += 1;
+                    path_index += 1;
                 }
                 PizFork(_, _, _) | PizDeduplicate(_, _, _, _) => {
                     commit_buffer(
@@ -1023,10 +1026,10 @@ impl<'a> GpuSimulator<'a> {
                         &mut qubit_params,
                         &ci_params_buf,
                         &cz_params_buf,
-                        initial_seen_p_gates,
+                        initial_path_index,
                         &mut bind_groups,
                     );
-                    initial_seen_p_gates = seen_p_gates;
+                    initial_path_index = path_index;
                 }
             }
         }
@@ -1036,7 +1039,7 @@ impl<'a> GpuSimulator<'a> {
             &mut qubit_params,
             &ci_params_buf,
             &cz_params_buf,
-            initial_seen_p_gates,
+            initial_path_index,
             &mut bind_groups,
         );
         bind_groups
@@ -1117,7 +1120,7 @@ impl<'a> GpuSimulator<'a> {
         let n = self.n;
 
         self.encoder.clear_buffer(&self.tableau_buf, 0, None);
-        self.encoder.clear_buffer(&self.seen_p_gates_buf, 0, None);
+        self.encoder.clear_buffer(&self.path_index_buf, 0, None);
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
         self.encoder.clear_buffer(&self.c_cols_buf, 0, None);
         self.encoder.clear_buffer(&self.pivots_buf, 0, None);

@@ -57,7 +57,7 @@ fn zero(
 @group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
 @group(1) @binding(2) var<storage, read> ci_params: array<Complex>;
 @group(1) @binding(3) var<storage, read> cz_params: array<Complex>;
-@group(1) @binding(4) var<uniform> initial_seen_p_gates: u32;
+@group(1) @binding(4) var<uniform> initial_path_index: u32;
 
 @compute
 @workgroup_size(64)
@@ -78,7 +78,7 @@ fn apply_gates(
     // inside `if is_block_thread` after the increment when that branch diverges between threads,
     // making e.g. H act on the next gate's qubit.
     var p: u32 = 0;
-    var seen_p_gates = initial_seen_p_gates;
+    var path_index = initial_path_index;
     for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
         switch gates[i] {
             case 0: {
@@ -221,9 +221,9 @@ fn apply_gates(
             case 8: {
                 // Piz branch
                 let a = qubit_params[p];
-                if path[seen_p_gates] == 0u {
+                if path[path_index] == 0u {
                     if is_state_thread {
-                        w_coeffs[state_index] = mul(w_coeffs[state_index], ci_params[seen_p_gates]);
+                        w_coeffs[state_index] = mul(w_coeffs[state_index], ci_params[path_index]);
                     }
                 } else {
                     if is_block_thread {
@@ -235,10 +235,10 @@ fn apply_gates(
                         if ws[w_bit_index(state_index, a)] == 1u {
                             w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                         }
-                        w_coeffs[state_index] = mul(w_coeffs[state_index], cz_params[seen_p_gates]);
+                        w_coeffs[state_index] = mul(w_coeffs[state_index], cz_params[path_index]);
                     }
                 }
-                seen_p_gates += 1;
+                path_index += 1;
                 p += 1;
             }
             default: {}
