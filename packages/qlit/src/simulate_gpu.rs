@@ -612,10 +612,11 @@ pub struct GpuSimulator<'a> {
     compute_output_bind_group: wgpu::BindGroup,
 }
 impl<'a> GpuSimulator<'a> {
-    pub fn new(circuit: &'a CircuitPlanned, w: &BitString, batch_size_log2: usize) -> Self {
+    pub fn new(circuit: &'a CircuitPlanned, w: &BitString) -> Self {
         let gpu = get_gpu();
 
         let n: u32 = circuit.qubits();
+        let batch_size_log2 = circuit.fork_gates();
         let path_length: u32 = circuit
             .sequential_gates()
             .try_into()
@@ -674,7 +675,7 @@ impl<'a> GpuSimulator<'a> {
         });
         let ws_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ws"),
-            size: U32_SIZE * u64::from(n) * max_batches_u64,
+            size: u64::from(n.div_ceil(BLOCK_SIZE)) * max_batches_u64 * BLOCK_SIZE_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
