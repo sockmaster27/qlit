@@ -13,15 +13,11 @@ alias BitBlock = u32;
 @group(0) @binding(3) var<storage, read_write> tableau: array<BitBlock>;
 // The current number of active c columns in the tableau.
 @group(0) @binding(4) var<uniform> c_cols: u32;
-@group(0) @binding(5) var<storage, read_write> ws: array<u32>;
+@group(0) @binding(5) var<storage, read_write> ws: array<BitBlock>;
 @group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 // Pivot bookkeeping established by bring_into_rref, instead of physically reordering the rows of the tableau.
 // For each row, holds the column of its pivot plus one (0 if the row has no pivot).
 @group(0) @binding(7) var<storage, read_write> pivots: array<u32>;
-
-fn w_bit_index(state_index: u32, q: u32) -> u32 {
-    return state_index * n + q;
-}
 
 @group(1) @binding(0) var<uniform> qubit: u32;
 
@@ -95,8 +91,8 @@ fn apply_gates(
                     tableau[za] ^= tableau[zb];
                     tableau[xb] ^= tableau[xa];
                 }
-                if is_state_thread {
-                    ws[w_bit_index(state_index, b)] ^= ws[w_bit_index(state_index, a)];
+                if is_state_thread && w_bit(state_index, a) {
+                    flip_w_bit(state_index, b);
                 }
                 p += 2;
             }
@@ -115,7 +111,7 @@ fn apply_gates(
                     tableau[zb] ^= tableau[xa];
                 }
                 if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u && ws[w_bit_index(state_index, b)] == 1u {
+                    if w_bit(state_index, a) && w_bit(state_index, b) {
                         w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
@@ -130,8 +126,7 @@ fn apply_gates(
                     tableau[r] ^= tableau[z];
                 }
                 if is_state_thread {
-                    // Flip bit
-                    ws[w_bit_index(state_index, a)] ^= 1u;
+                    flip_w_bit(state_index, a);
                 }
                 p += 1;
             }
@@ -145,12 +140,12 @@ fn apply_gates(
                     tableau[r] ^= tableau[x] ^ tableau[z];
                 }
                 if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
+                    if w_bit(state_index, a) {
                         w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
                     } else {
                         w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
                     }
-                    ws[w_bit_index(state_index, a)] ^= 1u;
+                    flip_w_bit(state_index, a);
                 }
                 p += 1;
             }
@@ -163,7 +158,7 @@ fn apply_gates(
                     tableau[r] ^= tableau[x];
                 }
                 if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
+                    if w_bit(state_index, a) {
                         w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                     }
                 }
@@ -180,7 +175,7 @@ fn apply_gates(
                     tableau[z] ^= tableau[x];
                 }
                 if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
+                    if w_bit(state_index, a) {
                         w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
                     }
                 }
@@ -197,7 +192,7 @@ fn apply_gates(
                     tableau[r] ^= tableau[x] & tableau[z];
                 }
                 if is_state_thread {
-                    if ws[w_bit_index(state_index, a)] == 1u {
+                    if w_bit(state_index, a) {
                         w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
                     }
                 }
@@ -232,7 +227,7 @@ fn apply_gates(
                         tableau[r] ^= tableau[x];
                     }
                     if is_state_thread {
-                        if ws[w_bit_index(state_index, a)] == 1u {
+                        if w_bit(state_index, a) {
                             w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
                         }
                         w_coeffs[state_index] = mul(w_coeffs[state_index], cz_params[path_index]);
@@ -269,14 +264,14 @@ fn fork_apply_piz_gate(
         let index_i = id.x;
         let index_z = id.x + contained_states();
 
-        for (var q = 0u; q < n; q += 1) {
-            ws[w_bit_index(index_z, q)] = ws[w_bit_index(index_i, q)];
+        for (var b = 0u; b < w_block_size(); b += 1) {
+            ws[index_z * w_block_size() + b] = ws[index_i * w_block_size() + b];
         }
         w_coeffs[index_z] = w_coeffs[index_i];
 
         w_coeffs[index_i] = mul(w_coeffs[index_i], ci);
 
-        if ws[w_bit_index(index_z, qubit)] == 1u {
+        if w_bit(index_z, qubit) {
             w_coeffs[index_z] = mul_minus_one(w_coeffs[index_z]);
         }
         w_coeffs[index_z] = mul(w_coeffs[index_z], cz);
@@ -294,7 +289,7 @@ fn dedup_apply_piz_gate_c_zero(
     }
 
     var z_coeff = w_coeffs[state_index];
-    if ws[w_bit_index(state_index, qubit)] == 1u {
+    if w_bit(state_index, qubit) {
         z_coeff = mul_minus_one(z_coeff);
     }
     w_coeffs[state_index] = add(mul(ci, w_coeffs[state_index]), mul(cz, z_coeff));
@@ -315,10 +310,10 @@ fn dedup_apply_piz_gate(
     let i = xor_pair(m, c);
     var z_coeff1 = w_coeffs[i.y];
     var z_coeff2 = w_coeffs[i.x];
-    if ws[w_bit_index(i.y, qubit)] == 1u {
+    if w_bit(i.y, qubit) {
         z_coeff1 = mul_minus_one(z_coeff1);
     }
-    if ws[w_bit_index(i.x, qubit)] == 1u {
+    if w_bit(i.x, qubit) {
         z_coeff2 = mul_minus_one(z_coeff2);
     }
     z_coeff1 = mul(z_coeff1, coeff_ratio(i.y, i.x, i.x));
@@ -501,14 +496,14 @@ fn update_before_h(
     let r = coeff_ratio_flipped_bit(state_index);
     if !eq(r, Complex(-1.0, 0.0)) {
         w_coeffs[state_index] = mul(w_coeffs[state_index], div_real(add_real(r, 1.0), sqrt(2.0)));
-        ws[w_bit_index(state_index, qubit)] = 0;
+        unset_w_bit(state_index, qubit);
     } else {
-        if ws[w_bit_index(state_index, qubit)] == 0 {
-            w_coeffs[state_index] = mul_real(w_coeffs[state_index], 2.0 / sqrt(2.0));
-        } else {
+        if w_bit(state_index, qubit) {
             w_coeffs[state_index] = mul_real(w_coeffs[state_index], -2.0 / sqrt(2.0));
+        } else {
+            w_coeffs[state_index] = mul_real(w_coeffs[state_index], 2.0 / sqrt(2.0));
         }
-        ws[w_bit_index(state_index, qubit)] = 1;
+        set_w_bit(state_index, qubit);
     }
 }
 
@@ -544,7 +539,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
         let pivot_plus1 = pivots[row];
         if pivot_plus1 != 0 {
             let q = pivot_plus1 - 1;
-            if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] && row_negative(s, row) {
+            if w_bit(w1, q) != w_bit(w2, q) && row_negative(s, row) {
                 phase += 2;
             }
         }
@@ -559,7 +554,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
             let pivot_plus1 = pivots[row2];
             if pivot_plus1 != 0 {
                 let q = pivot_plus1 - 1;
-                if ws[w_bit_index(w1, q)] != ws[w_bit_index(w2, q)] {
+                if w_bit(w1, q) != w_bit(w2, q) {
                     let x_row = x_bit(row2, q2);
                     let z_row = z_bit(row2, q2);
                     phase += product_phase(x_acc, z_acc, x_row, z_row);
@@ -570,8 +565,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
         }
 
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        let w1_bit = ws[w_bit_index(w1, q2)];
-        let differs = w1_bit != ws[w_bit_index(w2, q2)];
+        let differs = w_bit(w1, q2) != w_bit(w2, q2);
         if x_acc != differs {
             // Multiply by 0
             return Complex(0.0, 0.0);
@@ -580,7 +574,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
             // Y
             phase += 1;
         }
-        if z_acc && w1_bit == 1 {
+        if z_acc && w_bit(w1, q2) {
             // Z or Y
             phase += 2;
         }
@@ -599,7 +593,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
         let pivot_plus1 = pivots[row];
         if pivot_plus1 != 0 {
             let q = pivot_plus1 - 1;
-            if ws[w_bit_index(state_index, q)] != w_target[q] && row_negative(state_index, row) {
+            if w_bit(state_index, q) != (w_target[q] == 1) && row_negative(state_index, row) {
                 phase += 2;
             }
         }
@@ -614,7 +608,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
             let pivot_plus1 = pivots[row2];
             if pivot_plus1 != 0 {
                 let q = pivot_plus1 - 1;
-                if ws[w_bit_index(state_index, q)] != w_target[q] {
+                if w_bit(state_index, q) != (w_target[q] == 1) {
                     let x_row = x_bit(row2, q2);
                     let z_row = z_bit(row2, q2);
                     phase += product_phase(x_acc, z_acc, x_row, z_row);
@@ -625,8 +619,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
         }
 
         // Note that we're indexing into the matrix at position P[w2, w1] (w2 and w1 are reversed).
-        let w1_bit = ws[w_bit_index(state_index, q2)];
-        let differs = w1_bit != w_target[q2];
+        let differs = w_bit(state_index, q2) != (w_target[q2] == 1);
         if x_acc != differs {
             // Multiply by 0
             return Complex(0.0, 0.0);
@@ -635,7 +628,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
             // Y
             phase += 1;
         }
-        if z_acc && w1_bit == 1 {
+        if z_acc && w_bit(state_index, q2) {
             // Z or Y
             phase += 2;
         }
@@ -673,16 +666,16 @@ fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
         } else if x(row, q) && (flipped_bit == q) {
             // Multiply by 1
         } else if y(row, q) && (flipped_bit == q) {
-            if ws[w_bit_index(state_index, q)] == 0 {
-                res = mul_i(res);
-            } else {
+            if w_bit(state_index, q) {
                 res = mul_minus_i(res);
+            } else {
+                res = mul_i(res);
             }
         } else if z(row, q) && (flipped_bit != q) {
-            if ws[w_bit_index(state_index, q)] == 0 {
-                // Multiply by 1
-            } else {
+            if w_bit(state_index, q) {
                 res = mul_minus_one(res);
+            } else {
+                // Multiply by 1
             }
         } else {
             // Multiply by 0
@@ -800,6 +793,34 @@ fn z_block(x: BitBlock, z: BitBlock) -> BitBlock {
 }
 fn y_block(x: BitBlock, z: BitBlock) -> BitBlock {
     return x & z;
+}
+
+fn w_block_size() -> u32 {
+    return div_ceil(n, BLOCK_SIZE);
+}
+fn w_bit(state_index: u32, q: u32) -> bool {
+    let state_offset = w_block_size() * state_index;
+    let block_index = state_offset + (q / BLOCK_SIZE);
+    let bit_index = q % BLOCK_SIZE;
+    return (ws[block_index] & bitmask(bit_index)) != 0;
+}
+fn flip_w_bit(state_index: u32, q: u32) {
+    let state_offset = w_block_size() * state_index;
+    let block_index = state_offset + (q / BLOCK_SIZE);
+    let bit_index = q % BLOCK_SIZE;
+    ws[block_index] ^= bitmask(bit_index);
+}
+fn set_w_bit(state_index: u32, q: u32) {
+    let state_offset = w_block_size() * state_index;
+    let block_index = state_offset + (q / BLOCK_SIZE);
+    let bit_index = q % BLOCK_SIZE;
+    ws[block_index] |= bitmask(bit_index);
+}
+fn unset_w_bit(state_index: u32, q: u32) {
+    let state_offset = w_block_size() * state_index;
+    let block_index = state_offset + (q / BLOCK_SIZE);
+    let bit_index = q % BLOCK_SIZE;
+    ws[block_index] &= ~bitmask(bit_index);
 }
 
 // Get the bitmask for the i'th bit, e.g.

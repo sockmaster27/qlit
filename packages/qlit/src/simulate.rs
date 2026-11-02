@@ -52,7 +52,6 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
     // Hint that there should be at least one batch per thread.
     let circuit_planned = plan(&circuit_decomposed, threads_log2);
     let path_len = circuit_planned.sequential_gates();
-    let batch_size_log2 = circuit_planned.fork_gates();
 
     let next_path = Mutex::new(vec![false; path_len]);
     let w_coeff = Mutex::new(Complex::ZERO);
@@ -70,7 +69,7 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                w_coeff_local += run_cpu(w, &circuit_planned, &path, batch_size_log2);
+                w_coeff_local += run_cpu(w, &circuit_planned, &path);
             }
 
             *w_coeff.lock().unwrap() += w_coeff_local;
@@ -100,11 +99,10 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
 
     let circuit_planned = plan(&circuit_decomposed, 0);
     let path_len = circuit_planned.sequential_gates();
-    let batch_size_log2 = circuit_planned.fork_gates();
 
     let mut path = vec![false; path_len];
     let mut w_coeff = Complex::ZERO;
-    let mut g = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
+    let mut g = GpuSimulator::new(&circuit_planned, w);
     let mut done = false;
     while !done {
         w_coeff += g.run(&path);
@@ -145,9 +143,8 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
     // Hint that there should be at least one batch per thread.
     let circuit_planned = plan(&circuit_decomposed, threads_log2);
     let path_len = circuit_planned.sequential_gates();
-    let batch_size_log2 = circuit_planned.fork_gates();
 
-    let mut gpu_sim = GpuSimulator::new(&circuit_planned, w, batch_size_log2);
+    let mut gpu_sim = GpuSimulator::new(&circuit_planned, w);
 
     let mut w_coeff_local = Complex::<f64>::ZERO;
     let next_path = Mutex::new(vec![false; path_len]);
@@ -166,7 +163,7 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
                 done.store(increment_path(&mut *next_path_locked), Ordering::SeqCst);
                 drop(next_path_locked);
 
-                w_coeff_local += run_cpu(w, &circuit_planned, &path, batch_size_log2);
+                w_coeff_local += run_cpu(w, &circuit_planned, &path);
             }
 
             *w_coeff.lock().unwrap() += w_coeff_local;
@@ -188,15 +185,11 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
     w_coeff_local + w_coeff.into_inner().unwrap()
 }
 
-fn run_cpu(
-    w: &BitString,
-    circuit: &CircuitPlanned,
-    path: &[bool],
-    batch_size_log2: usize,
-) -> Complex<f64> {
+fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f64> {
     use GatePlanned::*;
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
+    let batch_size_log2 = circuit.fork_gates();
     let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
     let mut x_coeffs = vec![Complex::ONE];
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
