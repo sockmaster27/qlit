@@ -75,6 +75,7 @@ fn apply_gates(
     // making e.g. H act on the next gate's qubit.
     var p: u32 = 0;
     var path_index = initial_path_index;
+    var w_coeff = w_coeffs[state_index];
     for (var i: u32 = 0; i < arrayLength(&gates); i += 1) {
         switch gates[i] {
             case 0: {
@@ -112,7 +113,7 @@ fn apply_gates(
                 }
                 if is_state_thread {
                     if w_bit(state_index, a) && w_bit(state_index, b) {
-                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
+                        w_coeff = mul_minus_one(w_coeff);
                     }
                 }
                 p += 2;
@@ -141,9 +142,9 @@ fn apply_gates(
                 }
                 if is_state_thread {
                     if w_bit(state_index, a) {
-                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
+                        w_coeff = mul_minus_i(w_coeff);
                     } else {
-                        w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
+                        w_coeff = mul_i(w_coeff);
                     }
                     flip_w_bit(state_index, a);
                 }
@@ -159,7 +160,7 @@ fn apply_gates(
                 }
                 if is_state_thread {
                     if w_bit(state_index, a) {
-                        w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
+                        w_coeff = mul_minus_one(w_coeff);
                     }
                 }
                 p += 1;
@@ -176,7 +177,7 @@ fn apply_gates(
                 }
                 if is_state_thread {
                     if w_bit(state_index, a) {
-                        w_coeffs[state_index] = mul_i(w_coeffs[state_index]);
+                        w_coeff = mul_i(w_coeff);
                     }
                 }
                 p += 1;
@@ -193,7 +194,7 @@ fn apply_gates(
                 }
                 if is_state_thread {
                     if w_bit(state_index, a) {
-                        w_coeffs[state_index] = mul_minus_i(w_coeffs[state_index]);
+                        w_coeff = mul_minus_i(w_coeff);
                     }
                 }
                 p += 1;
@@ -218,7 +219,7 @@ fn apply_gates(
                 let a = qubit_params[p];
                 if path[path_index] == 0u {
                     if is_state_thread {
-                        w_coeffs[state_index] = mul(w_coeffs[state_index], ci_params[path_index]);
+                        w_coeff = mul(w_coeff, ci_params[path_index]);
                     }
                 } else {
                     if is_block_thread {
@@ -228,9 +229,9 @@ fn apply_gates(
                     }
                     if is_state_thread {
                         if w_bit(state_index, a) {
-                            w_coeffs[state_index] = mul_minus_one(w_coeffs[state_index]);
+                            w_coeff = mul_minus_one(w_coeff);
                         }
-                        w_coeffs[state_index] = mul(w_coeffs[state_index], cz_params[path_index]);
+                        w_coeff = mul(w_coeff, cz_params[path_index]);
                     }
                 }
                 path_index += 1;
@@ -239,6 +240,7 @@ fn apply_gates(
             default: {}
         }
     }
+    w_coeffs[state_index] = w_coeff;
 }
 
 
