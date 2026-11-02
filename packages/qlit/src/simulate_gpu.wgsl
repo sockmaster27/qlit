@@ -290,6 +290,52 @@ fn compute_output(
 }
 
 
+const REDUCE_WORKGROUP_SIZE: u32 = 64;
+// The number of elements reduced into one by each workgroup in a single reduce_output pass.
+const REDUCE_FACTOR: u32 = 2 * REDUCE_WORKGROUP_SIZE;
+var<workgroup> partial_sums: array<Complex, REDUCE_WORKGROUP_SIZE>;
+
+// The distance between the elements of output that are summed by this pass.
+@group(1) @binding(2) var<uniform> reduce_stride: u32;
+
+// Perform one pass of an in-place tree reduction of output, summing the first contained_states() elements into output[0].
+// The elements considered in this pass are the ones at indices that are multiples of reduce_stride,
+// and each workgroup sums REDUCE_FACTOR consecutive such elements into the first of them.
+// Hence, the next pass should use a stride of reduce_stride * REDUCE_FACTOR.
+@compute
+@workgroup_size(64)
+fn reduce_output(
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(workgroup_id) group_id: vec3<u32>,
+) {
+    let count = div_ceil(contained_states(), reduce_stride);
+    let base = group_id.x * REDUCE_FACTOR;
+    let k1 = base + local_id.x;
+    let k2 = k1 + REDUCE_WORKGROUP_SIZE;
+
+    var sum = Complex(0.0, 0.0);
+    if k1 < count {
+        sum = output[k1 * reduce_stride];
+    }
+    if k2 < count {
+        sum = add(sum, output[k2 * reduce_stride]);
+    }
+    partial_sums[local_id.x] = sum;
+
+    for (var s = REDUCE_WORKGROUP_SIZE / 2; s > 0; s /= 2) {
+        workgroupBarrier();
+        if local_id.x < s {
+            partial_sums[local_id.x] = add(partial_sums[local_id.x], partial_sums[local_id.x + s]);
+        }
+    }
+
+    // Only overwrites an element read by this same workgroup, so there are no races between workgroups.
+    if local_id.x == 0 {
+        output[base * reduce_stride] = partial_sums[0];
+    }
+}
+
+
 // Assume tableau in RREF.
 // Get the ratio between the basis state ws[w1] and ws[w2].
 // Respects the sign of the s'th state.
