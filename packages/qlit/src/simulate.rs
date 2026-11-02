@@ -22,9 +22,6 @@ use crate::{
     utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
 
-/// TODO: Find an optimal value for this.
-const MAX_BATCH_SIZE_LOG2: usize = 20;
-
 /// Compute the coefficient of the given basis state, `w`,
 /// after `circuit` has been applied to the zero state.
 ///
@@ -52,9 +49,8 @@ pub fn simulate_circuit(w: &BitString, circuit: &Circuit) -> Complex<f64> {
         .ilog2()
         .try_into()
         .unwrap_or(usize::MAX);
-    // Ensure that there is at least one batch per thread.
-    let max_batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
-    let circuit_planned = plan(&circuit_decomposed, max_batch_size_log2);
+    // Hint that there should be at least one batch per thread.
+    let circuit_planned = plan(&circuit_decomposed, threads_log2);
     let path_len = circuit_planned.sequential_gates();
     let batch_size_log2 = circuit_planned.fork_gates();
 
@@ -96,15 +92,13 @@ pub fn simulate_circuit_gpu(w: &BitString, circuit: &Circuit) -> Complex<f64> {
     let circuit_decomposed = decompose(circuit);
     let w_len = w.len();
     let n = circuit_decomposed.qubits();
-    let t = circuit_decomposed.p_gates();
     assert_eq!(
         n.try_into(),
         Ok(w_len),
         "Basis state with length {w_len} does not match circuit with {n} qubits"
     );
 
-    let max_batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t);
-    let circuit_planned = plan(&circuit_decomposed, max_batch_size_log2);
+    let circuit_planned = plan(&circuit_decomposed, 0);
     let path_len = circuit_planned.sequential_gates();
     let batch_size_log2 = circuit_planned.fork_gates();
 
@@ -148,9 +142,8 @@ pub fn simulate_circuit_hybrid(w: &BitString, circuit: &Circuit) -> Complex<f64>
         .try_into()
         .unwrap_or(usize::MAX);
 
-    // Ensure that there is at least one batch per thread.
-    let max_batch_size_log2 = min(MAX_BATCH_SIZE_LOG2, t - threads_log2);
-    let circuit_planned = plan(&circuit_decomposed, max_batch_size_log2);
+    // Hint that there should be at least one batch per thread.
+    let circuit_planned = plan(&circuit_decomposed, threads_log2);
     let path_len = circuit_planned.sequential_gates();
     let batch_size_log2 = circuit_planned.fork_gates();
 

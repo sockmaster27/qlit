@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+
 use num_complex::Complex;
 
 use crate::{
@@ -5,6 +7,9 @@ use crate::{
     tableau_plan::{ForkResult, PlanningTableau},
     utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
+
+/// TODO: Find an optimal value for this.
+const MAX_BATCH_SIZE_LOG2: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GatePlanned {
@@ -51,7 +56,7 @@ impl CircuitPlanned {
     }
 }
 
-pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitPlanned {
+pub fn plan(circuit: &CircuitDecomposed, min_path_len: usize) -> CircuitPlanned {
     use GatePlanned::*;
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
@@ -137,46 +142,57 @@ pub fn plan(circuit: &CircuitDecomposed, max_batch_size_log2: usize) -> CircuitP
     // Exact optimization is NP-hard
     let mut sequential_gates = 0;
     let mut fork_gates = dedup_dependencies.len();
-    if max_batch_size_log2 < fork_gates {
-        let to_delete = fork_gates - max_batch_size_log2;
-        fork_gates = max_batch_size_log2;
 
-        // Delete the forks with the fewest dependents first.
-        let mut order: Vec<usize> = (0..dedup_dependencies.len()).collect();
-        order.sort_by_key(|&ordinal| dedup_dependencies[ordinal].1.len());
-        let mut deleted: Vec<usize> = order.into_iter().take(to_delete).collect();
+    // Delete the forks with the fewest dependents first.
+    let mut order: Vec<usize> = (0..dedup_dependencies.len()).collect();
+    order.sort_by_key(|&ordinal| dedup_dependencies[ordinal].1.len());
+    // Delete the least possible number of forks to satisfy MAX_BATCH_SIZE_LOG2 and min_path_len
+    let to_delete = max(
+        fork_gates.saturating_sub(MAX_BATCH_SIZE_LOG2),
+        // min_path_len should never cause a PizDeduplicate to disappear,
+        // so bound it by number of forks with no dependents.
+        min(
+            min_path_len,
+            order
+                .iter()
+                .copied()
+                .take_while(|&ordinal| dedup_dependencies[ordinal].1.is_empty())
+                .count(),
+        ),
+    );
+    let mut deleted: Vec<usize> = order.into_iter().take(to_delete).collect();
 
-        for &ordinal in &deleted {
-            let (fork_index, deps) = &dedup_dependencies[ordinal];
-            gates[*fork_index] = match gates[*fork_index] {
-                PizFork(ci, cz, a) => {
+    for &ordinal in &deleted {
+        let (fork_index, deps) = &dedup_dependencies[ordinal];
+        gates[*fork_index] = match gates[*fork_index] {
+            PizFork(ci, cz, a) => {
+                fork_gates -= 1;
+                sequential_gates += 1;
+                PizSequential(ci, cz, a)
+            }
+            _ => unreachable!("dedup_dependencies contains index of non-fork gate"),
+        };
+        for &dedup_index in deps {
+            gates[dedup_index] = match gates[dedup_index] {
+                PizDeduplicate(_, ci, cz, a) => {
                     sequential_gates += 1;
                     PizSequential(ci, cz, a)
                 }
-                _ => unreachable!("dedup_dependencies contains index of non-fork gate"),
+                // Might have already been converted
+                gate => gate,
             };
-            for &dedup_index in deps {
-                gates[dedup_index] = match gates[dedup_index] {
-                    PizDeduplicate(_, ci, cz, a) => {
-                        sequential_gates += 1;
-                        PizSequential(ci, cz, a)
-                    }
-                    // Might have already been converted
-                    gate => gate,
-                };
-            }
         }
+    }
 
-        // Adjust c's of the surviving PizDeduplicate gates.
-        // None of them refer to a deleted fork, so the corresponding bits are all zero.
-        // Remove from the most significant bit down so lower positions stay valid.
-        deleted.sort_unstable_by(|a, b| b.cmp(a));
-        for gate in &mut gates {
-            if let PizDeduplicate(c, _, _, _) = gate {
-                for &i in &deleted {
-                    debug_assert_eq!(*c >> i & 1, 0);
-                    *c = remove_bit(*c, i);
-                }
+    // Adjust c's of the surviving PizDeduplicate gates.
+    // None of them refer to a deleted fork, so the corresponding bits are all zero.
+    // Remove from the most significant bit down so lower positions stay valid.
+    deleted.sort_unstable_by(|a, b| b.cmp(a));
+    for gate in &mut gates {
+        if let PizDeduplicate(c, _, _, _) = gate {
+            for &i in &deleted {
+                debug_assert_eq!(*c >> i & 1, 0);
+                *c = remove_bit(*c, i);
             }
         }
     }
