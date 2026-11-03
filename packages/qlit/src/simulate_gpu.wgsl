@@ -339,6 +339,8 @@ const RREF_WORKGROUP_SIZE: u32 = 256;
 
 // The pivot row selected for the current column, plus one (0 if none was found).
 var<workgroup> pivot_plus1: u32;
+// Whether any other rows than the pivot row have a set bit in the current column, i.e. need to be eliminated.
+var<workgroup> needs_elimination: bool;
 
 // Bring the tableau's x part into reduced row echelon form.
 // This is done by a single workgroup, in order to avoid the overhead of dispatching each step separately.
@@ -367,12 +369,15 @@ fn bring_into_rref(
         storageBarrier();
         workgroupBarrier();
 
-        let has_pivot = pivot_plus1 != 0;
-        let pivot = max(pivot_plus1, 1u) - 1;
-        // Assign each thread a strided subset of the rows (blocks).
-        for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
-            let i = k * RREF_WORKGROUP_SIZE + thread;
-            eliminate(i, pivot, col, has_pivot && i < column_block_length());
+        // Usually, the tableau is already (mostly) in RREF, and there is nothing to eliminate.
+        // workgroupUniformLoad ends in a barrier, which lets the compiler know that all threads agree on the result.
+        if workgroupUniformLoad(&needs_elimination) {
+            let pivot = pivot_plus1 - 1;
+            // Assign each thread a strided subset of the rows (blocks).
+            for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
+                let i = k * RREF_WORKGROUP_SIZE + thread;
+                eliminate(i, pivot, col, i < column_block_length());
+            }
         }
         storageBarrier();
         workgroupBarrier();
@@ -401,10 +406,13 @@ fn select_pivot(col: u32, leader: bool) {
     var pivot_found = false;
     var pivot: u32 = 0;
     var m: u32 = 0;
+    var set_bits: u32 = 0;
     for (var i = 0u; i < column_block_length(); i += 1) {
         var block = 0u;
         if leader {
-            block = tableau[x_column_block_index(i, col)] & pivot_mask[i];
+            let column_block = tableau[x_column_block_index(i, col)];
+            set_bits += countOneBits(column_block);
+            block = column_block & pivot_mask[i];
         }
         // Visit the set bits in order of decreasing bit index.
         for (var k = 0u; k < BLOCK_SIZE; k += 1) {
@@ -425,8 +433,11 @@ fn select_pivot(col: u32, leader: bool) {
         if pivot_found {
             pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
             pivot_plus1 = pivot + 1;
+            // The pivot row itself accounts for one of the set bits.
+            needs_elimination = set_bits > 1;
         } else {
             pivot_plus1 = 0;
+            needs_elimination = false;
         }
     }
 }
