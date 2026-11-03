@@ -332,27 +332,61 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 }
 
 
-struct PassState {
-    // The next column to process.
-    col: u32,
-    // The pivot row selected by select_pass, plus one (0 if none was found).
-    pivot_plus1: u32,
-}
-@group(1) @binding(0) var<storage, read_write> state: PassState;
-// Bitmask with ones in indices corresponding to rows that have been used as pivots in this invocation.
-@group(1) @binding(1) var<storage, read_write> used: array<BitBlock>;
+const RREF_WORKGROUP_SIZE: u32 = 256;
 
-// Select the pivot row of the next column.
+// Bitmask with ones in indices corresponding to rows that have been used as pivots in this invocation.
+@group(1) @binding(0) var<storage, read_write> used: array<BitBlock>;
+
+// The pivot row selected for the current column, plus one (0 if none was found).
+var<workgroup> pivot_plus1: u32;
+
+// Bring the tableau's x part into reduced row echelon form.
+// This is done by a single workgroup, in order to avoid the overhead of dispatching each step separately.
+// The workgroup loops over the columns, alternating between selecting a pivot row (done by a single thread)
+// and eliminating the pivot column from all other rows (done by all threads).
+// This mirrors ExtendedTableau::bring_into_rref in tableau.rs.
+@compute
+@workgroup_size(RREF_WORKGROUP_SIZE)
+fn bring_into_rref(
+    @builtin(local_invocation_index) thread: u32
+) {
+    for (var i = thread; i < column_block_length(); i += RREF_WORKGROUP_SIZE) {
+        used[i] = 0u;
+    }
+    storageBarrier();
+    workgroupBarrier();
+
+    for (var col = 0u; col < n; col += 1) {
+        if thread == 0 {
+            select_pivot(col);
+        }
+        storageBarrier();
+        workgroupBarrier();
+
+        if pivot_plus1 != 0 {
+            let pivot = pivot_plus1 - 1;
+            // Assign each thread a strided subset of the rows (blocks).
+            for (var i = thread; i < column_block_length(); i += RREF_WORKGROUP_SIZE) {
+                eliminate(i, pivot, col);
+            }
+        }
+        storageBarrier();
+        workgroupBarrier();
+    }
+
+    // Reset the pivots of all-zero rows.
+    for (var row = thread; row < n; row += RREF_WORKGROUP_SIZE) {
+        if (used[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) == 0 {
+            pivots[row] = 0;
+        }
+    }
+}
+
+// Select the pivot row of the given column and store it in pivot_plus1.
 // This is deliberately done by a single thread, before any of the other threads start modifying the tableau.
 // No rows are physically moved. Among the rows that have a set bit in the column and haven't been used as pivots yet,
 // we pick the one with the greatest previous pivot column, breaking ties in favor of the bottom-most row.
-// This mirrors ExtendedTableau::bring_into_rref in tableau.rs.
-@compute
-@workgroup_size(1)
-fn select_pass() {
-    let col = state.col;
-    state.col = col + 1;
-
+fn select_pivot(col: u32) {
     var pivot_found = false;
     var pivot: u32 = 0;
     var m: u32 = 0;
@@ -372,32 +406,16 @@ fn select_pass() {
     }
 
     if !pivot_found {
-        state.pivot_plus1 = 0;
+        pivot_plus1 = 0;
         return;
     }
 
     used[pivot / BLOCK_SIZE] = set_bit(used[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
-    state.pivot_plus1 = pivot + 1;
+    pivot_plus1 = pivot + 1;
 }
 
-@compute
-@workgroup_size(64)
-fn elimination_pass(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row (block).
-    let block_index = id.x;
-    if block_index >= column_block_length() {
-        return;
-    }
-
-    if state.pivot_plus1 == 0 {
-        return;
-    }
-    let pivot = state.pivot_plus1 - 1;
-    // select_pass has already advanced the column.
-    let col = state.col - 1;
-
+// Multiply the pivot row into all rows of the given block that have a set bit in the pivot column.
+fn eliminate(block_index: u32, pivot: u32, col: u32) {
     let pivot_block_index = pivot / BLOCK_SIZE;
     let pivot_bit_index = pivot % BLOCK_SIZE;
 
@@ -461,23 +479,6 @@ fn elimination_pass(
         if bit(pivot, j)  {
             tableau[column_block_index(block_index, j)] ^= mask;
         }
-    }
-}
-
-// Reset the pivots of all-zero rows.
-@compute
-@workgroup_size(64)
-fn finish_rref(
-    @builtin(global_invocation_id) id: vec3<u32>
-) {
-    // Assign one thread to each row.
-    let row = id.x;
-    if row >= n {
-        return;
-    }
-
-    if (used[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) == 0 {
-        pivots[row] = 0;
     }
 }
 
