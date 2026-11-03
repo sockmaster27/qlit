@@ -350,8 +350,14 @@ var<workgroup> pivot_plus1: u32;
 fn bring_into_rref(
     @builtin(local_invocation_index) thread: u32
 ) {
-    for (var i = thread; i < column_block_length(); i += RREF_WORKGROUP_SIZE) {
-        pivot_mask[i] = ~0u;
+    // The loops below that are strided over the threads deliberately have the same trip count for all threads,
+    // with the thread-dependent condition inside the body. Otherwise the FXC compiler (DX12 backend)
+    // considers the control flow around the barriers to be varying, and rejects the shader.
+    for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
+        let i = k * RREF_WORKGROUP_SIZE + thread;
+        if i < column_block_length() {
+            pivot_mask[i] = ~0u;
+        }
     }
     storageBarrier();
     workgroupBarrier();
@@ -366,8 +372,11 @@ fn bring_into_rref(
         if pivot_plus1 != 0 {
             let pivot = pivot_plus1 - 1;
             // Assign each thread a strided subset of the rows (blocks).
-            for (var i = thread; i < column_block_length(); i += RREF_WORKGROUP_SIZE) {
-                eliminate(i, pivot, col);
+            for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
+                let i = k * RREF_WORKGROUP_SIZE + thread;
+                if i < column_block_length() {
+                    eliminate(i, pivot, col);
+                }
             }
         }
         storageBarrier();
@@ -375,11 +384,17 @@ fn bring_into_rref(
     }
 
     // Reset the pivots of all-zero rows.
-    for (var row = thread; row < n; row += RREF_WORKGROUP_SIZE) {
-        if (pivot_mask[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) != 0 {
+    for (var k = 0u; k < strided_rounds(n); k += 1) {
+        let row = k * RREF_WORKGROUP_SIZE + thread;
+        if row < n && (pivot_mask[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) != 0 {
             row_pivots[row] = 0;
         }
     }
+}
+
+// The number of rounds needed for the threads of the workgroup to cover `count` items in a strided loop.
+fn strided_rounds(count: u32) -> u32 {
+    return div_ceil(count, RREF_WORKGROUP_SIZE);
 }
 
 // Select the pivot row of the given column and store it in pivot_plus1.
@@ -405,16 +420,15 @@ fn select_pivot(col: u32) {
         }
     }
 
-    if !pivot_found {
+    if pivot_found {
+        pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
+        pivot_plus1 = pivot + 1;
+    } else {
         pivot_plus1 = 0;
-        return;
     }
-
-    pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
-    pivot_plus1 = pivot + 1;
 }
 
-// Multiply the pivot row into all rows of the given block that have a set bit in the pivot column.
+// Eliminate the pivot column from all rows of the given block other than the pivot row.
 fn eliminate(block_index: u32, pivot: u32, col: u32) {
     let pivot_block_index = pivot / BLOCK_SIZE;
     let pivot_bit_index = pivot % BLOCK_SIZE;
@@ -426,10 +440,13 @@ fn eliminate(block_index: u32, pivot: u32, col: u32) {
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
     let mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
-    if mask == 0 {
-        return;
+    if mask != 0 {
+        multiply_rows(block_index, pivot, mask);
     }
+}
 
+// Multiply the pivot row into all rows of the given block selected by the mask.
+fn multiply_rows(block_index: u32, pivot: u32, mask: BitBlock) {
     // Determine phase change caused by multiplication of the individual Pauli matrices.
     // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
     // but in a bit block so we can operate on all rows in the block at once.
