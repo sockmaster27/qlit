@@ -158,7 +158,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // pivots
+                    // row_pivots
                     wgpu::BindGroupLayoutEntry {
                         binding: 7,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -342,7 +342,7 @@ impl GpuContext {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Bring Into RREF"),
                 entries: &[
-                    // used
+                    // pivot_mask
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -569,7 +569,7 @@ pub struct GpuSimulator<'a> {
     apply_gates_bind_group_index: usize,
     apply_gates_bind_groups: Vec<Option<wgpu::BindGroup>>,
 
-    pivots_buf: wgpu::Buffer,
+    row_pivots_buf: wgpu::Buffer,
     rref_bind_group: wgpu::BindGroup,
 
     output_buf: wgpu::Buffer,
@@ -650,9 +650,9 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        // See `pivots` in the shader.
-        let pivots_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pivots"),
+        // See `row_pivots` in the shader.
+        let row_pivots_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("row_pivots"),
             size: U32_SIZE * u64::from(n),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -666,13 +666,13 @@ impl<'a> GpuSimulator<'a> {
             &c_cols_buf,
             &ws_buf,
             &w_coeffs_buf,
-            &pivots_buf,
+            &row_pivots_buf,
         );
 
         let apply_gates_bind_groups = Self::apply_gates_bind_groups(gpu, circuit, path_length);
 
-        let rref_used_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("RREF used rows"),
+        let rref_pivot_mask_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("RREF pivot mask"),
             size: BLOCK_SIZE_BYTES * u64::from(column_block_length(n)),
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
@@ -683,7 +683,7 @@ impl<'a> GpuSimulator<'a> {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: rref_used_buf.as_entire_binding(),
+                    resource: rref_pivot_mask_buf.as_entire_binding(),
                 },
             ],
         });
@@ -745,7 +745,7 @@ impl<'a> GpuSimulator<'a> {
             apply_gates_bind_group_index: 0,
             apply_gates_bind_groups,
 
-            pivots_buf,
+            row_pivots_buf,
             rref_bind_group,
 
             output_buf,
@@ -763,7 +763,7 @@ impl<'a> GpuSimulator<'a> {
         c_cols_buf: &wgpu::Buffer,
         ws_buf: &wgpu::Buffer,
         w_coeffs_buf: &wgpu::Buffer,
-        pivots_buf: &wgpu::Buffer,
+        row_pivots_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Tableau"),
@@ -799,7 +799,7 @@ impl<'a> GpuSimulator<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
-                    resource: pivots_buf.as_entire_binding(),
+                    resource: row_pivots_buf.as_entire_binding(),
                 },
             ],
         })
@@ -1077,7 +1077,7 @@ impl<'a> GpuSimulator<'a> {
         self.encoder.clear_buffer(&self.path_index_buf, 0, None);
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
         self.encoder.clear_buffer(&self.c_cols_buf, 0, None);
-        self.encoder.clear_buffer(&self.pivots_buf, 0, None);
+        self.encoder.clear_buffer(&self.row_pivots_buf, 0, None);
 
         self.c_cols = 0;
         self.apply_gates_bind_group_index = 0;
@@ -1283,7 +1283,7 @@ impl<'a> GpuSimulator<'a> {
             &self.c_cols_buf,
             &self.ws_buf,
             &self.w_coeffs_buf,
-            &self.pivots_buf,
+            &self.row_pivots_buf,
         )
     }
 

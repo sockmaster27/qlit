@@ -17,7 +17,7 @@ alias BitBlock = u32;
 @group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
 // Pivot bookkeeping established by bring_into_rref, instead of physically reordering the rows of the tableau.
 // For each row, holds the column of its pivot plus one (0 if the row has no pivot).
-@group(0) @binding(7) var<storage, read_write> pivots: array<u32>;
+@group(0) @binding(7) var<storage, read_write> row_pivots: array<u32>;
 
 @group(1) @binding(0) var<uniform> qubit: u32;
 
@@ -334,8 +334,8 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 
 const RREF_WORKGROUP_SIZE: u32 = 256;
 
-// Bitmask with ones in indices corresponding to rows that have been used as pivots in this invocation.
-@group(1) @binding(0) var<storage, read_write> used: array<BitBlock>;
+// Bitmask with zeros in indices corresponding to rows where pivots have already been seen.
+@group(1) @binding(0) var<storage, read_write> pivot_mask: array<BitBlock>;
 
 // The pivot row selected for the current column, plus one (0 if none was found).
 var<workgroup> pivot_plus1: u32;
@@ -351,7 +351,7 @@ fn bring_into_rref(
     @builtin(local_invocation_index) thread: u32
 ) {
     for (var i = thread; i < column_block_length(); i += RREF_WORKGROUP_SIZE) {
-        used[i] = 0u;
+        pivot_mask[i] = ~0u;
     }
     storageBarrier();
     workgroupBarrier();
@@ -376,8 +376,8 @@ fn bring_into_rref(
 
     // Reset the pivots of all-zero rows.
     for (var row = thread; row < n; row += RREF_WORKGROUP_SIZE) {
-        if (used[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) == 0 {
-            pivots[row] = 0;
+        if (pivot_mask[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) != 0 {
+            row_pivots[row] = 0;
         }
     }
 }
@@ -391,17 +391,17 @@ fn select_pivot(col: u32) {
     var pivot: u32 = 0;
     var m: u32 = 0;
     for (var i = 0u; i < column_block_length(); i += 1) {
-        var block = tableau[x_column_block_index(i, col)] & ~used[i];
+        var block = tableau[x_column_block_index(i, col)] & pivot_mask[i];
         while block != 0 {
             let bit_index = lsb_index(block);
             block = unset_bit(block, bit_index);
             let row = BLOCK_SIZE * i + bit_index;
-            if !pivot_found || m <= pivots[row] {
+            if !pivot_found || m <= row_pivots[row] {
                 pivot = row;
                 pivot_found = true;
-                m = pivots[row];
+                m = row_pivots[row];
             }
-            pivots[row] = col + 1;
+            row_pivots[row] = col + 1;
         }
     }
 
@@ -410,7 +410,7 @@ fn select_pivot(col: u32) {
         return;
     }
 
-    used[pivot / BLOCK_SIZE] = set_bit(used[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
+    pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
     pivot_plus1 = pivot + 1;
 }
 
@@ -537,7 +537,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
 
     // Determine the sign of the derived stabilizer.
     for (var row: u32 = 0; row < n; row += 1) {
-        let pivot_plus1 = pivots[row];
+        let pivot_plus1 = row_pivots[row];
         if pivot_plus1 != 0 {
             let q = pivot_plus1 - 1;
             if w_bit(w1, q) != w_bit(w2, q) && row_negative(s, row) {
@@ -552,7 +552,7 @@ fn coeff_ratio(w1: u32, w2: u32, s: u32) -> Complex {
         var x_acc = false;
         var z_acc = false;
         for (var row2: u32 = 0; row2 < n; row2 += 1) {
-            let pivot_plus1 = pivots[row2];
+            let pivot_plus1 = row_pivots[row2];
             if pivot_plus1 != 0 {
                 let q = pivot_plus1 - 1;
                 if w_bit(w1, q) != w_bit(w2, q) {
@@ -591,7 +591,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
 
     // Determine the sign of the derived stabilizer.
     for (var row: u32 = 0; row < n; row += 1) {
-        let pivot_plus1 = pivots[row];
+        let pivot_plus1 = row_pivots[row];
         if pivot_plus1 != 0 {
             let q = pivot_plus1 - 1;
             if w_bit(state_index, q) != (w_target[q] == 1) && row_negative(state_index, row) {
@@ -606,7 +606,7 @@ fn coeff_ratio_target(state_index: u32) -> Complex {
         var x_acc = false;
         var z_acc = false;
         for (var row2: u32 = 0; row2 < n; row2 += 1) {
-            let pivot_plus1 = pivots[row2];
+            let pivot_plus1 = row_pivots[row2];
             if pivot_plus1 != 0 {
                 let q = pivot_plus1 - 1;
                 if w_bit(state_index, q) != (w_target[q] == 1) {
@@ -646,7 +646,7 @@ fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
     var row: u32 = 0;
     var found = false;
     for (var j: u32 = 0; j < n; j += 1) {
-        if pivots[j] == flipped_bit + 1 {
+        if row_pivots[j] == flipped_bit + 1 {
             row = j;
             found = true;
             break;
