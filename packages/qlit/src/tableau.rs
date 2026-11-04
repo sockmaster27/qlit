@@ -88,10 +88,42 @@ impl ExtendedTableau {
         }
     }
 
+    /// Reset the tableau to the initial zero state with no active c-columns, keeping the allocated capacity.
+    pub fn reset_zero(&mut self) {
+        let n = self.n;
+        self.tableau.fill(0);
+        for i in 0..n {
+            let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
+            self.tableau[block_index] = bitmask(i % BLOCK_SIZE);
+        }
+        self.c_cols = 0;
+        self.row_pivots.fill(None);
+    }
+
     /// Return the number of states currently represented by the tableau.
     #[inline]
     pub fn contained_states(&self) -> usize {
         1 << self.c_cols
+    }
+    /// Return the current number of active c-columns in the tableau.
+    #[inline]
+    pub fn c_cols(&self) -> usize {
+        self.c_cols
+    }
+    /// Get the blocks of the j'th column (see [`Self::tableau`] for the layout),
+    /// including the block(s) containing the auxiliary row.
+    #[inline]
+    pub fn column(&self, j: usize) -> &[BitBlock] {
+        let n = self.n;
+        let start = column_block_index(n, 0, j);
+        &self.tableau[start..(start + column_block_length(n))]
+    }
+    /// For each row, the column of its pivot, or `None` if the row has no pivot.
+    ///
+    /// Only meaningful directly after [`Self::bring_into_rref`].
+    #[inline]
+    pub fn row_pivots(&self) -> &[Option<usize>] {
+        &self.row_pivots
     }
 
     pub fn apply_s_gate(&mut self, a: usize) {
@@ -298,7 +330,7 @@ impl ExtendedTableau {
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
     ///
     /// This should take O(n^2) time, plus an additional O(n^2) time for each gate that has been applied since the last call to this function.
-    fn bring_into_rref(&mut self) {
+    pub fn bring_into_rref(&mut self) {
         let n = self.n;
         let c_cols = self.c_cols;
 
@@ -618,23 +650,23 @@ impl ExtendedTableau {
     }
     /// Get the value of the x bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
-    fn x_bit(&self, row: usize, q: usize) -> bool {
+    pub fn x_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q)
     }
     /// Get the value of the z bit corresponding to the q'th tensor element in the `row`'th row.
     #[inline]
-    fn z_bit(&self, row: usize, q: usize) -> bool {
+    pub fn z_bit(&self, row: usize, q: usize) -> bool {
         self.bit(row, 2 * q + 1)
     }
     /// Get the value of the r bit corresponding to the `row`'th row.
     #[inline]
-    fn r_bit(&self, row: usize) -> bool {
+    pub fn r_bit(&self, row: usize) -> bool {
         let n = self.n;
         self.bit(row, n + n)
     }
     /// Get the value of the c bit corresponding to the j'th column in the `row`'th row.
     #[inline]
-    fn c_bit(&self, row: usize, j: usize) -> bool {
+    pub fn c_bit(&self, row: usize, j: usize) -> bool {
         let n = self.n;
         self.bit(row, n + n + 1 + j)
     }
