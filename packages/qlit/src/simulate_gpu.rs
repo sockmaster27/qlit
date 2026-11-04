@@ -15,13 +15,12 @@ use crate::{
     BitString,
     plan::{CircuitPlanned, GatePlanned},
     tableau::ExtendedTableau,
-    utils::{INDEX_TOO_LARGE, N_TOO_LARGE, bitmask},
+    utils::{INDEX_TOO_LARGE, N_TOO_LARGE},
 };
 
 type BitBlock = u32;
 const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
 const BLOCK_SIZE: u32 = (BLOCK_SIZE_BYTES * 8) as u32;
-const BLOCK_SIZE_USIZE: usize = BLOCK_SIZE as usize;
 
 const WORKGROUP_SIZE: u32 = 64;
 const U32_SIZE: u64 = size_of::<u32>() as u64;
@@ -499,8 +498,8 @@ pub struct GpuSimulator<'a> {
     gpu: &'static GpuContext,
     encoder: wgpu::CommandEncoder,
 
-    n: u32,
     max_c_cols: u32,
+    c_cols: u32,
 
     /// The extended stabilizer tableau, which is only ever mutated here on the CPU.
     /// The parts of it needed by the GPU are uploaded (read-only) on demand.
@@ -544,10 +543,7 @@ impl<'a> GpuSimulator<'a> {
         let max_batches: u32 = 1 << max_c_cols;
         let max_batches_u64: u64 = max_batches.into();
 
-        let tableau = ExtendedTableau::zero(
-            n.try_into().expect(N_TOO_LARGE),
-            batch_size_log2,
-        );
+        let tableau = ExtendedTableau::zero(n.try_into().expect(N_TOO_LARGE), batch_size_log2);
 
         let encoder = gpu.device.create_command_encoder(&Default::default());
 
@@ -673,8 +669,8 @@ impl<'a> GpuSimulator<'a> {
             gpu,
             encoder,
 
-            n,
             max_c_cols,
+            c_cols: 0,
 
             tableau,
 
@@ -1017,6 +1013,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn zero(&mut self) {
         self.tableau.reset_zero();
+        self.c_cols = 0;
         self.apply_gates_bind_group_index = 0;
 
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
@@ -1055,33 +1052,7 @@ impl<'a> GpuSimulator<'a> {
 
     /// Bring the CPU-side tableau into RREF and upload it to the GPU along with its pivots.
     fn upload_tableau(&mut self) {
-        self.tableau.bring_into_rref();
-        let t = &self.tableau;
-        let n = index(self.n);
-        let column_block_length = index(column_block_length(self.n));
-
-        let columns = n + n + 1 + t.c_cols();
-        let mut blocks: Vec<BitBlock> = Vec::with_capacity(columns * column_block_length);
-        for j in 0..columns {
-            // The CPU-side tableau uses 64-bit blocks (with room for an auxiliary row),
-            // so split each of them into two 32-bit blocks.
-            let column: &[u64] = t.column(j);
-            blocks.extend((0..column_block_length).map(|i| {
-                let block = column[i / 2];
-                if i % 2 == 0 {
-                    (block >> 32) as BitBlock
-                } else {
-                    block as BitBlock
-                }
-            }));
-        }
-        // See `pivots` in the shader.
-        let pivots: Vec<u32> = t
-            .row_pivots()
-            .iter()
-            .map(|p| p.map_or(0, |q| u32::try_from(q).expect(INDEX_TOO_LARGE) + 1))
-            .collect();
-
+        let (blocks, pivots) = self.tableau.serialize_rref();
         upload(
             self.gpu,
             &mut self.encoder,
@@ -1190,7 +1161,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn fork_apply_piz_gate(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
         debug_assert!(
-            self.tableau.c_cols() < index(self.max_c_cols),
+            self.c_cols < self.max_c_cols,
             "Cannot fork beyond max_c_cols"
         );
 
@@ -1212,53 +1183,32 @@ impl<'a> GpuSimulator<'a> {
         drop(pass);
 
         self.tableau.fork_apply_z_gate(index(a));
-        let c_cols = self.c_cols();
+        self.c_cols += 1;
         upload(
             self.gpu,
             &mut self.encoder,
             &self.c_cols_buf,
-            &c_cols.to_ne_bytes(),
+            &self.c_cols.to_ne_bytes(),
         );
     }
 
     /// Update ws and w_coeffs in preparation for applying an H gate to the a'th qubit.
     ///
     /// Of the tableau, this only needs the single row with its pivot in the a'th column,
-    /// so only that row is uploaded to the GPU.
+    /// so only what is needed from that row is uploaded to the GPU.
     fn update_before_h(&mut self, a: u32) {
-        let n = index(self.n);
-        let au = index(a);
-        self.tableau.bring_into_rref();
-        let t = &self.tableau;
-
-        // The coeff. ratio is only nonzero if the x part of the row is zero everywhere except at a.
-        let row = t
-            .row_pivots()
-            .iter()
-            .position(|&p| p == Some(au))
-            .filter(|&row| (0..n).all(|q| t.x_bit(row, q) == (q == au)));
-
         // See `HRow` in the shader.
-        let mut h_row = vec![0; index(h_row_length(self.n))];
-        h_row[0] = a;
-        if let Some(row) = row {
-            h_row[1] = 1;
-            h_row[2] = t.z_bit(row, au).into();
-            h_row[3] = t.r_bit(row).into();
-            h_row[4] = (0..t.c_cols())
-                .filter(|&j| t.c_bit(row, j))
-                .fold(0, |mask, j| mask | (1 << j));
-            for q in (0..n).filter(|&q| t.z_bit(row, q)) {
-                let block_index = H_ROW_HEADER_LENGTH + q / BLOCK_SIZE_USIZE;
-                h_row[block_index] |= bitmask::<BitBlock>(q % BLOCK_SIZE_USIZE);
+        let mut h_row = a.to_ne_bytes().to_vec();
+        match self.tableau.flipped_bit_row(index(a)) {
+            Some(row) => {
+                h_row.extend(encode_complex([row.ratio]));
+                h_row.extend(row.c_mask.to_ne_bytes());
+                h_row.extend(encode_u32s(&row.z));
             }
+            // A zero ratio stays zero no matter the sign, so the remaining fields don't matter.
+            None => h_row.extend(encode_complex([Complex::ZERO])),
         }
-        upload(
-            self.gpu,
-            &mut self.encoder,
-            &self.h_row_buf,
-            &encode_u32s(&h_row),
-        );
+        upload(self.gpu, &mut self.encoder, &self.h_row_buf, &h_row);
 
         let workgroups = self.contained_states().div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
@@ -1282,17 +1232,9 @@ impl<'a> GpuSimulator<'a> {
             .copy_buffer_to_buffer(&self.output_buf, 0, &self.output_read_buf, 0, None);
     }
 
-    /// Get the current number of active c columns in the tableau.
-    fn c_cols(&self) -> u32 {
-        self.tableau
-            .c_cols()
-            .try_into()
-            .expect("c_cols exceeds maximum supported by GPU simulator")
-    }
-
     /// Get the number of states currently represented by the tableau.
     fn contained_states(&self) -> u32 {
-        1 << self.c_cols()
+        1 << self.c_cols
     }
 }
 
@@ -1320,14 +1262,13 @@ fn index(a: u32) -> usize {
     a.try_into().expect(INDEX_TOO_LARGE)
 }
 
-/// The number of u32 fields preceding the z blocks in `HRow` in the shader.
-const H_ROW_HEADER_LENGTH: usize = 5;
 /// Get the length of `HRow` in the shader, in u32s.
 fn h_row_length(n: u32) -> u32 {
-    H_ROW_HEADER_LENGTH as u32 + column_block_length(n)
+    // qubit, ratio (2) and c_mask, followed by a z bit per qubit.
+    4 + n.div_ceil(BLOCK_SIZE)
 }
 
-// Get the block-length of the columns in the tableau.
+/// Get the block-length of the columns in the tableau.
 fn column_block_length(n: u32) -> u32 {
     n.div_ceil(BLOCK_SIZE)
 }

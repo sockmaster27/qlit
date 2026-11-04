@@ -210,17 +210,14 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 }
 
 
-// The single row of the (RREF) tableau needed by update_before_h, extracted on the CPU.
+// What update_before_h needs from the single relevant row of the (RREF) tableau, extracted on the CPU.
 struct HRow {
     // The qubit that the H gate is about to be applied to.
     qubit: u32,
-    // Whether the coefficient ratio between any w and w with the qubit'th bit flipped is nonzero (0 or 1).
-    // This does not depend on w or the state. If 0, the remaining fields are unspecified.
-    nonzero: u32,
-    // Whether the row's tensor element at the qubit'th position is Y rather than X (0 or 1).
-    y: u32,
-    // The r bit of the row (0 or 1).
-    r: u32,
+    // The part of the coefficient ratio between any w and w with the qubit'th bit flipped
+    // that is shared by all states and basis states.
+    // If this is zero, all the ratios are zero and the remaining fields are unspecified.
+    ratio: Complex,
     // Bitmask where bit j holds the j'th c bit of the row.
     c_mask: u32,
     // The z bits of the row, packed in the same way as each w in ws.
@@ -256,26 +253,18 @@ fn update_before_h(
 // Same as coeff_ratio but with w1 and s both being state_index and w2 being w1 but with the h_row.qubit'th bit flipped.
 // Only needs the single row described by h_row.
 fn coeff_ratio_flipped_bit(state_index: u32) -> Complex {
-    if h_row.nonzero == 0u {
-        return Complex(0.0, 0.0);
-    }
-
-    // We encode the result as i^phase, and let the phase wrap around modulo 4.
-    var phase: u32 = 0;
-    // The sign of the row, respecting the sign of the state_index'th state.
-    if ((h_row.r + countOneBits(state_index & h_row.c_mask)) % 2u) != 0u {
-        phase += 2;
-    }
+    // Respect the sign of the state_index'th state.
+    var negations = countOneBits(state_index & h_row.c_mask);
     // Every Z or Y element at a position where w1 is 1 contributes a factor of -1.
     let state_offset = w_block_size() * state_index;
     for (var b: u32 = 0; b < w_block_size(); b += 1) {
-        phase += 2u * countOneBits(ws[state_offset + b] & h_row.z[b]);
+        negations += countOneBits(ws[state_offset + b] & h_row.z[b]);
     }
-    // A Y element (only possible in the flipped position) contributes a factor of i.
-    if h_row.y != 0u {
-        phase += 1;
+
+    if (negations % 2u) != 0u {
+        return mul_minus_one(h_row.ratio);
     }
-    return i_pow(phase);
+    return h_row.ratio;
 }
 
 

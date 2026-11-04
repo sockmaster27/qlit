@@ -1565,6 +1565,81 @@ mod gpu {
             assert_almost_eq(result, expected, &w);
         }
     }
+
+    /// The sign of the coeff. ratio used by the H gate depends on the tracked basis state,
+    /// here through the Z element on qubit 1 after the X gate has set that bit.
+    #[test]
+    fn h_gate_ratio_depends_on_basis_state_z() {
+        let circuit = Circuit::new(2, [H(0), H(1), X(1), Cz(0, 1), H(0)]).unwrap();
+
+        for (i, expected) in [
+            (0b0000_0000, Complex::from(0.5_f64.sqrt())),
+            (0b1000_0000, Complex::ZERO),
+            (0b0100_0000, Complex::ZERO),
+            (0b1100_0000, Complex::from(0.5_f64.sqrt())),
+        ] {
+            let bits = BitString::from_u8_ltr(i);
+            let w: BitString = bits.iter().take(2).collect();
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    /// As above, but through a Y element on the flipped bit itself.
+    #[test]
+    fn h_gate_ratio_depends_on_basis_state_y() {
+        let circuit = Circuit::new(1, [H(0), S(0), X(0), H(0)]).unwrap();
+
+        for (i, expected) in [
+            (0b0000_0000, Complex { re: 0.5, im: 0.5 }),
+            (0b1000_0000, Complex { re: -0.5, im: 0.5 }),
+        ] {
+            let bits = BitString::from_u8_ltr(i);
+            let w: BitString = bits.iter().take(1).collect();
+
+            let result = simulate_circuit_gpu(&w, &circuit);
+
+            assert_almost_eq(result, expected, &w);
+        }
+    }
+
+    /// The columns of the CPU-side tableau (64-bit blocks with room for an auxiliary row)
+    /// have a length in bits that differs from the GPU-side ones (32-bit blocks without it),
+    /// by an amount that changes around these sizes.
+    #[test]
+    fn block_size_boundaries() {
+        for n in [31, 32, 33, 63, 64, 65] {
+            let last = n - 1;
+            let circuit = Circuit::new(
+                n,
+                [
+                    H(0),
+                    T(0),
+                    H(last),
+                    H(0),
+                    Cnot(last, 0),
+                    H(last),
+                    Z(0),
+                    Tdg(last),
+                ],
+            )
+            .unwrap();
+
+            for set_bits in [vec![], vec![0], vec![last], vec![0, last]] {
+                let mut w = BitString::zero(n.try_into().unwrap());
+                for b in set_bits {
+                    w.set(b.try_into().unwrap());
+                }
+
+                let result = simulate_circuit_gpu(&w, &circuit);
+
+                let expected = qlit::simulate_circuit(&w, &circuit);
+                assert_almost_eq(result, expected, &w);
+            }
+        }
+    }
 }
 
 #[cfg(feature = "gpu")]
