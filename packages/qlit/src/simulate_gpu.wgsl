@@ -2,32 +2,18 @@ const BLOCK_SIZE: u32 = 32;
 alias BitBlock = u32;
 
 @group(0) @binding(0) var<uniform> n: u32;
-@group(0) @binding(1) var<uniform> max_batches: u32;
-@group(0) @binding(2) var<storage, read> path: array<u32>;
-// The extended stabilizer tableau, laid out column-wise with interleaved x and z columns in the following way:
-// P1 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-// P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-// ...
-// Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
-// See ExtendedTableau in tableau.rs.
-// All mutation of the tableau happens on the CPU, which uploads it in RREF whenever it is needed here.
-@group(0) @binding(3) var<storage, read> tableau: array<BitBlock>;
 // The current number of active c columns in the tableau.
-@group(0) @binding(4) var<uniform> c_cols: u32;
-@group(0) @binding(5) var<storage, read_write> ws: array<BitBlock>;
-@group(0) @binding(6) var<storage, read_write> w_coeffs: array<Complex>;
-// Pivot bookkeeping established by ExtendedTableau::bring_into_rref, uploaded alongside the tableau.
-// For each row, holds the column of its pivot plus one (0 if the row has no pivot).
-@group(0) @binding(7) var<storage, read> pivots: array<u32>;
-
-@group(1) @binding(0) var<uniform> qubit: u32;
+@group(0) @binding(1) var<uniform> c_cols: u32;
+@group(0) @binding(2) var<storage, read_write> ws: array<BitBlock>;
+@group(0) @binding(3) var<storage, read_write> w_coeffs: array<Complex>;
 
 
 @group(1) @binding(0) var<storage, read> gates: array<u32>;
 @group(1) @binding(1) var<storage, read> qubit_params: array<u32>;
-@group(1) @binding(2) var<storage, read> ci_params: array<Complex>;
-@group(1) @binding(3) var<storage, read> cz_params: array<Complex>;
-@group(1) @binding(4) var<uniform> initial_path_index: u32;
+@group(1) @binding(2) var<uniform> initial_path_index: u32;
+@group(1) @binding(3) var<storage, read> path: array<u32>;
+@group(1) @binding(4) var<storage, read> ci_params: array<Complex>;
+@group(1) @binding(5) var<storage, read> cz_params: array<Complex>;
 
 @compute
 @workgroup_size(64)
@@ -127,6 +113,8 @@ fn apply_gates(
 }
 
 
+// Shared between the piz gate compute shaders.
+@group(1) @binding(0) var<uniform> qubit: u32;
 @group(1) @binding(1) var<uniform> ci: Complex;
 @group(1) @binding(2) var<uniform> cz: Complex;
 
@@ -174,6 +162,19 @@ fn dedup_apply_piz_gate_c_zero(
 }
 
 @group(1) @binding(3) var<uniform> c: u32;
+// Shared between dedup_apply_piz_gate and compute_output.
+// The extended stabilizer tableau, laid out column-wise with interleaved x and z columns in the following way:
+// P1 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// P2 -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// ...
+// Pn -> x1 z1 x2 z2 ... xn zn | r | c1 c2 ... ct
+// See ExtendedTableau in tableau.rs.
+// All mutation of the tableau happens on the CPU, which uploads it in RREF whenever it is needed here.
+@group(1) @binding(4) var<storage, read> tableau: array<BitBlock>;
+// Shared between dedup_apply_piz_gate and compute_output.
+// Pivot bookkeeping established by ExtendedTableau::bring_into_rref, uploaded alongside the tableau.
+// For each row, holds the column of its pivot plus one (0 if the row has no pivot).
+@group(1) @binding(5) var<storage, read> pivots: array<u32>;
 
 @compute
 @workgroup_size(64)

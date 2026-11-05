@@ -91,7 +91,7 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // max_batches
+                    // c_cols
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -102,42 +102,9 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // path
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // tableau
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // c_cols
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
                     // ws
                     wgpu::BindGroupLayoutEntry {
-                        binding: 5,
+                        binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -148,21 +115,10 @@ impl GpuContext {
                     },
                     // w_coeffs
                     wgpu::BindGroupLayoutEntry {
-                        binding: 6,
+                        binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // pivots
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 7,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -274,6 +230,28 @@ impl GpuContext {
                         },
                         count: None,
                     },
+                    // tableau
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // pivots
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
             });
         let apply_gates_bind_group_layout =
@@ -302,18 +280,18 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // ci_params
+                    // initial_path_index
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
                         count: None,
                     },
-                    // cz_params
+                    // path
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
@@ -324,12 +302,23 @@ impl GpuContext {
                         },
                         count: None,
                     },
-                    // initial_path_index
+                    // ci_params
                     wgpu::BindGroupLayoutEntry {
                         binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // cz_params
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -358,6 +347,28 @@ impl GpuContext {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // tableau
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // pivots
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -505,14 +516,15 @@ pub struct GpuSimulator<'a> {
     /// The parts of it needed by the GPU are uploaded (read-only) on demand.
     tableau: ExtendedTableau,
 
-    path_buf: wgpu::Buffer,
-    tableau_buf: wgpu::Buffer,
     c_cols_buf: wgpu::Buffer,
     ws_buf: wgpu::Buffer,
     w_coeffs_buf: wgpu::Buffer,
-    pivots_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
 
+    tableau_buf: wgpu::Buffer,
+    pivots_buf: wgpu::Buffer,
+
+    path_buf: wgpu::Buffer,
     apply_gates_bind_group_index: usize,
     apply_gates_bind_groups: Vec<Option<wgpu::BindGroup>>,
 
@@ -554,26 +566,6 @@ impl<'a> GpuSimulator<'a> {
                 contents: &n.to_ne_bytes(),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
-        let max_batches_buf = gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("max_batches"),
-                contents: &max_batches.to_ne_bytes(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-        let path_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("path"),
-            // Buffers must not be zero-sized, so we allocate at least 1 block even if path_length is 0.
-            size: U32_SIZE * max(1, path_length.into()),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("tableau"),
-            size: u64::from(tableau_block_length(n, max_c_cols)) * BLOCK_SIZE_BYTES,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
         let c_cols_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("c_cols"),
             size: U32_SIZE,
@@ -592,6 +584,15 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let global_bind_group =
+            Self::new_global_bind_group(gpu, &n_buf, &c_cols_buf, &ws_buf, &w_coeffs_buf);
+
+        let tableau_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tableau"),
+            size: u64::from(tableau_block_length(n, max_c_cols)) * BLOCK_SIZE_BYTES,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         // See `pivots` in the shader.
         let pivots_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pivots"),
@@ -599,19 +600,16 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let global_bind_group = Self::new_global_bind_group(
-            gpu,
-            &n_buf,
-            &max_batches_buf,
-            &path_buf,
-            &tableau_buf,
-            &c_cols_buf,
-            &ws_buf,
-            &w_coeffs_buf,
-            &pivots_buf,
-        );
 
-        let apply_gates_bind_groups = Self::apply_gates_bind_groups(gpu, circuit, path_length);
+        let path_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("path"),
+            // Buffers must not be zero-sized, so we allocate at least 1 block even if path_length is 0.
+            size: U32_SIZE * max(1, path_length.into()),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let apply_gates_bind_groups =
+            Self::apply_gates_bind_groups(gpu, circuit, path_length, &path_buf);
 
         // See `HRow` in the shader.
         let h_row_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -660,6 +658,14 @@ impl<'a> GpuSimulator<'a> {
                     binding: 1,
                     resource: output_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: tableau_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: pivots_buf.as_entire_binding(),
+                },
             ],
         });
 
@@ -674,14 +680,15 @@ impl<'a> GpuSimulator<'a> {
 
             tableau,
 
-            path_buf,
-            tableau_buf,
             c_cols_buf,
             ws_buf,
             w_coeffs_buf,
-            pivots_buf,
             global_bind_group,
 
+            tableau_buf,
+            pivots_buf,
+
+            path_buf,
             apply_gates_bind_group_index: 0,
             apply_gates_bind_groups,
 
@@ -697,16 +704,12 @@ impl<'a> GpuSimulator<'a> {
     fn new_global_bind_group(
         gpu: &GpuContext,
         n_buf: &wgpu::Buffer,
-        max_batches_buf: &wgpu::Buffer,
-        path_buf: &wgpu::Buffer,
-        tableau_buf: &wgpu::Buffer,
         c_cols_buf: &wgpu::Buffer,
         ws_buf: &wgpu::Buffer,
         w_coeffs_buf: &wgpu::Buffer,
-        pivots_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Tableau"),
+            label: Some("Global"),
             layout: &gpu.global_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -715,31 +718,15 @@ impl<'a> GpuSimulator<'a> {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: max_batches_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: path_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: tableau_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
                     resource: c_cols_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 5,
+                    binding: 2,
                     resource: ws_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 6,
+                    binding: 3,
                     resource: w_coeffs_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: pivots_buf.as_entire_binding(),
                 },
             ],
         })
@@ -749,6 +736,7 @@ impl<'a> GpuSimulator<'a> {
         gpu: &GpuContext,
         circuit: &CircuitPlanned,
         path_length: u32,
+        path_buf: &wgpu::Buffer,
     ) -> Vec<Option<wgpu::BindGroup>> {
         use GatePlanned::*;
 
@@ -791,6 +779,7 @@ impl<'a> GpuSimulator<'a> {
             gpu: &GpuContext,
             gates: &mut Vec<u32>,
             qubit_params: &mut Vec<u32>,
+            path_buf: &wgpu::Buffer,
             ci_params_buf: &wgpu::Buffer,
             cz_params_buf: &wgpu::Buffer,
             initial_path_index: u32,
@@ -842,15 +831,19 @@ impl<'a> GpuSimulator<'a> {
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: ci_params_buf.as_entire_binding(),
+                        resource: initial_path_index_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
-                        resource: cz_params_buf.as_entire_binding(),
+                        resource: path_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: initial_path_index_buf.as_entire_binding(),
+                        resource: ci_params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: cz_params_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -905,6 +898,7 @@ impl<'a> GpuSimulator<'a> {
                         gpu,
                         &mut gates,
                         &mut qubit_params,
+                        path_buf,
                         &ci_params_buf,
                         &cz_params_buf,
                         initial_path_index,
@@ -918,6 +912,7 @@ impl<'a> GpuSimulator<'a> {
             gpu,
             &mut gates,
             &mut qubit_params,
+            path_buf,
             &ci_params_buf,
             &cz_params_buf,
             initial_path_index,
@@ -1144,10 +1139,20 @@ impl<'a> GpuSimulator<'a> {
             },
         ];
         if let Some(c_buf) = &c_buf {
-            entries.push(wgpu::BindGroupEntry {
-                binding: 3,
-                resource: c_buf.as_entire_binding(),
-            });
+            entries.extend([
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: c_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.tableau_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.pivots_buf.as_entire_binding(),
+                },
+            ]);
         }
 
         self.gpu
