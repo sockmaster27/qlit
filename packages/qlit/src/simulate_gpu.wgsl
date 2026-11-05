@@ -337,7 +337,7 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 // so extra threads mostly just run through the (idle) loops below in lockstep.
 // That is free on GPUs, but on software implementations (e.g. llvmpipe) every thread costs actual execution time,
 // making this a trade-off between parallelism for large tableaus and overhead for small ones.
-const RREF_WORKGROUP_SIZE: u32 = 64;
+const RREF_WORKGROUP_SIZE: u32 = 32;
 
 // Bitmask with zeros in indices corresponding to rows where pivots have already been seen.
 @group(1) @binding(0) var<storage, read_write> pivot_mask: array<BitBlock>;
