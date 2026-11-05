@@ -659,6 +659,11 @@ impl ExtendedTableau {
     /// The size in bits of the blocks in the data produced for the GPU simulator.
     const SERIALIZED_BLOCK_SIZE: usize = u32::BITS as usize;
 
+    /// Return the current number of active c-columns in the tableau.
+    pub fn c_cols(&self) -> usize {
+        self.c_cols
+    }
+
     /// Bring the tableau into RREF and return all its active columns,
     /// along with the pivot of each row, encoded as the pivot column plus one (0 if the row has no pivot).
     ///

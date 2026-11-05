@@ -510,7 +510,6 @@ pub struct GpuSimulator<'a> {
     encoder: wgpu::CommandEncoder,
 
     max_c_cols: u32,
-    c_cols: u32,
 
     /// The extended stabilizer tableau, which is only ever mutated here on the CPU.
     /// The parts of it needed by the GPU are uploaded (read-only) on demand.
@@ -676,7 +675,6 @@ impl<'a> GpuSimulator<'a> {
             encoder,
 
             max_c_cols,
-            c_cols: 0,
 
             tableau,
 
@@ -794,20 +792,14 @@ impl<'a> GpuSimulator<'a> {
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("gates"),
-                    contents: &gates
-                        .iter()
-                        .flat_map(|&g| g.to_ne_bytes())
-                        .collect::<Vec<u8>>(),
+                    contents: &encode_u32s(gates),
                     usage: wgpu::BufferUsages::STORAGE,
                 });
             let qubit_params_buf =
                 gpu.device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("qubit_params"),
-                        contents: &qubit_params
-                            .iter()
-                            .flat_map(|&q| q.to_ne_bytes())
-                            .collect::<Vec<u8>>(),
+                        contents: &encode_u32s(qubit_params),
                         usage: wgpu::BufferUsages::STORAGE,
                     });
             let initial_path_index_buf =
@@ -1008,7 +1000,6 @@ impl<'a> GpuSimulator<'a> {
 
     fn zero(&mut self) {
         self.tableau.reset_zero();
-        self.c_cols = 0;
         self.apply_gates_bind_group_index = 0;
 
         self.encoder.clear_buffer(&self.ws_buf, 0, None);
@@ -1166,7 +1157,7 @@ impl<'a> GpuSimulator<'a> {
 
     fn fork_apply_piz_gate(&mut self, ci: Complex<f64>, cz: Complex<f64>, a: u32) {
         debug_assert!(
-            self.c_cols < self.max_c_cols,
+            self.tableau.c_cols() < index(self.max_c_cols),
             "Cannot fork beyond max_c_cols"
         );
 
@@ -1188,12 +1179,11 @@ impl<'a> GpuSimulator<'a> {
         drop(pass);
 
         self.tableau.fork_apply_z_gate(index(a));
-        self.c_cols += 1;
         upload(
             self.gpu,
             &mut self.encoder,
             &self.c_cols_buf,
-            &self.c_cols.to_ne_bytes(),
+            &(self.tableau.c_cols() as u32).to_ne_bytes(),
         );
     }
 
@@ -1239,7 +1229,7 @@ impl<'a> GpuSimulator<'a> {
 
     /// Get the number of states currently represented by the tableau.
     fn contained_states(&self) -> u32 {
-        1 << self.c_cols
+        self.tableau.contained_states() as u32
     }
 }
 
