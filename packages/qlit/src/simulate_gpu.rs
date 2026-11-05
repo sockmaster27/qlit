@@ -1286,7 +1286,7 @@ impl<'a> GpuSimulator<'a> {
     }
 
     fn bring_into_rref(&mut self) {
-        // The whole procedure runs inside a single workgroup, so it only takes one dispatch.
+        // The whole procedure runs on a single thread, so it only takes one dispatch.
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&self.gpu.bring_into_rref_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
