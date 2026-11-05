@@ -680,12 +680,10 @@ impl<'a> GpuSimulator<'a> {
         let rref_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Bring-into-RREF Bind Group"),
             layout: &gpu.bring_into_rref_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: rref_pivot_mask_buf.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: rref_pivot_mask_buf.as_entire_binding(),
+            }],
         });
 
         let w_target_buf = gpu

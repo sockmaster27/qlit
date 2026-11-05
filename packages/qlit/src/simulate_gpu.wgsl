@@ -332,7 +332,12 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 }
 
 
-const RREF_WORKGROUP_SIZE: u32 = 256;
+// The number of threads in the workgroup running bring_into_rref.
+// Selecting the pivot is inherently serial, and there is at most one thread's worth of elimination work per 32 rows,
+// so extra threads mostly just run through the (idle) loops below in lockstep.
+// That is free on GPUs, but on software implementations (e.g. llvmpipe) every thread costs actual execution time,
+// making this a trade-off between parallelism for large tableaus and overhead for small ones.
+const RREF_WORKGROUP_SIZE: u32 = 8;
 
 // Bitmask with zeros in indices corresponding to rows where pivots have already been seen.
 @group(1) @binding(0) var<storage, read_write> pivot_mask: array<BitBlock>;
@@ -347,14 +352,16 @@ var<workgroup> needs_elimination: bool;
 // The workgroup loops over the columns, alternating between selecting a pivot row (done by a single thread)
 // and eliminating the pivot column from all other rows (done by all threads).
 // This mirrors ExtendedTableau::bring_into_rref in tableau.rs.
+//
+// The FXC compiler (DX12 backend) rejects barriers in loops that contain any thread-dependent control flow
+// around other loops. To appease it, every loop in here has a trip count that is the same for all threads,
+// and thread-dependent conditions only guard simple statements inside the loop bodies.
+// The only thing that is allowed to skip entire loops is the result of workgroupUniformLoad.
 @compute
 @workgroup_size(RREF_WORKGROUP_SIZE)
 fn bring_into_rref(
     @builtin(local_invocation_index) thread: u32
 ) {
-    // The FXC compiler (DX12 backend) rejects barriers in loops that contain any thread-dependent control flow
-    // around other loops. To appease it, every loop in here has a trip count that is the same for all threads,
-    // and thread-dependent conditions only guard simple statements inside the loop bodies.
     for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
         let i = k * RREF_WORKGROUP_SIZE + thread;
         if i < column_block_length() {
