@@ -332,63 +332,95 @@ fn xor_pair(m: u32, c: u32) -> vec2<u32> {
 }
 
 
+// The number of threads in the workgroup running bring_into_rref.
+// Selecting the pivot is inherently serial, and there is at most one thread's worth of elimination work per 32 rows,
+// so extra threads mostly just run through the (idle) loops below in lockstep.
+// That is free on GPUs, but on software implementations (e.g. llvmpipe) every thread costs actual execution time,
+// making this a trade-off between parallelism for large tableaus and overhead for small ones.
+const RREF_WORKGROUP_SIZE: u32 = 64;
+
 // Bitmask with zeros in indices corresponding to rows where pivots have already been seen.
 @group(1) @binding(0) var<storage, read_write> pivot_mask: array<BitBlock>;
 
+// The pivot row selected for the current column, plus one (0 if none was found).
+var<workgroup> pivot_plus1: u32;
+// Whether any other rows than the pivot row have a set bit in the current column, i.e. need to be eliminated.
+var<workgroup> needs_elimination: bool;
+
 // Bring the tableau's x part into reduced row echelon form.
-// This is done by a single thread, in order to avoid the overhead of dispatching each step separately.
-// The thread loops over the columns, alternating between selecting a pivot row
-// and eliminating the pivot column from all other rows.
+// This is done by a single workgroup, in order to avoid the overhead of dispatching each step separately.
+// The workgroup loops over the columns, alternating between selecting a pivot row (done by a single thread)
+// and eliminating the pivot column from all other rows (done by all threads).
 // This mirrors ExtendedTableau::bring_into_rref in tableau.rs.
 //
-// Deliberately not parallelized: synchronizing multiple threads requires barriers,
-// and the FXC compiler (DX12 backend) rejects barriers inside loops with thread-dependent control flow.
+// The FXC compiler (DX12 backend) rejects barriers in loops that contain any thread-dependent control flow
+// around other loops. To appease it, every loop in here has a trip count that is the same for all threads,
+// and thread-dependent conditions only guard simple statements inside the loop bodies.
+// The only thing that is allowed to skip entire loops is the result of workgroupUniformLoad.
 @compute
-@workgroup_size(1)
-fn bring_into_rref() {
-    for (var i = 0u; i < column_block_length(); i += 1) {
-        pivot_mask[i] = ~0u;
+@workgroup_size(RREF_WORKGROUP_SIZE)
+fn bring_into_rref(
+    @builtin(local_invocation_index) thread: u32
+) {
+    for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
+        let i = k * RREF_WORKGROUP_SIZE + thread;
+        if i < column_block_length() {
+            pivot_mask[i] = ~0u;
+        }
     }
+    storageBarrier();
+    workgroupBarrier();
 
     for (var col = 0u; col < n; col += 1) {
-        let selection = select_pivot(col);
+        select_pivot(col, thread == 0);
+        storageBarrier();
+        workgroupBarrier();
+
         // Usually, the tableau is already (mostly) in RREF, and there is nothing to eliminate.
-        if selection.needs_elimination {
-            for (var i = 0u; i < column_block_length(); i += 1) {
-                eliminate(i, selection.pivot, col);
+        // workgroupUniformLoad ends in a barrier, which lets the compiler know that all threads agree on the result.
+        if workgroupUniformLoad(&needs_elimination) {
+            let pivot = pivot_plus1 - 1;
+            // Assign each thread a strided subset of the rows (blocks).
+            for (var k = 0u; k < strided_rounds(column_block_length()); k += 1) {
+                let i = k * RREF_WORKGROUP_SIZE + thread;
+                eliminate(i, pivot, col, i < column_block_length());
             }
         }
+        storageBarrier();
+        workgroupBarrier();
     }
 
     // Reset the pivots of all-zero rows.
-    for (var row = 0u; row < n; row += 1) {
-        if (pivot_mask[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) != 0 {
+    for (var k = 0u; k < strided_rounds(n); k += 1) {
+        let row = k * RREF_WORKGROUP_SIZE + thread;
+        if row < n && (pivot_mask[row / BLOCK_SIZE] & bitmask(row % BLOCK_SIZE)) != 0 {
             row_pivots[row] = 0;
         }
     }
 }
 
-struct PivotSelection {
-    // Whether a pivot row was found.
-    found: bool,
-    // The pivot row. Only meaningful if `found`.
-    pivot: u32,
-    // Whether any other rows than the pivot row have a set bit in the column, i.e. need to be eliminated.
-    needs_elimination: bool,
+// The number of rounds needed for the threads of the workgroup to cover `count` items in a strided loop.
+fn strided_rounds(count: u32) -> u32 {
+    return div_ceil(count, RREF_WORKGROUP_SIZE);
 }
 
-// Select the pivot row of the given column.
+// Select the pivot row of the given column and store it in pivot_plus1.
+// This is deliberately done by a single (leader) thread, before any of the other threads start modifying the tableau.
+// The other threads run through the same loops without doing anything, see bring_into_rref.
 // No rows are physically moved. Among the rows that have a set bit in the column and haven't been used as pivots yet,
 // we pick the one with the greatest previous pivot column, breaking ties in favor of the bottom-most row.
-fn select_pivot(col: u32) -> PivotSelection {
+fn select_pivot(col: u32, leader: bool) {
     var pivot_found = false;
     var pivot: u32 = 0;
     var m: u32 = 0;
     var set_bits: u32 = 0;
     for (var i = 0u; i < column_block_length(); i += 1) {
-        let column_block = tableau[x_column_block_index(i, col)];
-        set_bits += countOneBits(column_block);
-        let block = column_block & pivot_mask[i];
+        var block = 0u;
+        if leader {
+            let column_block = tableau[x_column_block_index(i, col)];
+            set_bits += countOneBits(column_block);
+            block = column_block & pivot_mask[i];
+        }
         // Visit the set bits in order of decreasing bit index.
         for (var k = 0u; k < BLOCK_SIZE; k += 1) {
             let bit_index = BLOCK_SIZE - 1u - k;
@@ -404,15 +436,22 @@ fn select_pivot(col: u32) -> PivotSelection {
         }
     }
 
-    if pivot_found {
-        pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
+    if leader {
+        if pivot_found {
+            pivot_mask[pivot / BLOCK_SIZE] = unset_bit(pivot_mask[pivot / BLOCK_SIZE], pivot % BLOCK_SIZE);
+            pivot_plus1 = pivot + 1;
+            // The pivot row itself accounts for one of the set bits.
+            needs_elimination = set_bits > 1;
+        } else {
+            pivot_plus1 = 0;
+            needs_elimination = false;
+        }
     }
-    // The pivot row itself accounts for one of the set bits.
-    return PivotSelection(pivot_found, pivot, pivot_found && set_bits > 1);
 }
 
 // Eliminate the pivot column from all rows of the given block other than the pivot row.
-fn eliminate(block_index: u32, pivot: u32, col: u32) {
+// If `in_use` is false, nothing is done.
+fn eliminate(block_index: u32, pivot: u32, col: u32, in_use: bool) {
     let pivot_block_index = pivot / BLOCK_SIZE;
     let pivot_bit_index = pivot % BLOCK_SIZE;
 
@@ -422,17 +461,16 @@ fn eliminate(block_index: u32, pivot: u32, col: u32) {
         pivot_mask = ~bitmask(pivot_bit_index);
     }
     // The bitmask with a 1 in the position of all rows that should be multiplied by the pivot.
-    let mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
+    var mask: BitBlock = 0u;
+    if in_use {
+        mask = tableau[x_column_block_index(block_index, col)] & pivot_mask;
+    }
     multiply_rows(block_index, pivot, mask);
 }
 
 // Multiply the pivot row into all rows of the given block selected by the mask.
 // Nothing is done if the mask is empty.
 fn multiply_rows(block_index: u32, pivot: u32, mask: BitBlock) {
-    if mask == 0 {
-        return;
-    }
-
     // Determine phase change caused by multiplication of the individual Pauli matrices.
     // We encode phase as `phase = 2*phase_bit2 + phase_bit1`,
     // but in a bit block so we can operate on all rows in the block at once.
@@ -440,46 +478,50 @@ fn multiply_rows(block_index: u32, pivot: u32, mask: BitBlock) {
     var phase_bit1: BitBlock = 0u;
     var phase_bit2: BitBlock = 0u;
     for (var col2 = 0u; col2 < n; col2 += 1) {
-        let x1 = tableau[x_column_block_index(block_index, col2)];
-        let z1 = tableau[z_column_block_index(block_index, col2)];
-        // Fill these blocks with the bits in the pivot row.
-        var x2: BitBlock = 0u;
-        if x_bit(pivot, col2) {
-            x2 = ~0u;
-        }
-        var z2: BitBlock = 0u;
-        if z_bit(pivot, col2) {
-            z2 = ~0u;
-        }
+        if mask != 0 {
+            let x1 = tableau[x_column_block_index(block_index, col2)];
+            let z1 = tableau[z_column_block_index(block_index, col2)];
+            // Fill these blocks with the bits in the pivot row.
+            var x2: BitBlock = 0u;
+            if x_bit(pivot, col2) {
+                x2 = ~0u;
+            }
+            var z2: BitBlock = 0u;
+            if z_bit(pivot, col2) {
+                z2 = ~0u;
+            }
 
-        // XY = +iZ
-        // YZ = +iX
-        // ZX = +iY
-        let add = (x_block(x1, z1) & y_block(x2, z2))
-            | (y_block(x1, z1) & z_block(x2, z2))
-            | (z_block(x1, z1) & x_block(x2, z2));
-        phase_bit2 ^= add & phase_bit1;
-        phase_bit1 ^= add;
+            // XY = +iZ
+            // YZ = +iX
+            // ZX = +iY
+            let add = (x_block(x1, z1) & y_block(x2, z2))
+                | (y_block(x1, z1) & z_block(x2, z2))
+                | (z_block(x1, z1) & x_block(x2, z2));
+            phase_bit2 ^= add & phase_bit1;
+            phase_bit1 ^= add;
 
-        // YX = -iZ
-        // ZY = -iX
-        // XZ = -iY
-        let sub = (y_block(x1, z1) & x_block(x2, z2))
-            | (z_block(x1, z1) & y_block(x2, z2))
-            | (x_block(x1, z1) & z_block(x2, z2));
-        phase_bit2 ^= sub & ~phase_bit1;
-        phase_bit1 ^= sub;
+            // YX = -iZ
+            // ZY = -iX
+            // XZ = -iY
+            let sub = (y_block(x1, z1) & x_block(x2, z2))
+                | (z_block(x1, z1) & y_block(x2, z2))
+                | (x_block(x1, z1) & z_block(x2, z2));
+            phase_bit2 ^= sub & ~phase_bit1;
+            phase_bit1 ^= sub;
+        }
     }
     // A valid stabilizer row can only ever have a prefix of +1 or -1.
     // phase_bit1 being 1 implies a phase of either 1 or 3, making the prefix i or -i respectively.
     // This should never be able to happen, and we cannot represent it.
     // phase_bit2 = 1  =>  phase = 2  =>  i^2 = -1    flip the sign bit.
     // phase_bit2 = 0  =>  phase = 0  =>  i^0 = +1    do nothing.
-    tableau[r_column_block_index(block_index)] ^= phase_bit2 & mask;
+    if mask != 0 {
+        tableau[r_column_block_index(block_index)] ^= phase_bit2 & mask;
+    }
 
     // XOR
     for (var j = 0u; j < n + n + 1 + c_cols; j += 1) {
-        if bit(pivot, j) {
+        if mask != 0 && bit(pivot, j) {
             tableau[column_block_index(block_index, j)] ^= mask;
         }
     }
