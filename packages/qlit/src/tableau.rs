@@ -6,6 +6,8 @@ use num_complex::Complex;
 use rand::{Rng, RngExt};
 
 use crate::bitstring::{BitStringArray, BitStringSlice};
+#[cfg(feature = "gpu")]
+use crate::utils::INDEX_TOO_LARGE;
 use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 
 type BitBlock = u64;
@@ -55,18 +57,15 @@ impl ExtendedTableau {
     /// Initialize a new tableau with `n` qubits in the initial zero state.
     /// This allocates an extended tableau with capacity for representing a total of 2^`capacity_log2` states.
     pub fn zero(n: usize, capacity_log2: usize) -> Self {
-        let mut tableau = vec![0; tableau_block_length(n, capacity_log2)];
-        for i in 0..n {
-            let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
-            tableau[block_index] = bitmask(i % BLOCK_SIZE);
-        }
-        ExtendedTableau {
+        let mut g = ExtendedTableau {
             n,
             c_cols: 0,
-            tableau,
+            tableau: vec![0; tableau_block_length(n, capacity_log2)],
             row_pivots: vec![None; n],
             output: vec![Complex::ZERO; 1 << capacity_log2],
-        }
+        };
+        g.reset_zero();
+        g
     }
     #[cfg(test)]
     pub fn random(n: usize, capacity_log2: usize, rng: &mut impl Rng) -> Self {
@@ -86,6 +85,18 @@ impl ExtendedTableau {
             row_pivots: vec![None; n],
             output: vec![Complex::ZERO; 1 << capacity_log2],
         }
+    }
+
+    /// Reset the tableau to the initial zero state with no active c-columns, keeping the allocated capacity.
+    pub fn reset_zero(&mut self) {
+        let n = self.n;
+        self.tableau.fill(0);
+        for i in 0..n {
+            let block_index = z_column_block_index(n, i / BLOCK_SIZE, i);
+            self.tableau[block_index] = bitmask(i % BLOCK_SIZE);
+        }
+        self.c_cols = 0;
+        self.row_pivots.fill(None);
     }
 
     /// Return the number of states currently represented by the tableau.
@@ -261,26 +272,11 @@ impl ExtendedTableau {
         w1s: &BitStringArray,
         flipped_bit: usize,
     ) -> (Complex<f64>, Vec<bool>) {
-        let n = self.n;
         let contained_states = self.contained_states();
 
-        self.bring_into_rref();
-
-        // Identify the row with a set bit in the given position.
-        let mut row = None;
-        for r in 0..n {
-            if self.row_pivots[r] == Some(flipped_bit) {
-                row = Some(r);
-                break;
-            }
-        }
-
-        match row {
+        match self.flipped_bit_row_index(flipped_bit) {
             None => (Complex::ZERO, vec![]),
             Some(row) => {
-                if self.stabilizer_matrix_entry_is_zero(row, (0..n).map(|i| i == flipped_bit)) {
-                    return (Complex::ZERO, vec![]);
-                }
                 let r = self.stabilizer_matrix_entry_phase_part(row);
                 let mut signs = vec![];
                 for s in 0..contained_states {
@@ -293,6 +289,24 @@ impl ExtendedTableau {
                 (r, signs)
             }
         }
+    }
+    /// Bring the tableau into RREF and find the row encoding the coeff. ratios between
+    /// any basis state and that same basis state with `flipped_bit` flipped.
+    ///
+    /// Returns `None` if all of these ratios are zero.
+    fn flipped_bit_row_index(&mut self, flipped_bit: usize) -> Option<usize> {
+        let n = self.n;
+        self.bring_into_rref();
+
+        // Identify the row with a set bit in the given position.
+        let row = self
+            .row_pivots
+            .iter()
+            .position(|&p| p == Some(flipped_bit))?;
+        if self.stabilizer_matrix_entry_is_zero(row, (0..n).map(|i| i == flipped_bit)) {
+            return None;
+        }
+        Some(row)
     }
 
     /// Bring tableau's x part into reduced row echelon form by performing a series of row multiplications.
@@ -639,6 +653,82 @@ impl ExtendedTableau {
         self.bit(row, n + n + 1 + j)
     }
 }
+/// The parts of the tableau needed by the GPU simulator, in the form it consumes them.
+#[cfg(feature = "gpu")]
+impl ExtendedTableau {
+    /// The size in bits of the blocks in the data produced for the GPU simulator.
+    const SERIALIZED_BLOCK_SIZE: usize = u32::BITS as usize;
+
+    /// Return the current number of active c-columns in the tableau.
+    pub fn c_cols(&self) -> usize {
+        self.c_cols
+    }
+
+    /// Bring the tableau into RREF and return all its active columns,
+    /// along with the pivot of each row, encoded as the pivot column plus one (0 if the row has no pivot).
+    ///
+    /// The columns are laid out like [`Self::tableau`], but with 32-bit blocks,
+    /// and each column having just enough blocks to hold `n` rows, i.e. leaving out the auxiliary row.
+    pub fn serialize_rref(&mut self) -> (Vec<u32>, Vec<u32>) {
+        let n = self.n;
+        self.bring_into_rref();
+
+        let serialized_column_length = n.div_ceil(Self::SERIALIZED_BLOCK_SIZE);
+        let blocks = self.tableau[..tableau_block_length(n, self.c_cols)]
+            .chunks_exact(column_block_length(n))
+            .flat_map(|column| {
+                // Rows are numbered from the most significant bit, so the high half comes first.
+                column
+                    .iter()
+                    .flat_map(|&block: &u64| [(block >> u32::BITS) as u32, block as u32])
+                    .take(serialized_column_length)
+            })
+            .collect();
+        let pivots = self
+            .row_pivots
+            .iter()
+            .map(|p| p.map_or(0, |q| u32::try_from(q).expect(INDEX_TOO_LARGE) + 1))
+            .collect();
+        (blocks, pivots)
+    }
+
+    /// Bring the tableau into RREF and return the row encoding the coeff. ratios between
+    /// any basis state and that same basis state with `flipped_bit` flipped.
+    ///
+    /// Returns `None` if all of these ratios are zero.
+    pub fn flipped_bit_row(&mut self, flipped_bit: usize) -> Option<FlippedBitRow> {
+        let n = self.n;
+        let row = self.flipped_bit_row_index(flipped_bit)?;
+
+        let mut z = vec![0u32; n.div_ceil(Self::SERIALIZED_BLOCK_SIZE)];
+        for q in (0..n).filter(|&q| self.z_bit(row, q)) {
+            let block_index = q / Self::SERIALIZED_BLOCK_SIZE;
+            z[block_index] = set_bit(z[block_index], q % Self::SERIALIZED_BLOCK_SIZE);
+        }
+        let phase = self.stabilizer_matrix_entry_phase_part(row);
+        Some(FlippedBitRow {
+            ratio: if self.r_bit(row) { -phase } else { phase },
+            c_mask: (0..self.c_cols)
+                .filter(|&j| self.c_bit(row, j))
+                .fold(0, |mask, j| mask | (1 << j)),
+            z,
+        })
+    }
+}
+/// See [`ExtendedTableau::flipped_bit_row`].
+///
+/// The coeff. ratio for a basis state `w` of the s'th state is `ratio`,
+/// negated once for every bit set in `s & c_mask` and in `w & z`.
+#[cfg(feature = "gpu")]
+pub struct FlippedBitRow {
+    /// The part of the coeff. ratio shared by all states and basis states.
+    pub ratio: Complex<f64>,
+    /// Bitmask where the j'th least significant bit holds the j'th c bit of the row.
+    pub c_mask: u32,
+    /// The z bits of the row, packed into 32-bit blocks with just enough room for one bit per qubit.
+    pub z: Vec<u32>,
+}
+
 impl Debug for ExtendedTableau {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n = self.n;
