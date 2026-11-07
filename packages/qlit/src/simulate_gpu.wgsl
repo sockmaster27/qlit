@@ -187,6 +187,11 @@ fn dedup_apply_piz_gate(
     }
 
     let i = xor_pair(m, c);
+    w_coeffs[i.y] = mul(w_coeffs[i.y], coeff_ratio(i.y, i.x, i.y));
+    for (var q: u32 = 0; q < n; q += 1) {
+        ws[w_bit_index(i.y, q)] = ws[w_bit_index(i.x, q)];
+    }
+
     var z_coeff1 = w_coeffs[i.y];
     var z_coeff2 = w_coeffs[i.x];
     if w_bit(i.y, qubit) {
@@ -195,8 +200,6 @@ fn dedup_apply_piz_gate(
     if w_bit(i.x, qubit) {
         z_coeff2 = mul_minus_one(z_coeff2);
     }
-    z_coeff1 = mul(z_coeff1, coeff_ratio(i.y, i.x, i.x));
-    z_coeff2 = mul(z_coeff2, coeff_ratio(i.x, i.y, i.y));
     
     w_coeffs[i.x] = add(mul(ci, w_coeffs[i.x]), mul(cz, z_coeff1));
     w_coeffs[i.y] = add(mul(ci, w_coeffs[i.y]), mul(cz, z_coeff2));
