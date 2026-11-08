@@ -308,11 +308,11 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
                 g.fork_apply_z_gate(a);
+                xs.double(contained_states);
+                x_coeffs.extend_from_within(..);
                 for i in 0..contained_states {
                     let index_i = i;
                     let index_z = i + contained_states;
-                    xs.copy_within(index_i, index_z);
-                    x_coeffs.push(x_coeffs[index_i]);
 
                     x_coeffs[index_i] *= ci;
 
