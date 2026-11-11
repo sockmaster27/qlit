@@ -190,7 +190,7 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
 
     let n: usize = circuit.qubits().try_into().expect(N_TOO_LARGE);
     let batch_size_log2 = circuit.fork_gates();
-    let mut xs = BitStringArray::new(n, 1 << batch_size_log2);
+    let mut xs = BitStringArray::new(n, 1);
     let mut x_coeffs = vec![Complex::ONE];
     let mut g = ExtendedTableau::zero(n, batch_size_log2);
     let mut path_index = 0;
@@ -198,9 +198,7 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
         match gate {
             X(a) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    xs.flip(i, a);
-                }
+                xs.flip_all(a);
                 g.apply_x_gate(a);
             }
             Y(a) => {
@@ -211,8 +209,8 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
                     } else {
                         x_coeffs[i] *= Complex::I;
                     }
-                    xs.flip(i, a);
                 }
+                xs.flip_all(a);
                 g.apply_y_gate(a);
             }
             Z(a) => {
@@ -245,11 +243,7 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
             Cnot(a, b) => {
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let b: usize = b.try_into().expect(INDEX_TOO_LARGE);
-                for i in 0..g.contained_states() {
-                    if xs.get(i, a) {
-                        xs.flip(i, b);
-                    }
-                }
+                xs.xor_all(a, b);
                 g.apply_cnot_gate(a, b);
             }
             Cz(a, b) => {
@@ -308,10 +302,10 @@ fn run_cpu(w: &BitString, circuit: &CircuitPlanned, path: &[bool]) -> Complex<f6
                 let a: usize = a.try_into().expect(INDEX_TOO_LARGE);
                 let contained_states = g.contained_states();
                 g.fork_apply_z_gate(a);
+                xs.double();
                 for i in 0..contained_states {
                     let index_i = i;
                     let index_z = i + contained_states;
-                    xs.copy_within(index_i, index_z);
                     x_coeffs.push(x_coeffs[index_i]);
 
                     x_coeffs[index_i] *= ci;
