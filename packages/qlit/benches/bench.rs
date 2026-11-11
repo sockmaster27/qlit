@@ -119,7 +119,7 @@ fn setup_hidden_shift() -> (BitString, Circuit) {
     init();
 
     let rng = &mut Xoshiro128PlusPlus::seed_from_u64(123);
-    hidden_shift(17, 64, rng)
+    hidden_shift(15, 64, rng)
 }
 
 /// The amplitude of the hidden shift is exactly 1.
