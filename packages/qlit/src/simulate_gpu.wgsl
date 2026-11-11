@@ -195,8 +195,10 @@ fn dedup_apply_piz_gate(
     if w_bit(i.x, qubit) {
         z_coeff2 = mul_minus_one(z_coeff2);
     }
-    z_coeff1 = mul(z_coeff1, coeff_ratio(i.y, i.x, i.x));
-    z_coeff2 = mul(z_coeff2, coeff_ratio(i.x, i.y, i.y));
+    if !w_equal(i.x, i.y) {
+        z_coeff1 = mul(z_coeff1, coeff_ratio(i.y, i.x, i.x));
+        z_coeff2 = mul(z_coeff2, coeff_ratio(i.x, i.y, i.y));
+    }
     
     w_coeffs[i.x] = add(mul(ci, w_coeffs[i.x]), mul(cz, z_coeff1));
     w_coeffs[i.y] = add(mul(ci, w_coeffs[i.y]), mul(cz, z_coeff2));
@@ -492,6 +494,14 @@ fn w_bit(state_index: u32, q: u32) -> bool {
     let block_index = state_offset + (q / BLOCK_SIZE);
     let bit_index = q % BLOCK_SIZE;
     return (ws[block_index] & bitmask(bit_index)) != 0;
+}
+fn w_equal(a: u32, b: u32) -> bool {
+    for (var k: u32 = 0; k < w_block_size(); k += 1) {
+        if ws[a * w_block_size() + k] != ws[b * w_block_size() + k] {
+            return false;
+        }
+    }
+    return true;
 }
 fn flip_w_bit(state_index: u32, q: u32) {
     let state_offset = w_block_size() * state_index;
