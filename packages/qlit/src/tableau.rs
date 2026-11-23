@@ -10,7 +10,7 @@ use crate::bitstring::{BitStringArray, BitStringSlice};
 use crate::utils::INDEX_TOO_LARGE;
 use crate::utils::{bit_indices, bitmask, flip_bit, set_bit, unset_bit};
 
-type BitBlock = u64;
+type BitBlock = u32;
 const BLOCK_SIZE: usize = mem::size_of::<BitBlock>() * 8;
 
 #[derive(Debug, PartialEq, Eq)]
