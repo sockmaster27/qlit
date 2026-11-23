@@ -23,6 +23,8 @@ const BLOCK_SIZE_BYTES: u64 = size_of::<BitBlock>() as u64;
 const BLOCK_SIZE: u32 = (BLOCK_SIZE_BYTES * 8) as u32;
 
 const WORKGROUP_SIZE: u32 = 64;
+/// See `REDUCE_FACTOR` in the shader.
+const REDUCE_FACTOR: u32 = 2 * WORKGROUP_SIZE;
 const U32_SIZE: u64 = size_of::<u32>() as u64;
 const COMPLEX_SIZE: u64 = 2 * size_of::<f32>() as u64;
 
@@ -50,6 +52,7 @@ struct GpuContext {
     dedup_apply_piz_gate_bind_group_layout: wgpu::BindGroupLayout,
     apply_gates_bind_group_layout: wgpu::BindGroupLayout,
     compute_output_bind_group_layout: wgpu::BindGroupLayout,
+    reduce_output_bind_group_layout: wgpu::BindGroupLayout,
 
     apply_gates_pipeline: wgpu::ComputePipeline,
     fork_apply_piz_gate_pipeline: wgpu::ComputePipeline,
@@ -57,6 +60,7 @@ struct GpuContext {
     dedup_apply_piz_gate_pipeline: wgpu::ComputePipeline,
     update_before_h_pipeline: wgpu::ComputePipeline,
     compute_output_pipeline: wgpu::ComputePipeline,
+    reduce_output_pipeline: wgpu::ComputePipeline,
 }
 impl GpuContext {
     async fn new() -> GpuContext {
@@ -376,6 +380,34 @@ impl GpuContext {
                     },
                 ],
             });
+        let reduce_output_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Reduce Output"),
+                entries: &[
+                    // output
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // reduce_stride
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
 
         let apply_gates_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -482,6 +514,25 @@ impl GpuContext {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             });
 
+        let reduce_output_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Reduce Output"),
+                bind_group_layouts: &[
+                    Some(&global_bind_group_layout),
+                    Some(&reduce_output_bind_group_layout),
+                ],
+                immediate_size: 0,
+            });
+        let reduce_output_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Reduce Output"),
+                layout: Some(&reduce_output_pipeline_layout),
+                module: &shader_module,
+                entry_point: Some("reduce_output"),
+                cache: None,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
+
         GpuContext {
             device,
             queue,
@@ -492,6 +543,7 @@ impl GpuContext {
             dedup_apply_piz_gate_bind_group_layout,
             apply_gates_bind_group_layout,
             compute_output_bind_group_layout,
+            reduce_output_bind_group_layout,
 
             apply_gates_pipeline,
             fork_apply_piz_gate_pipeline,
@@ -499,6 +551,7 @@ impl GpuContext {
             dedup_apply_piz_gate_pipeline,
             update_before_h_pipeline,
             compute_output_pipeline,
+            reduce_output_pipeline,
         }
     }
 }
@@ -533,6 +586,9 @@ pub struct GpuSimulator<'a> {
     output_buf: wgpu::Buffer,
     output_read_buf: wgpu::Buffer,
     compute_output_bind_group: wgpu::BindGroup,
+    /// One bind group for each pass of the output reduction, in order.
+    /// Pass i uses a stride of REDUCE_FACTOR^i.
+    reduce_output_bind_groups: Vec<wgpu::BindGroup>,
 }
 impl<'a> GpuSimulator<'a> {
     pub fn new(circuit: &'a CircuitPlanned, w: &BitString) -> Self {
@@ -639,9 +695,10 @@ impl<'a> GpuSimulator<'a> {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
+        // Only the final sum in output[0] is read back.
         let output_read_buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("output (Read)"),
-            size: COMPLEX_SIZE * max_batches_u64,
+            size: COMPLEX_SIZE,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -667,6 +724,36 @@ impl<'a> GpuSimulator<'a> {
                 },
             ],
         });
+
+        let mut reduce_output_bind_groups = Vec::new();
+        let mut stride: u64 = 1;
+        while stride < max_batches_u64 {
+            let stride_u32: u32 = stride.try_into().expect("reduce stride overflows u32");
+            let stride_buf = gpu
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("reduce_stride"),
+                    contents: &stride_u32.to_ne_bytes(),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+            reduce_output_bind_groups.push(gpu.device.create_bind_group(
+                &wgpu::BindGroupDescriptor {
+                    label: Some("Reduce Output"),
+                    layout: &gpu.reduce_output_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: output_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: stride_buf.as_entire_binding(),
+                        },
+                    ],
+                },
+            ));
+            stride *= u64::from(REDUCE_FACTOR);
+        }
 
         Self {
             circuit,
@@ -696,6 +783,7 @@ impl<'a> GpuSimulator<'a> {
             output_buf,
             output_read_buf,
             compute_output_bind_group,
+            reduce_output_bind_groups,
         }
     }
 
@@ -991,7 +1079,9 @@ impl<'a> GpuSimulator<'a> {
                 .output_read_buf
                 .get_mapped_range(..)
                 .expect("failed to load output from GPU");
-            bytes_to_complex(output_data).sum()
+            bytes_to_complex(output_data)
+                .next()
+                .expect("output read buffer should contain exactly one value")
         };
         self.output_read_buf.unmap();
 
@@ -1215,16 +1305,37 @@ impl<'a> GpuSimulator<'a> {
 
     /// Assumes that the tableau has just been uploaded with [`Self::upload_tableau`].
     fn compute_output(&mut self) {
-        let workgroups = self.contained_states().div_ceil(WORKGROUP_SIZE);
+        let states = self.contained_states();
+        let workgroups = states.div_ceil(WORKGROUP_SIZE);
         let mut pass = self.encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&self.gpu.compute_output_pipeline);
         pass.set_bind_group(0, &self.global_bind_group, &[]);
         pass.set_bind_group(1, &self.compute_output_bind_group, &[]);
         pass.dispatch_workgroups(workgroups, 1, 1);
+
+        // Sum all the outputs into output[0].
+        // Dispatches within a single pass are synchronized with each other,
+        // so we can run all the reduction steps in the same pass.
+        pass.set_pipeline(&self.gpu.reduce_output_pipeline);
+        let mut stride: u32 = 1;
+        for bind_group in &self.reduce_output_bind_groups {
+            if stride >= states {
+                break;
+            }
+            let count = states.div_ceil(stride);
+            pass.set_bind_group(1, bind_group, &[]);
+            pass.dispatch_workgroups(count.div_ceil(REDUCE_FACTOR), 1, 1);
+            stride = stride.saturating_mul(REDUCE_FACTOR);
+        }
         drop(pass);
 
-        self.encoder
-            .copy_buffer_to_buffer(&self.output_buf, 0, &self.output_read_buf, 0, None);
+        self.encoder.copy_buffer_to_buffer(
+            &self.output_buf,
+            0,
+            &self.output_read_buf,
+            0,
+            Some(COMPLEX_SIZE),
+        );
     }
 
     /// Get the number of states currently represented by the tableau.
