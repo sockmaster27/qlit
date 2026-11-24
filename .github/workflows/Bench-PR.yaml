@@ -17,7 +17,7 @@ jobs:
                   cache-target: release
                   bins: cargo-pgo
             - name: Collect PGO profile
-              run: cargo pgo bench
+              run: cargo pgo bench -- cpu_large
             - name: Run benchmarks
               run: cargo pgo optimize bench | tee benchmark_results.txt
             - name: Upload benchmark results
