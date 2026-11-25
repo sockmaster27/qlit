@@ -15,8 +15,11 @@ jobs:
             - uses: moonrepo/setup-rust@v1
               with:
                   cache-target: release
+                  bins: cargo-pgo
+            - name: Collect PGO profile
+              run: cargo pgo bench
             - name: Run benchmarks
-              run: cargo bench | tee benchmark_results.txt
+              run: cargo pgo optimize bench | tee benchmark_results.txt
             - name: Upload benchmark results
               uses: actions/upload-artifact@v7
               with:
